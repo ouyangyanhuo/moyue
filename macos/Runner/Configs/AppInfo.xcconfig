@@ -1,0 +1,13 @@
+// Runner 目标的应用级设置。
+//
+// 将来可能会替换为根据元数据（例如 pubspec.yaml）自动生成的内容。
+// 如果没有替换，当此文件成为“flutter create”模板时，下面的值默认会使用项目名称。
+
+// 应用程序名称。默认情况下，这也是 Flutter 窗口的标题。
+PRODUCT_NAME = moyue_application
+
+// 应用程序的 Bundle Identifier。
+PRODUCT_BUNDLE_IDENTIFIER = com.example.moyueApplication
+
+// 应用程序信息中显示的版权声明。
+PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.

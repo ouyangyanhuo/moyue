@@ -1,0 +1,7 @@
+# Flutter 相关文件。
+**/Flutter/ephemeral/
+**/Pods/
+
+# Xcode 相关文件。
+**/dgph
+**/xcuserdata/

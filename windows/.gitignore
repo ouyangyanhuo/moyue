@@ -1,0 +1,17 @@
+flutter/ephemeral/
+
+# Visual Studio 用户专属文件。
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio 构建相关文件。
+x64/
+x86/
+
+# Visual Studio 缓存文件。
+# 以 .cache 结尾的文件可以忽略。
+*.[Cc]ache
+# 但要保留以 .cache 结尾的目录。
+!*.[Cc]ache/

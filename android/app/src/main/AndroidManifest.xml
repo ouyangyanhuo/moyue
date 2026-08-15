@@ -1,0 +1,44 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:label="moyue_application"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- 指定 Android 进程启动后立即应用于此 Activity 的主题。
+                 Flutter 界面初始化期间，用户可以看到此主题。之后，该主题仍会
+                 决定 Flutter 界面背后的窗口背景。 -->
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <!-- 不要删除下面的元数据。
+             Flutter 工具会使用它生成 GeneratedPluginRegistrant.java。 -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+    <!-- 查询可处理文本的 Activity 所必需，参见：
+         https://developer.android.com/training/package-visibility 和
+         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT。
+
+         Flutter 引擎中的 io.flutter.plugin.text.ProcessTextPlugin 会使用此配置。 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+    </queries>
+</manifest>

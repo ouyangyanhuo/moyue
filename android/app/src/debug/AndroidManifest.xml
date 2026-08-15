@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 开发时需要 INTERNET 权限。具体来说，Flutter 工具需要使用它与运行中的
+         应用程序通信，以设置断点、提供热重载等功能。
+    -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+</manifest>

@@ -1,0 +1,47 @@
+# 杂项。
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ 相关文件。
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# .vscode 文件夹包含你在 VS Code 中配置的启动配置和任务，你可能希望将其纳入
+# 版本控制，因此默认将下面这行注释掉。
+#.vscode/（默认不纳入版本控制）
+
+# Flutter/Dart/Pub 相关文件。
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# 符号化相关文件。
+app.*.symbols
+
+# 混淆相关文件。
+app.*.map.json
+
+# Android Studio 会将构建产物放在这里。
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Widget Preview 相关文件。
+.widget_preview/

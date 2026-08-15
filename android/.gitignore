@@ -1,0 +1,14 @@
+gradle-wrapper.jar
+/.gradle
+/captures/
+/gradlew
+/gradlew.bat
+/local.properties
+GeneratedPluginRegistrant.java
+.cxx/
+
+# 请记住，永远不要公开分享你的密钥库。
+# 参见 https://flutter.dev/to/reference-keystore
+key.properties
+**/*.keystore
+**/*.jks
