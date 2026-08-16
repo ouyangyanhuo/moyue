@@ -4,14 +4,21 @@ void main() {
   runApp(const MyApp());
 }
 
+String localizedApplicationName(Locale locale) {
+  return locale.languageCode.toLowerCase() == 'zh' ? '墨阅' : 'Moyue';
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   // 此组件是应用程序的根组件。
   @override
   Widget build(BuildContext context) {
+    final appName = localizedApplicationName(
+      WidgetsBinding.instance.platformDispatcher.locale,
+    );
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: appName,
       theme: ThemeData(
         // 这是应用程序的主题配置。
         //
@@ -27,7 +34,7 @@ class MyApp extends StatelessWidget {
         // 即可进行测试。
         colorScheme: .fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: 'Flutter Demo'),
+      home: MyHomePage(title: appName),
     );
   }
 }

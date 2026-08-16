@@ -18,14 +18,26 @@
   <!-- iOS 元标签和图标。 -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="moyue_application">
+  <meta name="apple-mobile-web-app-title" content="Moyue">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- 网站图标。 -->
   <link rel="icon" type="image/png" href="favicon.png">
 
-  <title>moyue_application</title>
-  <link rel="manifest" href="manifest.json">
+  <title>Moyue</title>
+  <script>
+    const isChineseLocale = /^zh(?:-|_|$)/i.test(navigator.language || "");
+    const localizedAppName = isChineseLocale ? "墨阅" : "Moyue";
+    document.title = localizedAppName;
+    document
+      .querySelector('meta[name="apple-mobile-web-app-title"]')
+      ?.setAttribute("content", localizedAppName);
+
+    const manifestLink = document.createElement("link");
+    manifestLink.rel = "manifest";
+    manifestLink.href = isChineseLocale ? "manifest.zh.json" : "manifest.json";
+    document.head.appendChild(manifestLink);
+  </script>
   <style id="splash-screen-style">
     html {
       height: 100%

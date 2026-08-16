@@ -5,6 +5,15 @@
 #include "flutter_window.h"
 #include "utils.h"
 
+namespace {
+
+const wchar_t* GetLocalizedApplicationName() {
+  const WORD language = PRIMARYLANGID(::GetUserDefaultUILanguage());
+  return language == LANG_CHINESE ? L"墨阅" : L"Moyue";
+}
+
+}  // namespace
+
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
   // 如果已有控制台（例如执行“flutter run”时）则连接到该控制台，
@@ -26,7 +35,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"moyue_application", origin, size)) {
+  if (!window.Create(GetLocalizedApplicationName(), origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

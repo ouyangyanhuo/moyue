@@ -14,6 +14,14 @@ struct _MyApplication {
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
+static const gchar* get_localized_application_name() {
+  const gchar* const* languages = g_get_language_names();
+  return languages != nullptr && languages[0] != nullptr &&
+                 g_str_has_prefix(languages[0], "zh")
+             ? "墨阅"
+             : "Moyue";
+}
+
 // 接收到 Flutter 第一帧时调用。
 static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
@@ -22,6 +30,7 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 // 实现 GApplication::activate。
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
+  const gchar* application_name = get_localized_application_name();
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
@@ -44,11 +53,11 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "moyue_application");
+    gtk_header_bar_set_title(header_bar, application_name);
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "moyue_application");
+    gtk_window_set_title(window, application_name);
   }
 
   gtk_window_set_default_size(window, 1280, 720);
@@ -138,6 +147,7 @@ MyApplication* my_application_new() {
   // 映射到对应的 .desktop 文件。这样可以让应用程序不只通过二进制文件名被识别，
   // 从而实现更好的集成。
   g_set_prgname(APPLICATION_ID);
+  g_set_application_name(get_localized_application_name());
 
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",

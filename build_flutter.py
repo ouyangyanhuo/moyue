@@ -340,7 +340,7 @@ def find_artifacts(target: str, mode: str, split_per_abi: bool) -> list[Path]:
 
     if target == "windows":
         windows_dir = build_dir / "windows"
-        expected_name = f"{PROJECT_DIR.name}.exe"
+        expected_name = "Moyue.exe"
         executables = list(windows_dir.rglob(expected_name)) if windows_dir.is_dir() else []
         if executables:
             return [executables[0]]

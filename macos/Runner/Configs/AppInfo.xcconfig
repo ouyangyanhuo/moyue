@@ -4,7 +4,7 @@
 // 如果没有替换，当此文件成为“flutter create”模板时，下面的值默认会使用项目名称。
 
 // 应用程序名称。默认情况下，这也是 Flutter 窗口的标题。
-PRODUCT_NAME = moyue_application
+PRODUCT_NAME = Moyue
 
 // 应用程序的 Bundle Identifier。
 PRODUCT_BUNDLE_IDENTIFIER = com.moyue.application

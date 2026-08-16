@@ -89,18 +89,40 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.moyue" "\0"
-            VALUE "FileDescription", "moyue_application" "\0"
+            VALUE "FileDescription", "Moyue" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "moyue_application" "\0"
+            VALUE "InternalName", "Moyue" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.moyue. All rights reserved." "\0"
-            VALUE "OriginalFilename", "moyue_application.exe" "\0"
-            VALUE "ProductName", "moyue_application" "\0"
+            VALUE "OriginalFilename", "Moyue.exe" "\0"
+            VALUE "ProductName", "Moyue" "\0"
+            VALUE "ProductVersion", VERSION_AS_STRING "\0"
+        END
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "CompanyName", "com.moyue" "\0"
+            VALUE "FileDescription", "墨阅" "\0"
+            VALUE "FileVersion", VERSION_AS_STRING "\0"
+            VALUE "InternalName", "Moyue" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.moyue. All rights reserved." "\0"
+            VALUE "OriginalFilename", "Moyue.exe" "\0"
+            VALUE "ProductName", "墨阅" "\0"
+            VALUE "ProductVersion", VERSION_AS_STRING "\0"
+        END
+        BLOCK "040404b0"
+        BEGIN
+            VALUE "CompanyName", "com.moyue" "\0"
+            VALUE "FileDescription", "墨阅" "\0"
+            VALUE "FileVersion", VERSION_AS_STRING "\0"
+            VALUE "InternalName", "Moyue" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.moyue. All rights reserved." "\0"
+            VALUE "OriginalFilename", "Moyue.exe" "\0"
+            VALUE "ProductName", "墨阅" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
     BLOCK "VarFileInfo"
     BEGIN
-        VALUE "Translation", 0x409, 1252
+        VALUE "Translation", 0x409, 1252, 0x804, 1200, 0x404, 1200
     END
 END
 

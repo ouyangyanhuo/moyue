@@ -28,6 +28,7 @@
 		33CC10F62044A3C60003C045 /* MainMenu.xib（资源） */ = {isa = PBXBuildFile; fileRef = 33CC10F42044A3C60003C045 /* MainMenu.xib */; };
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift（源文件） */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage（框架） */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
+		B1C2D3E4F5A6000000000001 /* InfoPlist.strings（资源） */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6000000000004 /* InfoPlist.strings */; };
 /* 结束 PBXBuildFile 部分 */
 
 /* 开始 PBXContainerItemProxy 部分 */
@@ -65,7 +66,7 @@
 		331C80D7294CF71000263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		333000ED22D3DE5D00554162 /* Warnings.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Warnings.xcconfig; sourceTree = "<group>"; };
 		335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GeneratedPluginRegistrant.swift; sourceTree = "<group>"; };
-		33CC10ED2044A3C60003C045 /* moyue_application.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "moyue_application.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		33CC10ED2044A3C60003C045 /* Moyue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Moyue.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		33CC10F02044A3C60003C045 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		33CC10F22044A3C60003C045 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = Runner/Assets.xcassets; sourceTree = "<group>"; };
 		33CC10F52044A3C60003C045 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
@@ -79,6 +80,8 @@
 		33E5194F232828860026EE4D /* AppInfo.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AppInfo.xcconfig; sourceTree = "<group>"; };
 		78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = FlutterGeneratedPluginSwiftPackage; path = ephemeral/Packages/FlutterGeneratedPluginSwiftPackage; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig（发布配置） */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		B1C2D3E4F5A6000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		B1C2D3E4F5A6000000000003 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig（调试配置） */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 /* 结束 PBXFileReference 部分 */
 
@@ -134,7 +137,7 @@
 		33CC10EE2044A3C60003C045 /* 产品 */ = {
 			isa = PBXGroup;
 			children = (
-				33CC10ED2044A3C60003C045 /* moyue_application.app */,
+				33CC10ED2044A3C60003C045 /* Moyue.app */,
 				331C80D5294CF71000263BE5 /* RunnerTests.xctest */,
 			);
 			name = Products;
@@ -170,6 +173,7 @@
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements（调试配置） */,
 				33E51914231749380026EE4D /* Release.entitlements（发布配置） */,
+				B1C2D3E4F5A6000000000004 /* InfoPlist.strings */,
 				33CC11242044D66E0003C045 /* 资源 */,
 				33BA886A226E78AF003329D5 /* Configs */,
 			);
@@ -224,7 +228,7 @@
 				78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */,
 			);
 			productName = Runner;
-			productReference = 33CC10ED2044A3C60003C045 /* moyue_application.app */;
+			productReference = 33CC10ED2044A3C60003C045 /* Moyue.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* 结束 PBXNativeTarget 部分 */
@@ -264,6 +268,8 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				"zh-Hans",
+				"zh-Hant",
 				Base,
 			);
 			mainGroup = 33CC10E42044A3C60003C045;
@@ -295,6 +301,7 @@
 			files = (
 				33CC10F32044A3C60003C045 /* Assets.xcassets（资源） */,
 				33CC10F62044A3C60003C045 /* MainMenu.xib（资源） */,
+				B1C2D3E4F5A6000000000001 /* InfoPlist.strings（资源） */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -376,6 +383,15 @@
 /* 结束 PBXTargetDependency 部分 */
 
 /* 开始 PBXVariantGroup 部分 */
+		B1C2D3E4F5A6000000000004 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				B1C2D3E4F5A6000000000002 /* zh-Hans */,
+				B1C2D3E4F5A6000000000003 /* zh-Hant */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
 		33CC10F42044A3C60003C045 /* MainMenu.xib */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -398,7 +414,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.moyue.application.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/moyue_application.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/moyue_application";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Moyue.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Moyue";
 			};
 			name = Debug;
 		};
@@ -412,7 +428,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.moyue.application.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/moyue_application.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/moyue_application";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Moyue.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Moyue";
 			};
 			name = Release;
 		};
@@ -426,7 +442,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.moyue.application.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/moyue_application.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/moyue_application";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Moyue.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Moyue";
 			};
 			name = Profile;
 		};

@@ -1,9 +1,9 @@
 # 项目级配置。
 cmake_minimum_required(VERSION 3.14)
-project(moyue_application LANGUAGES CXX)
+project(Moyue LANGUAGES CXX)
 
 # 应用程序生成的可执行文件名称。修改此项即可更改应用程序在磁盘上的名称。
-set(BINARY_NAME "moyue_application")
+set(BINARY_NAME "Moyue")
 
 # 显式启用现代 CMake 行为，以避免近期版本 CMake 产生警告。
 cmake_policy(VERSION 3.14...3.25)
@@ -36,7 +36,7 @@ add_definitions(-DUNICODE -D_UNICODE)
 # 特定目标，而不是修改此函数。
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_17)
-  target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100")
+  target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100" /utf-8)
   target_compile_options(${TARGET} PRIVATE /EHsc)
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")

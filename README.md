@@ -1,4 +1,4 @@
-# moyue_application
+# 墨阅 / Moyue
 
 A new Flutter project.
 

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.13)
 project(runner LANGUAGES CXX)
 
 # 应用程序生成的可执行文件名称。修改此项即可更改应用程序在磁盘上的名称。
-set(BINARY_NAME "moyue_application")
+set(BINARY_NAME "moyue")
 # 此应用程序的唯一 GTK 应用程序标识符。参见：
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
 set(APPLICATION_ID "com.moyue.application")
