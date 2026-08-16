@@ -6,7 +6,7 @@ project(runner LANGUAGES CXX)
 set(BINARY_NAME "moyue_application")
 # 此应用程序的唯一 GTK 应用程序标识符。参见：
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
-set(APPLICATION_ID "com.example.moyue_application")
+set(APPLICATION_ID "com.moyue.application")
 
 # 显式启用现代 CMake 行为，以避免近期版本 CMake 产生警告。
 cmake_policy(SET CMP0063 NEW)

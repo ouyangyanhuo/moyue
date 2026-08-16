@@ -7,7 +7,7 @@
 PRODUCT_NAME = moyue_application
 
 // 应用程序的 Bundle Identifier。
-PRODUCT_BUNDLE_IDENTIFIER = com.example.moyueApplication
+PRODUCT_BUNDLE_IDENTIFIER = com.moyue.application
 
 // 应用程序信息中显示的版权声明。
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 com.moyue. All rights reserved.

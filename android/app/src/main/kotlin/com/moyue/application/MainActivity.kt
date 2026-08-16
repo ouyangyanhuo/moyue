@@ -1,4 +1,4 @@
-package com.example.moyue_application
+package com.moyue.application
 
 import io.flutter.embedding.android.FlutterActivity
 

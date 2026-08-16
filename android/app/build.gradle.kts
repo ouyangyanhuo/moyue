@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.moyue_application"
+    namespace = "com.moyue.application"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -17,7 +17,7 @@ android {
     defaultConfig {
         // TODO：请指定你自己的唯一 Application ID
         //（https://developer.android.com/studio/build/application-id.html）。
-        applicationId = "com.example.moyue_application"
+        applicationId = "com.moyue.application"
         // 你可以根据应用程序需求更新以下值。
         // 更多信息请参见：https://flutter.dev/to/review-gradle-config。
         minSdk = flutter.minSdkVersion
