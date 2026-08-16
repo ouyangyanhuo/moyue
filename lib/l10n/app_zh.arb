@@ -1,0 +1,15 @@
+{
+  "@@locale": "zh",
+  "appName": "墨阅",
+  "@appName": {
+    "description": "本地化应用名称"
+  },
+  "homeTab": "首页",
+  "libraryTab": "书架",
+  "notesTab": "笔记",
+  "profileTab": "我的",
+  "homeMessage": "欢迎回到你的阅读空间",
+  "libraryMessage": "你的书籍会陈列在这里",
+  "notesMessage": "记录每一页带来的想法",
+  "profileMessage": "管理阅读偏好与账户"
+}

@@ -22,6 +22,46 @@ static const gchar* get_localized_application_name() {
              : "Moyue";
 }
 
+static gboolean is_dark_theme() {
+  GtkSettings* settings = gtk_settings_get_default();
+  if (settings == nullptr) {
+    return FALSE;
+  }
+
+  gboolean prefer_dark = FALSE;
+  gchar* theme_name = nullptr;
+  g_object_get(settings, "gtk-application-prefer-dark-theme", &prefer_dark,
+               "gtk-theme-name", &theme_name, nullptr);
+
+  g_autofree gchar* normalized_theme =
+      theme_name == nullptr ? nullptr : g_ascii_strdown(theme_name, -1);
+  const gboolean theme_name_is_dark =
+      normalized_theme != nullptr &&
+      g_strrstr(normalized_theme, "dark") != nullptr;
+  g_free(theme_name);
+  return prefer_dark || theme_name_is_dark;
+}
+
+static void update_application_icon(GtkWindow* window) {
+  g_autofree gchar* executable_path = g_file_read_link("/proc/self/exe", nullptr);
+  if (executable_path == nullptr) {
+    return;
+  }
+
+  g_autofree gchar* executable_directory = g_path_get_dirname(executable_path);
+  const gchar* icon_name =
+      is_dark_theme() ? "app_icon_dark.png" : "app_icon_day.png";
+  g_autofree gchar* icon_path = g_build_filename(
+      executable_directory, "data", icon_name, static_cast<gchar*>(nullptr));
+  gtk_window_set_icon_from_file(window, icon_path, nullptr);
+}
+
+static void theme_changed_cb(GtkSettings*,
+                             GParamSpec*,
+                             GtkWindow* window) {
+  update_application_icon(window);
+}
+
 // 接收到 Flutter 第一帧时调用。
 static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
@@ -33,6 +73,18 @@ static void my_application_activate(GApplication* application) {
   const gchar* application_name = get_localized_application_name();
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
+  update_application_icon(window);
+
+  GtkSettings* settings = gtk_settings_get_default();
+  if (settings != nullptr) {
+    g_signal_connect_object(settings, "notify::gtk-theme-name",
+                            G_CALLBACK(theme_changed_cb), G_OBJECT(window),
+                            G_CONNECT_DEFAULT);
+    g_signal_connect_object(settings,
+                            "notify::gtk-application-prefer-dark-theme",
+                            G_CALLBACK(theme_changed_cb), G_OBJECT(window),
+                            G_CONNECT_DEFAULT);
+  }
 
   // 在 GNOME 中运行时使用标题栏，因为这是应用程序常用的样式，
   // 也是大多数用户使用的配置（例如 Ubuntu 桌面）。

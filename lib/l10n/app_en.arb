@@ -1,0 +1,15 @@
+{
+  "@@locale": "en",
+  "appName": "Moyue",
+  "@appName": {
+    "description": "The localized application name"
+  },
+  "homeTab": "Home",
+  "libraryTab": "Library",
+  "notesTab": "Notes",
+  "profileTab": "Profile",
+  "homeMessage": "Welcome back to your reading space",
+  "libraryMessage": "Your books will appear here",
+  "notesMessage": "Capture thoughts from every page",
+  "profileMessage": "Reading preferences and account"
+}

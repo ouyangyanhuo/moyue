@@ -209,6 +209,7 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
+    case WM_SETTINGCHANGE:
       UpdateTheme(hwnd);
       return 0;
   }
@@ -275,9 +276,13 @@ void Win32Window::UpdateTheme(HWND const window) {
                                RRF_RT_REG_DWORD, nullptr, &light_mode,
                                &light_mode_size);
 
-  if (result == ERROR_SUCCESS) {
-    BOOL enable_dark_mode = light_mode == 0;
-    DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                          &enable_dark_mode, sizeof(enable_dark_mode));
-  }
+  BOOL enable_dark_mode = result == ERROR_SUCCESS && light_mode == 0;
+  DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                        &enable_dark_mode, sizeof(enable_dark_mode));
+
+  const int icon_resource =
+      enable_dark_mode ? IDI_APP_ICON_DARK : IDI_APP_ICON;
+  HICON icon = LoadIcon(GetModuleHandle(nullptr), MAKEINTRESOURCE(icon_resource));
+  SendMessage(window, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(icon));
+  SendMessage(window, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(icon));
 }

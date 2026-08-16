@@ -27,9 +27,17 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # 跟随系统明暗模式，并为后续的主题切换设置保留统一入口。
+  adaptive_theme: 3.7.2
+  liquid_glass_widgets: ^0.29.6
+
   # 以下内容将 Cupertino Icons 字体添加到应用程序中。
   # 可与 CupertinoIcons 类一起使用，以显示 iOS 风格的图标。
   cupertino_icons: ^1.0.8
+  # https://github.com/flutter/flutter/blob/master/packages/flutter_localizations/README.md
+  flutter_localizations:
+    sdk: flutter
+  intl: any
 
 dev_dependencies:
   flutter_test:
@@ -39,6 +47,9 @@ dev_dependencies:
   # 该软件包提供的 lint 集合会在软件包根目录的 `analysis_options.yaml` 文件中启用。
   # 关于停用特定 lint 规则和启用其他规则的信息，请参见该文件。
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+  shared_preferences_platform_interface: ^2.4.2
+  # https://github.com/jonbhanson/flutter_native_splash
   flutter_native_splash: ^2.4.8
 
 # 关于此文件中通用 Dart 部分的信息，请参见以下页面：
@@ -46,6 +57,9 @@ dev_dependencies:
 
 # 以下部分专用于 Flutter 软件包。
 flutter:
+
+  # 根据 lib/l10n 中的 ARB 文件生成 AppLocalizations。
+  generate: true
 
   # 以下内容确保应用程序包含 Material Icons 字体，
   # 这样就可以使用 material Icons 类中的图标。

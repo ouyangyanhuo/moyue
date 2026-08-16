@@ -69,6 +69,8 @@ Android APK 可选参数
 * Android APK 需要 Android SDK 以及 JDK 17 或更高版本。
 * 在 Windows 上构建 APK 时，脚本会优先使用项目上级目录中的
   ``jdk-17.0.20+8``，然后尝试 JAVA_HOME 和 PATH 中的 Java。
+* Windows 桌面构建包含 Flutter 插件时，需要在 Windows 设置中开启
+  “开发人员模式”，以允许 Flutter 创建插件符号链接。
 * Linux、Windows 和 iOS 桌面构建还需要 Flutter 对应平台的本机工具链。
 
 预期产物
