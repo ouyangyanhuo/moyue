@@ -45,3 +45,10 @@ app.*.map.json
 
 # Widget Preview 相关文件。
 .widget_preview/
+
+# python 缓存文件。
+__pycache__/
+
+# vscode 临时文件。
+.vscode-test/
+.vscode/
