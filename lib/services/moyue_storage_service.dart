@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:moyue_application/models/feed_models.dart';
+import 'package:moyue_application/models/library_folder.dart';
 import 'package:moyue_application/models/reading_document.dart';
+import 'package:moyue_application/services/document_package_service.dart';
 import 'package:moyue_application/services/storage/storage_backend.dart';
 import 'package:moyue_application/services/storage/storage_backend_base.dart';
 
@@ -9,46 +13,93 @@ class MoyueStorageService extends ChangeNotifier {
 
   static final instance = MoyueStorageService._();
   final MoyueStorageBackend _backend;
+  final DocumentPackageService _packages = DocumentPackageService();
 
-  Future<List<ReadingDocument>> loadDocuments() => _backend.loadDocuments();
+  Future<List<ReadingDocument>> loadDocuments() async {
+    final indexed = await _packages.loadDocuments();
+    final legacy = await _backend.loadDocuments();
+    return [...indexed, ...legacy]
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
+  Future<List<LibraryFolder>> loadFolders() => _packages.loadFolders();
+
+  Future<void> createFolder(String name) async {
+    await _packages.createFolder(name);
+    notifyListeners();
+  }
+
+  Future<void> deleteFolder(LibraryFolder folder) async {
+    await _packages.deleteFolderById(folder.id);
+    notifyListeners();
+  }
 
   Future<ReadingDocument> saveDocument({
     required String title,
     required String content,
     required DocumentKind kind,
-    String? existingPath,
+    ReadingDocument? existingDocument,
   }) async {
-    final result = await _backend.writeDocument(
-      title: title,
-      content: content,
-      kind: kind,
-      existingPath: existingPath,
-    );
+    final result = kind == DocumentKind.markdown
+        ? await _packages.saveMarkdown(
+            title: title,
+            content: content,
+            existing: existingDocument,
+          )
+        : await _packages.importFile(
+            '$title.html',
+            Uint8List.fromList(utf8.encode(content)),
+          );
+    if (existingDocument != null && existingDocument.folderId == null) {
+      await _backend.deleteDocument(existingDocument);
+    }
     notifyListeners();
     return result;
   }
 
+  Future<ReadingDocument> importDocumentPackage({
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
+    final document = await _packages.importFile(fileName, bytes);
+    notifyListeners();
+    return document;
+  }
+
+  Future<MoyueExport> exportMoyue(ReadingDocument document) =>
+      _packages.exportMoyue(document);
+
+  Future<Uint8List?> readLinkedResource(
+    ReadingDocument document,
+    String link,
+  ) => _packages.readLinkedResource(document, link);
+
   Future<void> deleteDocument(ReadingDocument document) async {
-    await _backend.deleteDocument(document);
+    if (document.folderId == null) {
+      await _backend.deleteDocument(document);
+    } else {
+      await _packages.deleteDocument(document);
+    }
     notifyListeners();
   }
 
-  Future<List<FeedSource>> loadFeedSources() => _backend.loadFeedSources();
-  Future<String?> readFeedXml(FeedSource source) =>
-      _backend.readFeedXml(source);
+  Future<List<FeedSource>> loadFeedSources() => _packages.loadFeedSources();
+  Future<String?> readFeedXml(FeedSource source) => _packages.readFeed(source);
 
   Future<void> saveFeedSources(List<FeedSource> sources) async {
-    await _backend.saveFeedSources(sources);
+    for (final source in sources) {
+      final existing = await _packages.readFeed(source) ?? '';
+      await _packages.saveFeed(source, existing);
+    }
     notifyListeners();
   }
 
   Future<FeedSource> saveFeedXml(FeedSource source, String xml) async {
-    final path = await _backend.writeFeedXml(source, xml);
-    return source.copyWith(rawFilePath: path);
+    return _packages.saveFeed(source, xml);
   }
 
   Future<void> deleteFeed(FeedSource source) async {
-    await _backend.deleteFeed(source);
+    await _packages.deleteFeed(source);
     notifyListeners();
   }
 }

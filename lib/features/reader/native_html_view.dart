@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
@@ -5,8 +7,9 @@ import 'package:html/parser.dart' as html_parser;
 /// A deliberately focused HTML-to-Flutter renderer. It parses the DOM and
 /// maps common editorial elements to native widgets; no browser view is used.
 class NativeHtmlView extends StatelessWidget {
-  const NativeHtmlView({required this.data, super.key});
+  const NativeHtmlView({required this.data, this.resourceLoader, super.key});
   final String data;
+  final Future<Uint8List?> Function(String source)? resourceLoader;
 
   @override
   Widget build(BuildContext context) {
@@ -44,6 +47,25 @@ class NativeHtmlView extends StatelessWidget {
         return [_spacedText(context, node, theme.textTheme.titleMedium, 16)];
       case 'p':
         return [_paragraph(context, node.nodes)];
+      case 'img':
+        final source = node.attributes['src'];
+        if (source == null || resourceLoader == null) return const [];
+        return [
+          FutureBuilder<Uint8List?>(
+            future: resourceLoader!(source),
+            builder: (context, snapshot) {
+              final bytes = snapshot.data;
+              if (bytes == null) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(bytes, fit: BoxFit.contain),
+                ),
+              );
+            },
+          ),
+        ];
       case 'blockquote':
         return [
           Container(

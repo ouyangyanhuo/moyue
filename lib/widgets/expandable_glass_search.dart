@@ -68,7 +68,6 @@ class _ExpandableGlassSearchState extends State<ExpandableGlassSearch> {
               onPressed: _open,
               semanticLabel: '搜索',
               size: 46,
-              glowColor: Colors.transparent,
               useOwnLayer: true,
             ),
     );

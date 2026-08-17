@@ -14,7 +14,7 @@ publish_to: 'none' # 如需发布到 pub.dev，请删除此行。
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # 在 Windows 中，build-name 用作产品版本和文件版本的主版本、次版本及修订版本部分，
 # build-number 用作构建后缀。
-version: 1.0.0+3
+version: 1.0.1+3
 
 environment:
   sdk: ^3.13.0
@@ -36,6 +36,12 @@ dependencies:
   http: ^1.6.0
   rss_dart: ^1.0.14
   url_launcher: ^6.3.2
+  archive: ^4.0.9
+  charset: ^2.0.1
+  crypto: ^3.0.7
+  path: ^1.9.1
+  sqflite: ^2.4.3
+  sqflite_common_ffi_web: ^1.1.2
 
   # 以下内容将 Cupertino Icons 字体添加到应用程序中。
   # 可与 CupertinoIcons 类一起使用，以显示 iOS 风格的图标。

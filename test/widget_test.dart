@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/app/moyue_app.dart';
 import 'package:moyue_application/features/reader/library_page.dart';
 import 'package:moyue_application/features/editor/editor_page.dart';
@@ -130,6 +131,59 @@ void main() {
     expect(find.text('订阅地址'), findsOneWidget);
     expect(find.text('添加订阅'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('一级页面第一次返回会提示再次返回', (tester) async {
+    await tester.pumpWidget(const MoyueApp());
+    await _pumpIo(tester);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+
+    expect(find.text('再按一次返回桌面'), findsOneWidget);
+  });
+
+  testWidgets('编辑工具栏会跟随输入法上移', (tester) async {
+    tester.view.physicalSize = const Size(430, 932);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: const MaterialApp(home: MarkdownEditorPage()),
+      ),
+    );
+    await tester.pump();
+    final before = tester.getTopLeft(find.byType(GlassToolbar)).dy;
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
+    final after = tester.getTopLeft(find.byType(GlassToolbar)).dy;
+
+    expect(after, lessThan(before - 250));
+  });
+
+  testWidgets('新建菜单提供指定选项及导入格式说明', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: LibraryPage(documents: [], loading: false)),
+      ),
+    );
+    await tester.tap(find.bySemanticsLabel('新建或导入'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('新建 markdown'), findsOneWidget);
+    expect(find.text('新建文件夹'), findsOneWidget);
+    expect(find.text('导入文件或文档包'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('支持的文件格式'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('文档数量大于 2 时'), findsOneWidget);
   });
 }
 

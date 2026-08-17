@@ -74,7 +74,6 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
                 onPressed: _showAddSource,
                 semanticLabel: '添加订阅',
                 size: 46,
-                glowColor: Colors.transparent,
                 useOwnLayer: true,
               ),
             ),
@@ -165,6 +164,11 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
     try {
       final result = await _rssService.load(source);
       if (!mounted) return;
+      if (result.errorMessage case final message?) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(message)));
+        return;
+      }
       final stored = await MoyueStorageService.instance.saveFeedXml(
         source,
         result.rawBody,
@@ -183,7 +187,7 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
         ];
       });
       await MoyueStorageService.instance.saveFeedSources(_sources);
-    } on Exception catch (error) {
+    } on Object catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -219,29 +223,42 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
     );
     if (source == null || !mounted) return;
     setState(() => _sources.insert(0, source));
-    await MoyueStorageService.instance.saveFeedSources(_sources);
-    await _refreshSource(source);
+    try {
+      await MoyueStorageService.instance.saveFeedSources(_sources);
+      await _refreshSource(source);
+    } on Object catch (error) {
+      _sources.removeWhere((item) => item.id == source.id);
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('添加订阅失败：$error')));
+      }
+    }
   }
 
   Future<void> _loadStoredFeeds() async {
-    final sources = await MoyueStorageService.instance.loadFeedSources();
-    final articles = <FeedArticle>[];
-    for (final source in sources) {
-      final xml = await MoyueStorageService.instance.readFeedXml(source);
-      if (xml == null) continue;
-      try {
-        articles.addAll(_rssService.parse(source, xml).articles);
-      } on Exception {
-        // Keep the subscription even if a previously saved feed is malformed.
+    try {
+      final sources = await MoyueStorageService.instance.loadFeedSources();
+      final articles = <FeedArticle>[];
+      for (final source in sources) {
+        final xml = await MoyueStorageService.instance.readFeedXml(source);
+        if (xml == null || xml.isEmpty) continue;
+        try {
+          articles.addAll(_rssService.parse(source, xml).articles);
+        } on Object {
+          // Keep the subscription even if a previously saved feed is malformed.
+        }
       }
-    }
-    if (mounted) {
-      setState(() {
-        _sources
-          ..clear()
-          ..addAll(sources);
-        _articles = articles;
-      });
+      if (mounted) {
+        setState(() {
+          _sources
+            ..clear()
+            ..addAll(sources);
+          _articles = articles;
+        });
+      }
+    } on Object {
+      // The empty-state remains usable if local index initialization fails.
     }
   }
 

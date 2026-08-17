@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/features/editor/editor_page.dart';
@@ -51,7 +54,6 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
             icon: const Icon(CupertinoIcons.chevron_back, size: 21),
             semanticLabel: '返回',
             size: 44,
-            glowColor: Colors.transparent,
             useOwnLayer: true,
           ),
           title: GlassContainer(
@@ -59,7 +61,6 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
             height: 42,
             useOwnLayer: true,
             shape: const LiquidRoundedSuperellipse(borderRadius: 12),
-            glowIntensity: 0,
             alignment: Alignment.center,
             child: LayoutBuilder(
               builder: (context, constraints) => SingleChildScrollView(
@@ -90,7 +91,6 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                 icon: const Icon(CupertinoIcons.pencil, size: 20),
                 semanticLabel: '编辑 Markdown',
                 onPressed: _editDocument,
-                glowColor: Colors.transparent,
                 useOwnLayer: true,
                 size: 44,
               ),
@@ -102,10 +102,17 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
             data: MediaQuery.of(context)
                 .copyWith(textScaler: TextScaler.linear(_textScale)),
             child: _document.kind == DocumentKind.markdown
-                ? _MarkdownDocument(data: _document.content)
+                ? _MarkdownDocument(
+                    data: _document.content,
+                    document: _document,
+                  )
                 : SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(24, 8, 24, 92),
-                    child: NativeHtmlView(data: _document.content),
+                    child: NativeHtmlView(
+                      data: _document.content,
+                      resourceLoader: (source) => MoyueStorageService.instance
+                          .readLinkedResource(_document, source),
+                    ),
                   ),
           ),
         ),
@@ -145,8 +152,8 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                 ),
                 GlassButtonGroupItem(
                   icon: const Icon(Icons.ios_share_rounded),
-                  label: '分享',
-                  onTap: () => _message('已准备分享「${_document.title}」'),
+                  label: '导出 .moyue',
+                  onTap: _exportDocument,
                 ),
               ],
             ),
@@ -173,6 +180,21 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
     }
   }
 
+  Future<void> _exportDocument() async {
+    try {
+      final export = await MoyueStorageService.instance.exportMoyue(_document);
+      await FilePicker.saveFile(
+        dialogTitle: '导出墨阅文档包',
+        fileName: export.fileName,
+        type: FileType.any,
+        bytes: export.bytes,
+      );
+      if (mounted) _message('已导出 ${export.fileName}');
+    } on Object catch (error) {
+      if (mounted) _message('导出失败：$error');
+    }
+  }
+
   void _message(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
@@ -180,8 +202,9 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
 }
 
 class _MarkdownDocument extends StatelessWidget {
-  const _MarkdownDocument({required this.data});
+  const _MarkdownDocument({required this.data, required this.document});
   final String data;
+  final ReadingDocument document;
 
   @override
   Widget build(BuildContext context) {
@@ -190,6 +213,25 @@ class _MarkdownDocument extends StatelessWidget {
     return Markdown(
       data: data,
       selectable: true,
+      imageBuilder: (uri, title, alt) => FutureBuilder<Uint8List?>(
+        future: MoyueStorageService.instance.readLinkedResource(
+          document,
+          uri.toString(),
+        ),
+        builder: (context, snapshot) {
+          final bytes = snapshot.data;
+          if (bytes == null) {
+            return const SizedBox(
+              height: 80,
+              child: Center(child: Icon(Icons.broken_image_outlined)),
+            );
+          }
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.memory(bytes, fit: BoxFit.contain),
+          );
+        },
+      ),
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 92),
       onTapLink: (_, href, _) async {
         final uri = href == null ? null : Uri.tryParse(href);

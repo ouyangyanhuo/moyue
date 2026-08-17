@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -22,6 +24,8 @@ Route<ReadingDocument?> markdownEditorRoute(
             value['updatedAt']! as int,
           ),
           filePath: value['filePath'] as String?,
+          folderId: value['folderId'] as String?,
+          relativePath: value['relativePath'] as String?,
         );
   return MaterialPageRoute(
     builder: (_) => MarkdownEditorPage(document: document),
@@ -37,6 +41,8 @@ Map<String, Object?>? markdownEditorArguments(ReadingDocument? document) =>
         'content': document.content,
         'updatedAt': document.updatedAt.millisecondsSinceEpoch,
         'filePath': document.filePath,
+        'folderId': document.folderId,
+        'relativePath': document.relativePath,
       };
 
 class MarkdownEditorPage extends StatefulWidget {
@@ -48,12 +54,15 @@ class MarkdownEditorPage extends StatefulWidget {
 }
 
 class _MarkdownEditorPageState extends State<MarkdownEditorPage>
-    with RestorationMixin {
+    with RestorationMixin, WidgetsBindingObserver {
   late final RestorableTextEditingController _title;
   late final RestorableTextEditingController _body;
   final RestorableInt _mode = RestorableInt(0);
   final RestorableBool _dirty = RestorableBool(false);
   bool _saving = false;
+  bool _listenersAttached = false;
+  Timer? _autosaveTimer;
+  ReadingDocument? _currentDocument;
 
   @override
   String? get restorationId =>
@@ -62,6 +71,8 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _currentDocument = widget.document;
     _title = RestorableTextEditingController(
       text: widget.document?.title ?? '',
     );
@@ -76,16 +87,35 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     registerForRestoration(_body, 'body');
     registerForRestoration(_mode, 'mode');
     registerForRestoration(_dirty, 'dirty');
-    _title.value.addListener(_changed);
-    _body.value.addListener(_changed);
+    if (!_listenersAttached) {
+      _title.value.addListener(_changed);
+      _body.value.addListener(_changed);
+      _listenersAttached = true;
+    }
   }
 
   void _changed() {
     if (!_dirty.value && mounted) setState(() => _dirty.value = true);
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(
+      const Duration(milliseconds: 900),
+      () => unawaited(_persist(popAfter: false)),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      unawaited(_persist(popAfter: false));
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autosaveTimer?.cancel();
     _title.value.removeListener(_changed);
     _body.value.removeListener(_changed);
     _title.dispose();
@@ -108,10 +138,9 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
           toolbarHeight: 58,
           leading: GlassIconButton(
             icon: const Icon(CupertinoIcons.chevron_back, size: 21),
-            onPressed: () => Navigator.maybePop(context),
+            onPressed: _closeEditor,
             semanticLabel: '返回',
             size: 44,
-            glowColor: Colors.transparent,
             useOwnLayer: true,
           ),
           title: GlassContainer(
@@ -119,31 +148,47 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
             height: 40,
             useOwnLayer: true,
             shape: const LiquidRoundedSuperellipse(borderRadius: 12),
-            glowIntensity: 0,
             alignment: Alignment.center,
             child: Text(
-              widget.document == null ? '新建 Markdown' : '编辑 Markdown',
+              _mode.value == 0 ? '笔记' : '阅读预览',
               style: theme.textTheme.labelLarge,
             ),
           ),
           actions: [
+            GlassIconButton(
+              icon: Icon(
+                _mode.value == 0 ? CupertinoIcons.eye : CupertinoIcons.pencil,
+                size: 20,
+              ),
+              onPressed: () =>
+                  setState(() => _mode.value = _mode.value == 0 ? 1 : 0),
+              semanticLabel: _mode.value == 0 ? '预览' : '继续编辑',
+              size: 44,
+              useOwnLayer: true,
+            ),
             GlassIconButton(
               icon: _saving
                   ? const SizedBox.square(
                       dimension: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(CupertinoIcons.check_mark, size: 21),
+                  : const Icon(CupertinoIcons.check_mark_circled, size: 21),
               onPressed: _saving ? null : _save,
               semanticLabel: '保存',
               size: 44,
-              glowColor: Colors.transparent,
               useOwnLayer: true,
             ),
           ],
         ),
         bottomNavigationBar: _mode.value == 0
-            ? _FormatBar(onFormat: _applyFormat)
+            ? AnimatedPadding(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.viewInsetsOf(context).bottom,
+                ),
+                child: _FormatBar(onFormat: _applyFormat),
+              )
             : null,
         body: Stack(
           children: [
@@ -153,25 +198,35 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
-                    child: GlassTabBar.inline(
-                      tabs: const [
-                        GlassTab(
-                          label: '编辑',
-                          icon: Icon(CupertinoIcons.pencil),
+                    padding: const EdgeInsets.fromLTRB(22, 8, 22, 10),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _dirty.value
+                              ? Icons.cloud_upload_outlined
+                              : Icons.cloud_done_outlined,
+                          size: 15,
+                          color: theme.colorScheme.onSurfaceVariant,
                         ),
-                        GlassTab(label: '预览', icon: Icon(CupertinoIcons.eye)),
+                        const SizedBox(width: 7),
+                        Text(
+                          _saving
+                              ? '正在保存…'
+                              : _dirty.value
+                              ? '草稿已进入恢复队列'
+                              : '已自动保存',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${_body.value.text.characters.length} 字',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ],
-                      selectedIndex: _mode.value,
-                      onTabSelected: (value) =>
-                          setState(() => _mode.value = value),
-                      indicatorColor: theme.colorScheme.primary.withValues(
-                        alpha: 0.18,
-                      ),
-                      selectedIconColor: theme.colorScheme.onSurface,
-                      selectedLabelColor: theme.colorScheme.onSurface,
-                      unselectedIconColor: theme.colorScheme.onSurfaceVariant,
-                      unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                   Expanded(
@@ -181,7 +236,6 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                           ? _EditorCanvas(
                               title: _title.value,
                               body: _body.value,
-                              dirty: _dirty.value,
                             )
                           : _PreviewCanvas(body: _body.value.text),
                     ),
@@ -195,23 +249,44 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     );
   }
 
-  Future<void> _save() async {
-    final title = _title.value.text.trim();
-    if (title.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请先填写文稿标题')));
+  Future<void> _closeEditor() async {
+    await _persist(popAfter: false);
+    if (mounted) await Navigator.maybePop(context, _currentDocument);
+  }
+
+  Future<void> _save() => _persist(popAfter: true);
+
+  Future<void> _persist({required bool popAfter}) async {
+    _autosaveTimer?.cancel();
+    if (_saving) return;
+    if (!_dirty.value) {
+      if (popAfter && mounted) Navigator.pop(context, _currentDocument);
       return;
     }
-    setState(() => _saving = true);
+    final title = _title.value.text.trim();
+    if (title.isEmpty) {
+      if (popAfter && mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('请先填写文稿标题')));
+      }
+      return;
+    }
+    if (mounted) setState(() => _saving = true);
     try {
       final document = await MoyueStorageService.instance.saveDocument(
         title: title,
         content: _body.value.text,
         kind: DocumentKind.markdown,
-        existingPath: widget.document?.filePath,
+        existingDocument: _currentDocument,
       );
+      _currentDocument = document;
       _dirty.value = false;
-      if (mounted) Navigator.pop(context, document);
+      if (popAfter && mounted) Navigator.pop(context, document);
+    } on Object catch (error) {
+      if (popAfter && mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('保存失败：$error')));
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -268,33 +343,20 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
 }
 
 class _EditorCanvas extends StatelessWidget {
-  const _EditorCanvas({
-    required this.title,
-    required this.body,
-    required this.dirty,
-  });
+  const _EditorCanvas({required this.title, required this.body});
   final TextEditingController title;
   final TextEditingController body;
-  final bool dirty;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
       key: const ValueKey('edit'),
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 92),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 92),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: theme.colorScheme.surface.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 24,
-              offset: const Offset(0, 10),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(22),
         ),
         child: Column(
           children: [
@@ -310,26 +372,6 @@ class _EditorCanvas extends StatelessWidget {
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 contentPadding: EdgeInsets.fromLTRB(20, 20, 20, 13),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Text(
-                    dirty ? '草稿已为系统恢复保留' : '已保存',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${body.text.characters.length} 字符',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
               ),
             ),
             Divider(color: theme.colorScheme.outlineVariant),

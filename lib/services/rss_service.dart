@@ -8,10 +8,12 @@ class FeedLoadResult {
     required this.title,
     required this.articles,
     required this.rawBody,
+    this.errorMessage,
   });
   final String title;
   final List<FeedArticle> articles;
   final String rawBody;
+  final String? errorMessage;
 }
 
 class RssService {
@@ -19,20 +21,33 @@ class RssService {
   final http.Client _client;
 
   Future<FeedLoadResult> load(FeedSource source) async {
-    final response = await _client
-        .get(
-          source.url,
-          headers: const {
-            'accept': 'application/rss+xml, application/atom+xml, text/xml',
-            'user-agent': 'Moyue/1.0 RSS Reader',
-          },
-        )
-        .timeout(const Duration(seconds: 12));
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw RssLoadException('订阅源返回 ${response.statusCode}');
+    try {
+      final response = await _client
+          .get(
+            source.url,
+            headers: const {
+              'accept': 'application/rss+xml, application/atom+xml, text/xml',
+              'user-agent': 'Moyue/1.0 RSS Reader',
+            },
+          )
+          .timeout(const Duration(seconds: 12));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return FeedLoadResult(
+          title: source.title,
+          articles: const [],
+          rawBody: '',
+          errorMessage: '订阅源返回 ${response.statusCode}',
+        );
+      }
+      return parse(source, response.body);
+    } on Object catch (error) {
+      return FeedLoadResult(
+        title: source.title,
+        articles: const [],
+        rawBody: '',
+        errorMessage: '无法读取订阅源：$error',
+      );
     }
-
-    return parse(source, response.body);
   }
 
   FeedLoadResult parse(FeedSource source, String body) {

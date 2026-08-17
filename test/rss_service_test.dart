@@ -38,6 +38,7 @@ void main() {
     );
 
     expect(result.title, '测试订阅');
+    expect(result.errorMessage, isNull);
     expect(result.rawBody, contains('<rss version="2.0">'));
     expect(result.articles, hasLength(1));
     expect(result.articles.single.title, '原生 RSS 阅读');
@@ -46,5 +47,24 @@ void main() {
       result.articles.single.link,
       Uri.parse('https://example.com/article-1'),
     );
+  });
+
+  test('网络失败会返回可展示错误而不会逃逸到主 isolate', () async {
+    final client = MockClient((request) async {
+      throw http.ClientException('连接失败');
+    });
+    final service = RssService(client: client);
+    addTearDown(service.dispose);
+
+    final result = await service.load(
+      FeedSource(
+        id: 'offline',
+        title: '离线订阅',
+        url: Uri.parse('https://example.com/feed.xml'),
+      ),
+    );
+
+    expect(result.articles, isEmpty);
+    expect(result.errorMessage, contains('连接失败'));
   });
 }

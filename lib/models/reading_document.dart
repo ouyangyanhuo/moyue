@@ -16,6 +16,8 @@ class ReadingDocument {
     required this.updatedAt,
     this.sourceLabel = '本地文件',
     this.filePath,
+    this.folderId,
+    this.relativePath,
   });
 
   final String id;
@@ -25,6 +27,8 @@ class ReadingDocument {
   final DateTime updatedAt;
   final String sourceLabel;
   final String? filePath;
+  final String? folderId;
+  final String? relativePath;
 
   ReadingDocument copyWith({
     String? id,
@@ -34,6 +38,8 @@ class ReadingDocument {
     DateTime? updatedAt,
     String? sourceLabel,
     String? filePath,
+    String? folderId,
+    String? relativePath,
   }) => ReadingDocument(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -42,5 +48,7 @@ class ReadingDocument {
     updatedAt: updatedAt ?? this.updatedAt,
     sourceLabel: sourceLabel ?? this.sourceLabel,
     filePath: filePath ?? this.filePath,
+    folderId: folderId ?? this.folderId,
+    relativePath: relativePath ?? this.relativePath,
   );
 }
