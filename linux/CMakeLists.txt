@@ -91,8 +91,7 @@ install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}
   COMPONENT Runtime)
 
 install(FILES
-  "${CMAKE_CURRENT_SOURCE_DIR}/runner/resources/app_icon_day.png"
-  "${CMAKE_CURRENT_SOURCE_DIR}/runner/resources/app_icon_dark.png"
+  "${CMAKE_CURRENT_SOURCE_DIR}/runner/resources/app_icon.webp"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
 

@@ -1,6 +1,0 @@
-flutter_launcher_icons:
-  image_path: assets/splash_logo_dark.png
-  windows:
-    generate: true
-    image_path: assets/splash_logo_dark.png
-    icon_size: 256

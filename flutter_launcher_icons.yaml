@@ -1,22 +1,21 @@
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/splash_logo.png
-  image_path_android: assets/splash_logo.png
+  image_path: assets/splash_logo.webp
+  image_path_android: assets/splash_logo.webp
   adaptive_icon_background: "#FDF6E8"
-  adaptive_icon_foreground: assets/splash_logo_nb.png
+  adaptive_icon_foreground: assets/splash_logo_nb.webp
   adaptive_icon_foreground_inset: 8
-  image_path_ios_dark_transparent: assets/splash_logo_dark_nb.png
   remove_alpha_ios: true
   web:
     generate: true
-    image_path: assets/splash_logo.png
+    image_path: assets/splash_logo.webp
     background_color: "#FDF6E8"
     theme_color: "#FDF6E8"
   windows:
     generate: true
-    image_path: assets/splash_logo.png
+    image_path: assets/splash_logo.webp
     icon_size: 256
   macos:
     generate: true
-    image_path: assets/splash_logo.png
+    image_path: assets/splash_logo.webp

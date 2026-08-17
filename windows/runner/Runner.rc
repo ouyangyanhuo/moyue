@@ -52,7 +52,6 @@ END
 
 // 将 ID 值最低的图标放在最前面，以确保应用程序图标在所有系统上保持一致。
 IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
-IDI_APP_ICON_DARK       ICON                    "resources\\app_icon_dark.ico"
 
 
 /////////////////////////////////////////////////////////////////////////////

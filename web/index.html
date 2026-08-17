@@ -19,16 +19,15 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Moyue">
-  <link id="apple-touch-icon" rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" href="icons/Icon-192.webp">
 
   <!-- 网站图标。 -->
-  <link id="app-favicon" rel="icon" type="image/png" href="favicon.png">
+  <link rel="icon" type="image/webp" href="favicon.webp">
 
   <title>Moyue</title>
   <script>
     const isChineseLocale = /^zh(?:-|_|$)/i.test(navigator.language || "");
     const localizedAppName = isChineseLocale ? "墨阅" : "Moyue";
-    const colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
     document.title = localizedAppName;
     document
       .querySelector('meta[name="apple-mobile-web-app-title"]')
@@ -38,24 +37,7 @@
     manifestLink.rel = "manifest";
     document.head.appendChild(manifestLink);
 
-    function applySystemIcon(isDark) {
-      const iconDirectory = isDark ? "icons_dark" : "icons";
-      document
-        .querySelector("#apple-touch-icon")
-        ?.setAttribute("href", `${iconDirectory}/Icon-192.png`);
-      document
-        .querySelector("#app-favicon")
-        ?.setAttribute("href", isDark ? "favicon_dark.png" : "favicon.png");
-
-      const languageSuffix = isChineseLocale ? ".zh" : "";
-      const themeSuffix = isDark ? ".dark" : "";
-      manifestLink.href = `manifest${languageSuffix}${themeSuffix}.json`;
-    }
-
-    applySystemIcon(colorScheme.matches);
-    colorScheme.addEventListener?.("change", (event) => {
-      applySystemIcon(event.matches);
-    });
+    manifestLink.href = isChineseLocale ? "manifest.zh.json" : "manifest.json";
   </script>
 
   <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
@@ -134,9 +116,9 @@
 </head>
 <body>
   <picture id="splash">
-      <source srcset="splash/img/light-1x.png 1x, splash/img/light-2x.png 2x, splash/img/light-3x.png 3x, splash/img/light-4x.png 4x" media="(prefers-color-scheme: light)">
-      <source srcset="splash/img/dark-1x.png 1x, splash/img/dark-2x.png 2x, splash/img/dark-3x.png 3x, splash/img/dark-4x.png 4x" media="(prefers-color-scheme: dark)">
-      <img class="center" aria-hidden="true" src="splash/img/light-1x.png" alt="">
+      <source srcset="splash/img/light-1x.webp 1x, splash/img/light-2x.webp 2x, splash/img/light-3x.webp 3x, splash/img/light-4x.webp 4x" media="(prefers-color-scheme: light)">
+      <source srcset="splash/img/dark-1x.webp 1x, splash/img/dark-2x.webp 2x, splash/img/dark-3x.webp 3x, splash/img/dark-4x.webp 4x" media="(prefers-color-scheme: dark)">
+      <img class="center" aria-hidden="true" src="splash/img/light-1x.webp" alt="">
   </picture>
 
 

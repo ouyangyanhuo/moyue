@@ -279,10 +279,4 @@ void Win32Window::UpdateTheme(HWND const window) {
   BOOL enable_dark_mode = result == ERROR_SUCCESS && light_mode == 0;
   DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
                         &enable_dark_mode, sizeof(enable_dark_mode));
-
-  const int icon_resource =
-      enable_dark_mode ? IDI_APP_ICON_DARK : IDI_APP_ICON;
-  HICON icon = LoadIcon(GetModuleHandle(nullptr), MAKEINTRESOURCE(icon_resource));
-  SendMessage(window, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(icon));
-  SendMessage(window, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(icon));
 }
