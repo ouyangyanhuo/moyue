@@ -30,6 +30,12 @@ dependencies:
   # 跟随系统明暗模式，并为后续的主题切换设置保留统一入口。
   adaptive_theme: 3.7.2
   liquid_glass_widgets: ^0.29.6
+  file_picker: ^11.0.2
+  flutter_markdown_plus: ^1.0.12
+  html: ^0.15.6
+  http: ^1.6.0
+  rss_dart: ^1.0.14
+  url_launcher: ^6.3.2
 
   # 以下内容将 Cupertino Icons 字体添加到应用程序中。
   # 可与 CupertinoIcons 类一起使用，以显示 iOS 风格的图标。
