@@ -4,8 +4,10 @@ flutter_launcher_icons:
   image_path: assets/branding/launcher_icon.webp
   image_path_android: assets/branding/launcher_icon.webp
   adaptive_icon_background: "#FEF6ED"
-  adaptive_icon_foreground: assets/branding/launcher_foreground.webp
-  # 原图已经包含为系统遮罩预留的留白，不再额外缩进。
+  # Android 前景层必须使用有背景的完整画布。部分小米/HyperOS 桌面会按
+  # 透明前景的非透明边界再次放大，导致中央图案铺满图标容器。
+  adaptive_icon_foreground: assets/branding/launcher_icon.webp
+  # 完整画布本身已经包含为系统遮罩预留的留白，不再额外缩进。
   adaptive_icon_foreground_inset: 0
   remove_alpha_ios: true
   web:

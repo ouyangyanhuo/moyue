@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  使用不透明的完整画布作为自适应图标前景，避免部分 OEM 桌面按照透明内容
+  边界重新放大中央图案。背景色与 adaptive-icon 的背景层保持一致。
+-->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/moyue_launcher_art"
+    android:gravity="fill" />
