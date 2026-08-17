@@ -1,21 +1,22 @@
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/splash_logo.webp
-  image_path_android: assets/splash_logo.webp
-  adaptive_icon_background: "#FDF6E8"
-  adaptive_icon_foreground: assets/splash_logo_nb.webp
-  adaptive_icon_foreground_inset: 8
+  image_path: assets/branding/launcher_icon.webp
+  image_path_android: assets/branding/launcher_icon.webp
+  adaptive_icon_background: "#FEF6ED"
+  adaptive_icon_foreground: assets/branding/launcher_foreground.webp
+  # 原图已经包含为系统遮罩预留的留白，不再额外缩进。
+  adaptive_icon_foreground_inset: 0
   remove_alpha_ios: true
   web:
     generate: true
-    image_path: assets/splash_logo.webp
-    background_color: "#FDF6E8"
-    theme_color: "#FDF6E8"
+    image_path: assets/branding/launcher_icon.webp
+    background_color: "#FEF6ED"
+    theme_color: "#FEF6ED"
   windows:
     generate: true
-    image_path: assets/splash_logo.webp
+    image_path: assets/branding/launcher_icon.webp
     icon_size: 256
   macos:
     generate: true
-    image_path: assets/splash_logo.webp
+    image_path: assets/branding/launcher_icon.webp

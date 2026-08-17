@@ -1,16 +1,17 @@
 flutter_native_splash:
-  color: "#FDF6E8"
+  color: "#FEF6ED"
   color_dark: "#151517"
-  image: assets/splash_logo_nb.webp
-  image_dark: assets/splash_logo_dark_nb.webp
+  # flutter_native_splash 不支持读取 WebP；此 PNG 只用于生成，不会打进应用包。
+  image: assets/branding/splash_logo_source.png
+  image_dark: assets/branding/splash_logo_source.png
   android_gravity: center
   ios_content_mode: center
   web_image_mode: center
   android_12:
-    color: "#FDF6E8"
+    color: "#FEF6ED"
     color_dark: "#151517"
-    image: assets/generated/android_splash_day.webp
-    image_dark: assets/generated/android_splash_dark.webp
+    image: assets/branding/splash_logo_source.png
+    image_dark: assets/branding/splash_logo_source.png
   android: true
   ios: true
   web: true
