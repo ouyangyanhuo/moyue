@@ -8,6 +8,7 @@ class PageHeading extends StatelessWidget {
     required this.searchHint,
     required this.onSearch,
     this.trailing,
+    this.showSearch = true,
     super.key,
   });
 
@@ -16,6 +17,7 @@ class PageHeading extends StatelessWidget {
   final String searchHint;
   final ValueChanged<String> onSearch;
   final Widget? trailing;
+  final bool showSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +39,11 @@ class PageHeading extends StatelessWidget {
                 ),
               ),
               if (trailing != null) ...[trailing!, const SizedBox(width: 8)],
-              ExpandableGlassSearch(hintText: searchHint, onChanged: onSearch),
+              if (showSearch)
+                ExpandableGlassSearch(
+                  hintText: searchHint,
+                  onChanged: onSearch,
+                ),
             ],
           ),
           const SizedBox(height: 6),

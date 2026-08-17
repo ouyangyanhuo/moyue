@@ -4,9 +4,14 @@ import 'package:moyue_application/models/feed_models.dart';
 import 'package:rss_dart/dart_rss.dart';
 
 class FeedLoadResult {
-  const FeedLoadResult({required this.title, required this.articles});
+  const FeedLoadResult({
+    required this.title,
+    required this.articles,
+    required this.rawBody,
+  });
   final String title;
   final List<FeedArticle> articles;
+  final String rawBody;
 }
 
 class RssService {
@@ -27,12 +32,16 @@ class RssService {
       throw RssLoadException('订阅源返回 ${response.statusCode}');
     }
 
-    final body = response.body;
+    return parse(source, response.body);
+  }
+
+  FeedLoadResult parse(FeedSource source, String body) {
     if (_looksLikeAtom(body)) {
       final feed = AtomFeed.parse(body);
       final sourceTitle = _clean(feed.title) ?? source.title;
       return FeedLoadResult(
         title: sourceTitle,
+        rawBody: body,
         articles: feed.items
             .take(30)
             .map((item) {
@@ -57,6 +66,7 @@ class RssService {
     final sourceTitle = _clean(feed.title) ?? source.title;
     return FeedLoadResult(
       title: sourceTitle,
+      rawBody: body,
       articles: feed.items
           .take(30)
           .map((item) {

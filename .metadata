@@ -1,7 +1,7 @@
-# 此文件记录 Flutter 项目的属性。
-# Flutter 工具使用它来评估项目能力、执行升级等操作。
+# This file tracks properties of this Flutter project.
+# Used by Flutter tool to assess capabilities and perform upgrades etc.
 #
-# 此文件应纳入版本控制，不应手动编辑。
+# This file should be version controlled and should not be manually edited.
 
 version:
   revision: "4cf24164269a5ebf0c16a028a00727d0e77bbb05"
@@ -9,7 +9,7 @@ version:
 
 project_type: app
 
-# 记录 flutter migrate 命令的元数据。
+# Tracks metadata for the flutter migrate command
 migration:
   platforms:
     - platform: root
@@ -18,27 +18,13 @@ migration:
     - platform: android
       create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
       base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-    - platform: ios
-      create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-      base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-    - platform: linux
-      create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-      base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-    - platform: macos
-      create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-      base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-    - platform: web
-      create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-      base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-    - platform: windows
-      create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
-      base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
 
-  # 用户提供的部分。
+  # User provided section
 
-  # 要让迁移工具忽略的本地路径列表（相对于此文件）。
+  # List of Local paths (relative to this file) that should be
+  # ignored by the migrate tool.
   #
-  # 默认情况下，不属于模板的文件会被忽略。
+  # Files that are not part of the templates will be ignored by default.
   unmanaged_files:
     - 'lib/main.dart'
     - 'ios/Runner.xcodeproj/project.pbxproj'

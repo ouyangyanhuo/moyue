@@ -18,7 +18,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final display = DisplayPreferencesScope.of(context);
     final isInk = display.mode == ReadingDisplayMode.ink;
     final query = _query.trim();
-    final showDisplay = query.isEmpty || '显示墨模式对比度护眼'.contains(query);
+    final showDisplay = query.isEmpty || '显示墨模式对比度护眼Liquid透明度'.contains(query);
     final showReading = query.isEmpty || '阅读动画翻页动效'.contains(query);
 
     return CustomScrollView(
@@ -61,6 +61,32 @@ class _SettingsPageState extends State<SettingsPage> {
                             Slider(
                               value: display.contrast,
                               onChanged: display.setContrast,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(indent: 56),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.opacity_rounded),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Liquid 透明度  ${(display.glassOpacity * 100).round()}%',
+                            ),
+                            Slider(
+                              value: display.glassOpacity,
+                              min: 0,
+                              max: 1,
+                              onChanged: display.setGlassOpacity,
                             ),
                           ],
                         ),

@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/theme/moyue_theme.dart';
-import 'package:moyue_application/data/sample_content.dart';
-import 'package:moyue_application/features/editor/editor_page.dart';
 import 'package:moyue_application/features/reader/library_page.dart';
 import 'package:moyue_application/features/rss/rss_page.dart';
 import 'package:moyue_application/features/settings/settings_page.dart';
 import 'package:moyue_application/l10n/app_localizations.dart';
 import 'package:moyue_application/models/reading_document.dart';
+import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
 
 class MoyueApp extends StatefulWidget {
@@ -39,6 +38,27 @@ class _MoyueAppState extends State<MoyueApp> {
           theme: buildMoyueTheme(inkMode: _display.isInkMode),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
+          restorationScopeId: 'moyue_app',
+          builder: (context, child) => GlassTheme(
+            data: GlassThemeData(
+              light: GlassThemeVariant.light.copyWith(
+                settings: GlassThemeVariant.light.settings?.copyWith(
+                  glassColor: Colors.white.withValues(
+                    alpha: _display.glassOpacity,
+                  ),
+                ),
+              ),
+              dark: GlassThemeVariant.dark.copyWith(
+                settings: GlassThemeVariant.dark.settings?.copyWith(
+                  glassColor: Colors.white.withValues(
+                    alpha: _display.glassOpacity,
+                  ),
+                ),
+              ),
+              interaction: const GlassInteractionSettings(stretch: 0.18),
+            ),
+            child: child!,
+          ),
           home: const MoyueShell(),
         ),
       ),
@@ -55,24 +75,40 @@ class MoyueShell extends StatefulWidget {
 
 class _MoyueShellState extends State<MoyueShell> {
   int _selectedIndex = 0;
-  late final List<ReadingDocument> _documents = List.of(initialDocuments);
+  final _storage = MoyueStorageService.instance;
+  List<ReadingDocument> _documents = const [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _storage.addListener(_reloadDocuments);
+    _reloadDocuments();
+  }
+
+  @override
+  void dispose() {
+    _storage.removeListener(_reloadDocuments);
+    super.dispose();
+  }
+
+  Future<void> _reloadDocuments() async {
+    try {
+      final documents = await _storage.loadDocuments();
+      if (mounted) setState(() => _documents = documents);
+    } on Exception {
+      if (mounted) setState(() => _documents = const []);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final pages = [
-      LibraryPage(
-        documents: _documents,
-        onDocumentAdded: (document) =>
-            setState(() => _documents.insert(0, document)),
-      ),
-      EditorPage(
-        onSave: (document) => setState(() => _documents.insert(0, document)),
-      ),
-      RssPage(
-        initialSources: initialFeedSources,
-        initialArticles: sampleFeedArticles,
-      ),
+      LibraryPage(documents: _documents, loading: _loading),
+      const RssPage(),
       const SettingsPage(),
     ];
 
@@ -88,12 +124,6 @@ class _MoyueShellState extends State<MoyueShell> {
               activeIcon: Icon(Icons.menu_book_rounded),
               label: '阅读',
               semanticLabel: '阅读',
-            ),
-            GlassTab(
-              icon: Icon(Icons.edit_outlined),
-              activeIcon: Icon(Icons.edit_rounded),
-              label: '编辑',
-              semanticLabel: '编辑',
             ),
             GlassTab(
               icon: Icon(Icons.rss_feed_outlined),

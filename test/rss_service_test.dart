@@ -38,6 +38,7 @@ void main() {
     );
 
     expect(result.title, '测试订阅');
+    expect(result.rawBody, contains('<rss version="2.0">'));
     expect(result.articles, hasLength(1));
     expect(result.articles.single.title, '原生 RSS 阅读');
     expect(result.articles.single.summary, '不使用 WebView。');

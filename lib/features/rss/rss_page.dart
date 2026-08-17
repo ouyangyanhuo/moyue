@@ -2,18 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/services/rss_service.dart';
+import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/page_heading.dart';
 import 'package:moyue_application/widgets/section_label.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class RssPage extends StatefulWidget {
-  const RssPage({
-    required this.initialSources,
-    required this.initialArticles,
-    super.key,
-  });
-  final List<FeedSource> initialSources;
-  final List<FeedArticle> initialArticles;
+  const RssPage({super.key});
 
   @override
   State<RssPage> createState() => _RssPageState();
@@ -21,8 +16,8 @@ class RssPage extends StatefulWidget {
 
 class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
   late final RssService _rssService;
-  late final List<FeedSource> _sources;
-  late List<FeedArticle> _articles;
+  final List<FeedSource> _sources = [];
+  List<FeedArticle> _articles = [];
   String _query = '';
   String? _loadingSourceId;
 
@@ -33,8 +28,7 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
   void initState() {
     super.initState();
     _rssService = RssService();
-    _sources = List.of(widget.initialSources);
-    _articles = List.of(widget.initialArticles);
+    _loadStoredFeeds();
   }
 
   @override
@@ -80,6 +74,7 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
                 onPressed: _showAddSource,
                 semanticLabel: '添加订阅',
                 size: 46,
+                glowColor: Colors.transparent,
                 useOwnLayer: true,
               ),
             ),
@@ -97,18 +92,42 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
           ),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 18),
-            sliver: SliverList.separated(
-              itemCount: sources.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 6),
-              itemBuilder: (context, index) {
-                final source = sources[index];
-                return _FeedSourceTile(
-                  source: source,
-                  loading: _loadingSourceId == source.id,
-                  onTap: () => _refreshSource(source),
-                );
-              },
-            ),
+            sliver: sources.isEmpty
+                ? SliverToBoxAdapter(
+                    child: _EmptySources(
+                      hasQuery: query.isNotEmpty,
+                      onAdd: _showAddSource,
+                    ),
+                  )
+                : SliverList.separated(
+                    itemCount: sources.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
+                    itemBuilder: (context, index) {
+                      final source = sources[index];
+                      return Dismissible(
+                        key: ValueKey(source.id),
+                        direction: DismissDirection.endToStart,
+                        confirmDismiss: (_) => _confirmDelete(source),
+                        onDismissed: (_) => _deleteSource(source),
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 22),
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          child: const Icon(Icons.delete_outline_rounded),
+                        ),
+                        child: _FeedSourceTile(
+                          source: source,
+                          loading: _loadingSourceId == source.id,
+                          onTap: () => _refreshSource(source),
+                          onDelete: () async {
+                            if (await _confirmDelete(source) == true) {
+                              await _deleteSource(source);
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
           ),
           SliverToBoxAdapter(
             child: SectionLabel(
@@ -146,9 +165,13 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
     try {
       final result = await _rssService.load(source);
       if (!mounted) return;
+      final stored = await MoyueStorageService.instance.saveFeedXml(
+        source,
+        result.rawBody,
+      );
       final sourceIndex = _sources.indexWhere((item) => item.id == source.id);
       if (sourceIndex >= 0) {
-        _sources[sourceIndex] = source.copyWith(
+        _sources[sourceIndex] = stored.copyWith(
           title: result.title,
           unreadCount: result.articles.length,
         );
@@ -159,6 +182,7 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
           ..._articles.where((article) => article.sourceId != source.id),
         ];
       });
+      await MoyueStorageService.instance.saveFeedSources(_sources);
     } on Exception catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -187,66 +211,138 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
   }
 
   Future<void> _showAddSource() async {
-    final titleController = TextEditingController();
-    final urlController = TextEditingController();
-    final source = await showDialog<FeedSource>(
+    final source = await showModalBottomSheet<FeedSource>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('添加 RSS 订阅'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(labelText: '名称（可选）'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: urlController,
-              keyboardType: TextInputType.url,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: '订阅地址',
-                hintText: 'https://example.com/feed.xml',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final uri = Uri.tryParse(urlController.text.trim());
-              if (uri == null || !uri.hasScheme || uri.scheme != 'https') {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  const SnackBar(content: Text('请输入完整的 https 订阅地址')),
-                );
-                return;
-              }
-              Navigator.pop(
-                dialogContext,
-                FeedSource(
-                  id: 'feed-${DateTime.now().microsecondsSinceEpoch}',
-                  title: titleController.text.trim().isEmpty
-                      ? uri.host
-                      : titleController.text.trim(),
-                  url: uri,
-                ),
-              );
-            },
-            child: const Text('添加'),
-          ),
-        ],
-      ),
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => const _AddFeedSheet(),
     );
-    titleController.dispose();
-    urlController.dispose();
     if (source == null || !mounted) return;
     setState(() => _sources.insert(0, source));
+    await MoyueStorageService.instance.saveFeedSources(_sources);
     await _refreshSource(source);
+  }
+
+  Future<void> _loadStoredFeeds() async {
+    final sources = await MoyueStorageService.instance.loadFeedSources();
+    final articles = <FeedArticle>[];
+    for (final source in sources) {
+      final xml = await MoyueStorageService.instance.readFeedXml(source);
+      if (xml == null) continue;
+      try {
+        articles.addAll(_rssService.parse(source, xml).articles);
+      } on Exception {
+        // Keep the subscription even if a previously saved feed is malformed.
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _sources
+          ..clear()
+          ..addAll(sources);
+        _articles = articles;
+      });
+    }
+  }
+
+  Future<bool?> _confirmDelete(FeedSource source) => showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('删除订阅？'),
+      content: Text('“${source.title}”及已保存的 RSS 文件会一并删除。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('删除'),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _deleteSource(FeedSource source) async {
+    await MoyueStorageService.instance.deleteFeed(source);
+    _sources.removeWhere((item) => item.id == source.id);
+    _articles = _articles.where((item) => item.sourceId != source.id).toList();
+    await MoyueStorageService.instance.saveFeedSources(_sources);
+    if (mounted) setState(() {});
+  }
+}
+
+class _AddFeedSheet extends StatefulWidget {
+  const _AddFeedSheet();
+
+  @override
+  State<_AddFeedSheet> createState() => _AddFeedSheetState();
+}
+
+class _AddFeedSheetState extends State<_AddFeedSheet> {
+  final _title = TextEditingController();
+  final _url = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _url.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        4,
+        20,
+        20 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('添加 RSS 订阅', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 18),
+          TextField(
+            controller: _url,
+            keyboardType: TextInputType.url,
+            autofocus: true,
+            autocorrect: false,
+            decoration: InputDecoration(
+              labelText: '订阅地址',
+              hintText: 'https://example.com/feed.xml',
+              errorText: _error,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _title,
+            decoration: const InputDecoration(labelText: '名称（可选）'),
+          ),
+          const SizedBox(height: 20),
+          FilledButton(onPressed: _submit, child: const Text('添加订阅')),
+        ],
+      ),
+    ),
+  );
+
+  void _submit() {
+    final uri = Uri.tryParse(_url.text.trim());
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+      setState(() => _error = '请输入完整的 https 订阅地址');
+      return;
+    }
+    Navigator.pop(
+      context,
+      FeedSource(
+        id: 'feed-${DateTime.now().microsecondsSinceEpoch}',
+        title: _title.text.trim().isEmpty ? uri.host : _title.text.trim(),
+        url: uri,
+      ),
+    );
   }
 }
 
@@ -255,10 +351,12 @@ class _FeedSourceTile extends StatelessWidget {
     required this.source,
     required this.loading,
     required this.onTap,
+    required this.onDelete,
   });
   final FeedSource source;
   final bool loading;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -316,24 +414,60 @@ class _FeedSourceTile extends StatelessWidget {
                   ],
                 ),
               ),
-              Container(
-                constraints: const BoxConstraints(minWidth: 34),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '${source.unreadCount}',
-                  textAlign: TextAlign.center,
-                ),
+              PopupMenuButton<String>(
+                tooltip: '更多操作',
+                onSelected: (_) => onDelete(),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'delete', child: Text('删除')),
+                ],
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _EmptySources extends StatelessWidget {
+  const _EmptySources({required this.hasQuery, required this.onAdd});
+  final bool hasQuery;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 30),
+      child: Column(
+        children: [
+          Icon(
+            hasQuery ? Icons.search_off_rounded : Icons.rss_feed_rounded,
+            size: 44,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            hasQuery ? '没有匹配的订阅' : '还没有订阅',
+            style: theme.textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            hasQuery ? '换一个关键词试试' : '添加订阅后，原始 RSS 会保存在本地',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          if (!hasQuery) ...[
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('添加 RSS 订阅'),
+            ),
+          ],
+        ],
       ),
     );
   }
