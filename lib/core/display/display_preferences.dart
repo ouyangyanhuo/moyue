@@ -12,7 +12,6 @@ abstract interface class DisplayModeController implements Listenable {
   void setMode(ReadingDisplayMode mode);
   void setContrast(double value);
   void setReduceMotion(bool value);
-  void setGlassOpacity(double value);
 }
 
 class MoyueDisplayPreferences extends ChangeNotifier
@@ -20,7 +19,6 @@ class MoyueDisplayPreferences extends ChangeNotifier
   ReadingDisplayMode _mode = ReadingDisplayMode.paper;
   double _contrast = 0.58;
   bool _reduceMotion = false;
-  double _glassOpacity = 0.12;
 
   @override
   ReadingDisplayMode get mode => _mode;
@@ -29,7 +27,7 @@ class MoyueDisplayPreferences extends ChangeNotifier
   @override
   bool get reduceMotion => _reduceMotion;
   @override
-  double get glassOpacity => _glassOpacity;
+  double get glassOpacity => 0;
   bool get isInkMode => _mode == ReadingDisplayMode.ink;
 
   @override
@@ -51,14 +49,6 @@ class MoyueDisplayPreferences extends ChangeNotifier
   void setReduceMotion(bool value) {
     if (_reduceMotion == value) return;
     _reduceMotion = value;
-    notifyListeners();
-  }
-
-  @override
-  void setGlassOpacity(double value) {
-    final next = value.clamp(0.0, 1.0);
-    if (_glassOpacity == next) return;
-    _glassOpacity = next;
     notifyListeners();
   }
 }

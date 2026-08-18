@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
+import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/core/theme/moyue_theme.dart';
 import 'package:moyue_application/features/reader/library_page.dart';
 import 'package:moyue_application/features/rss/rss_page.dart';
@@ -144,6 +145,8 @@ class _MoyueShellState extends State<MoyueShell> {
       ambientStrength: 1,
       lightAngle: 2.356,
       glassColor: Colors.white.withValues(alpha: display.glassOpacity),
+      shadowElevation: 0,
+      shadow: moyueGlassShadow(display.glassOpacity),
       edgeAbsorption: 0.06,
     );
     final pages = [

@@ -38,26 +38,23 @@ void main() {
     await tester.tapAt(tester.getCenter(find.byIcon(Icons.tune_outlined).last));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('设置'), findsWidgets);
-    expect(find.byType(GlassSlider), findsNWidgets(2));
+    expect(find.byType(GlassSlider), findsOneWidget);
     expect(find.byType(GlassSwitch), findsNWidgets(2));
     expect(find.byType(Slider), findsNothing);
     expect(find.byType(Switch), findsNothing);
 
-    final opacitySlider = tester
-        .widgetList<GlassSlider>(find.byType(GlassSlider))
-        .last;
-    expect(opacitySlider.thumbRadius, 15);
-    expect(opacitySlider.trackHeight, 4);
+    final contrastSlider = tester.widget<GlassSlider>(find.byType(GlassSlider));
+    expect(contrastSlider.thumbRadius, 15);
+    expect(contrastSlider.trackHeight, 4);
     expect(
       tester
-          .getSize(find.byKey(const ValueKey('opacity-slider-touch-area')))
+          .getSize(find.byKey(const ValueKey('contrast-slider-touch-area')))
           .height,
-      56,
+      72,
     );
-    opacitySlider.onChanged!(1);
-    await tester.pump();
+    expect(find.textContaining('Liquid 透明度'), findsNothing);
     final dock = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
-    expect(dock.settings?.glassColor.a, 1);
+    expect(dock.settings?.glassColor.a, 0);
 
     final glassTheme = tester.widget<GlassTheme>(find.byType(GlassTheme));
     expect(glassTheme.data.light.settings?.fresnelStrength, 0);
@@ -68,6 +65,8 @@ void main() {
       find.byType(GlassIconButton),
     )) {
       expect(button.settings?.shadowElevation, 0);
+      expect(button.settings?.shadow, isNotEmpty);
+      expect(button.settings?.shadow?.single.spreadRadius, -3);
       expect(button.settings?.edgeAbsorption, 0.06);
     }
   });
@@ -420,7 +419,13 @@ void main() {
     expect(inkSwitch.height, 26);
     expect(
       tester.getSize(find.byKey(const ValueKey('墨模式-switch-touch-area'))),
-      const Size(76, 48),
+      const Size(104, 56),
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('墨模式-switch-row-touch-area')))
+          .height,
+      80,
     );
     final disabledPointer = tester.widget<IgnorePointer>(
       find

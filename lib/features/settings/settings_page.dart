@@ -18,7 +18,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final display = DisplayPreferencesScope.of(context);
     final query = _query.trim();
-    final showDisplay = query.isEmpty || '显示墨模式对比度护眼Liquid透明度'.contains(query);
+    final showDisplay = query.isEmpty || '显示墨模式对比度护眼'.contains(query);
     final showReading = query.isEmpty || '阅读动画翻页动效'.contains(query);
 
     return CustomScrollView(
@@ -62,33 +62,6 @@ class _SettingsPageState extends State<SettingsPage> {
                               ),
                               value: display.contrast,
                               onChanged: display.setContrast,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(indent: 56),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.opacity_rounded),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Liquid 透明度  ${(display.glassOpacity * 100).round()}%',
-                            ),
-                            _ExpandedGlassSlider(
-                              touchAreaKey: const ValueKey(
-                                'opacity-slider-touch-area',
-                              ),
-                              value: display.glassOpacity,
-                              onChanged: display.setGlassOpacity,
                             ),
                           ],
                         ),
@@ -151,6 +124,8 @@ class _GlassSwitchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListTile(
+    key: ValueKey('$title-switch-row-touch-area'),
+    minTileHeight: 80,
     leading: Icon(icon),
     title: Text(title),
     subtitle: Text(subtitle),
@@ -161,8 +136,8 @@ class _GlassSwitchTile extends StatelessWidget {
       label: title,
       child: SizedBox(
         key: ValueKey('$title-switch-touch-area'),
-        width: 76,
-        height: 48,
+        width: 104,
+        height: 56,
         child: IgnorePointer(
           ignoring: onChanged == null,
           child: Opacity(
@@ -209,7 +184,7 @@ class _ExpandedGlassSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SizedBox(
     key: touchAreaKey,
-    height: 56,
+    height: 72,
     child: LayoutBuilder(
       builder: (context, constraints) => Stack(
         children: [
@@ -225,7 +200,7 @@ class _ExpandedGlassSlider extends StatelessWidget {
           Positioned(
             left: 0,
             right: 0,
-            top: 5,
+            top: 13,
             height: 46,
             child: GlassSlider(
               value: value,
