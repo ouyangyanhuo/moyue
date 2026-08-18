@@ -50,6 +50,10 @@ class _MoyueAppState extends State<MoyueApp> {
                   glassColor: Colors.white.withValues(
                     alpha: _display.glassOpacity,
                   ),
+                  lightIntensity: 0.28,
+                  ambientStrength: 0,
+                  fresnelStrength: 0,
+                  edgeAbsorption: 0.06,
                 ),
               ),
               dark: GlassThemeVariant.dark.copyWith(
@@ -57,6 +61,10 @@ class _MoyueAppState extends State<MoyueApp> {
                   glassColor: Colors.white.withValues(
                     alpha: _display.glassOpacity,
                   ),
+                  lightIntensity: 0.22,
+                  ambientStrength: 0,
+                  fresnelStrength: 0,
+                  edgeAbsorption: 0.09,
                 ),
               ),
               interaction: const GlassInteractionSettings(stretch: 0.18),
@@ -125,6 +133,19 @@ class _MoyueShellState extends State<MoyueShell> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final display = DisplayPreferencesScope.of(context);
+    final dockSettings = LiquidGlassSettings(
+      thickness: 30,
+      blur: 3,
+      chromaticAberration: 0.3,
+      lightIntensity: 0.6,
+      refractiveIndex: 1.59,
+      saturation: 0.7,
+      ambientStrength: 1,
+      lightAngle: 2.356,
+      glassColor: Colors.white.withValues(alpha: display.glassOpacity),
+      edgeAbsorption: 0.06,
+    );
     final pages = [
       LibraryPage(documents: _documents, folders: _folders, loading: _loading),
       const RssPage(),
@@ -177,6 +198,7 @@ class _MoyueShellState extends State<MoyueShell> {
                   selectedIndex: _selectedIndex,
                   onTabSelected: (index) =>
                       setState(() => _selectedIndex = index),
+                  settings: dockSettings,
                   quality: GlassQuality.standard,
                   barHeight: 64,
                   horizontalPadding: 16,

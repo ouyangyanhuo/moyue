@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:moyue_application/core/display/moyue_glass_style.dart';
 
 class ExpandableGlassSearch extends StatefulWidget {
   const ExpandableGlassSearch({
@@ -59,6 +60,7 @@ class _ExpandableGlassSearchState extends State<ExpandableGlassSearch> {
                 onCancel: _close,
                 showsCancelButton: true,
                 useOwnLayer: true,
+                settings: moyueGlassSettings(context),
                 height: 46,
               ),
             )
@@ -69,6 +71,7 @@ class _ExpandableGlassSearchState extends State<ExpandableGlassSearch> {
               semanticLabel: '搜索',
               size: 46,
               useOwnLayer: true,
+              settings: moyueGlassSettings(context),
             ),
     );
   }

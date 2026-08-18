@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/widgets/page_heading.dart';
 import 'package:moyue_application/widgets/section_label.dart';
@@ -36,12 +37,12 @@ class _SettingsPageState extends State<SettingsPage> {
           SliverToBoxAdapter(
             child: _SettingsCard(
               children: [
-                SwitchListTile.adaptive(
+                _GlassSwitchTile(
                   value: false,
                   onChanged: null,
-                  secondary: const Icon(Icons.water_drop_outlined),
-                  title: const Text('墨模式'),
-                  subtitle: const Text('暂未开放'),
+                  icon: Icons.water_drop_outlined,
+                  title: '墨模式',
+                  subtitle: '暂未开放',
                 ),
                 const Divider(indent: 56),
                 Padding(
@@ -55,7 +56,10 @@ class _SettingsPageState extends State<SettingsPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text('对比度'),
-                            Slider(
+                            _ExpandedGlassSlider(
+                              touchAreaKey: const ValueKey(
+                                'contrast-slider-touch-area',
+                              ),
                               value: display.contrast,
                               onChanged: display.setContrast,
                             ),
@@ -79,10 +83,11 @@ class _SettingsPageState extends State<SettingsPage> {
                             Text(
                               'Liquid 透明度  ${(display.glassOpacity * 100).round()}%',
                             ),
-                            Slider(
+                            _ExpandedGlassSlider(
+                              touchAreaKey: const ValueKey(
+                                'opacity-slider-touch-area',
+                              ),
                               value: display.glassOpacity,
-                              min: 0,
-                              max: 1,
                               onChanged: display.setGlassOpacity,
                             ),
                           ],
@@ -100,12 +105,12 @@ class _SettingsPageState extends State<SettingsPage> {
           SliverToBoxAdapter(
             child: _SettingsCard(
               children: [
-                SwitchListTile.adaptive(
+                _GlassSwitchTile(
                   value: display.reduceMotion,
                   onChanged: display.setReduceMotion,
-                  secondary: const Icon(Icons.motion_photos_off_outlined),
-                  title: const Text('减少动态效果'),
-                  subtitle: const Text('让页面切换更稳定，适合墨水屏设备'),
+                  icon: Icons.motion_photos_off_outlined,
+                  title: '减少动态效果',
+                  subtitle: '让页面切换更稳定，适合墨水屏设备',
                 ),
                 const Divider(indent: 56),
                 const ListTile(
@@ -126,6 +131,117 @@ class _SettingsPageState extends State<SettingsPage> {
         const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
       ],
     );
+  }
+}
+
+class _GlassSwitchTile extends StatelessWidget {
+  const _GlassSwitchTile({
+    required this.value,
+    required this.onChanged,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    leading: Icon(icon),
+    title: Text(title),
+    subtitle: Text(subtitle),
+    onTap: onChanged == null ? null : () => onChanged!(!value),
+    trailing: Semantics(
+      enabled: onChanged != null,
+      toggled: value,
+      label: title,
+      child: SizedBox(
+        key: ValueKey('$title-switch-touch-area'),
+        width: 76,
+        height: 48,
+        child: IgnorePointer(
+          ignoring: onChanged == null,
+          child: Opacity(
+            opacity: onChanged == null ? 0.45 : 1,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => onChanged?.call(!value),
+                  ),
+                ),
+                ExcludeSemantics(
+                  child: GlassSwitch(
+                    value: value,
+                    onChanged: onChanged ?? (_) {},
+                    useOwnLayer: true,
+                    quality: GlassQuality.standard,
+                    activeColor: Theme.of(context).colorScheme.primary,
+                    semanticLabel: title,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _ExpandedGlassSlider extends StatelessWidget {
+  const _ExpandedGlassSlider({
+    required this.touchAreaKey,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final Key touchAreaKey;
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    key: touchAreaKey,
+    height: 56,
+    child: LayoutBuilder(
+      builder: (context, constraints) => Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (details) =>
+                  _update(details.localPosition.dx, constraints.maxWidth),
+              onHorizontalDragUpdate: (details) =>
+                  _update(details.localPosition.dx, constraints.maxWidth),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 5,
+            height: 46,
+            child: GlassSlider(
+              value: value,
+              onChanged: onChanged,
+              useOwnLayer: true,
+              quality: GlassQuality.standard,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  void _update(double dx, double width) {
+    if (width <= 0) return;
+    onChanged((dx / width).clamp(0.0, 1.0));
   }
 }
 

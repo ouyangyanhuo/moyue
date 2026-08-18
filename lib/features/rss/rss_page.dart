@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/services/rss_service.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
@@ -89,6 +90,7 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
                 semanticLabel: _selecting ? '删除所选订阅' : '添加订阅',
                 size: 46,
                 useOwnLayer: true,
+                settings: moyueGlassSettings(context),
               ),
             ),
           ),

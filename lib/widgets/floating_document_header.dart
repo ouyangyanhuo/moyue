@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/widgets/scrolling_title.dart';
 
 class FloatingDocumentHeader extends StatelessWidget {
@@ -31,6 +32,7 @@ class FloatingDocumentHeader extends StatelessWidget {
         semanticLabel: '返回',
         size: 44,
         useOwnLayer: true,
+        settings: moyueGlassSettings(context),
       ),
       const SizedBox(width: 8),
       Expanded(
@@ -42,6 +44,7 @@ class FloatingDocumentHeader extends StatelessWidget {
             child: GlassContainer(
               height: 42,
               useOwnLayer: true,
+              settings: moyueGlassSettings(context),
               shape: const LiquidRoundedSuperellipse(borderRadius: 12),
               padding: const EdgeInsets.symmetric(horizontal: 16),
               alignment: Alignment.center,
@@ -61,6 +64,7 @@ class FloatingDocumentHeader extends StatelessWidget {
         semanticLabel: actionLabel,
         onPressed: onAction,
         useOwnLayer: true,
+        settings: moyueGlassSettings(context),
         size: 44,
       ),
     ],

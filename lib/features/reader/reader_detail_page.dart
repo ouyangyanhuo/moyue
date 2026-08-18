@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/features/editor/editor_page.dart';
 import 'package:moyue_application/features/reader/native_html_view.dart';
 import 'package:moyue_application/models/reading_document.dart';
@@ -107,6 +108,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                     // Giving it a local glass layer keeps the shader and its
                     // hit targets in the same bottom-screen coordinate space.
                     useOwnLayer: true,
+                    settings: moyueGlassSettings(context),
                     items: [
                       GlassButtonGroupItem(
                         icon: const Icon(Icons.format_list_bulleted_rounded),

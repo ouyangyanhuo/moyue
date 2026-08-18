@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/features/editor/editor_page.dart';
 import 'package:moyue_application/features/reader/reader_detail_page.dart';
 import 'package:moyue_application/models/library_folder.dart';
@@ -71,6 +72,7 @@ class _LibraryPageState extends State<LibraryPage> {
               semanticLabel: _selecting ? '删除所选文档' : '新建或导入',
               size: 46,
               useOwnLayer: true,
+              settings: moyueGlassSettings(context),
             ),
           ),
         ),

@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/app/moyue_app.dart';
 import 'package:moyue_application/features/reader/library_page.dart';
 import 'package:moyue_application/features/reader/reader_detail_page.dart';
@@ -37,6 +38,38 @@ void main() {
     await tester.tapAt(tester.getCenter(find.byIcon(Icons.tune_outlined).last));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('设置'), findsWidgets);
+    expect(find.byType(GlassSlider), findsNWidgets(2));
+    expect(find.byType(GlassSwitch), findsNWidgets(2));
+    expect(find.byType(Slider), findsNothing);
+    expect(find.byType(Switch), findsNothing);
+
+    final opacitySlider = tester
+        .widgetList<GlassSlider>(find.byType(GlassSlider))
+        .last;
+    expect(opacitySlider.thumbRadius, 15);
+    expect(opacitySlider.trackHeight, 4);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('opacity-slider-touch-area')))
+          .height,
+      56,
+    );
+    opacitySlider.onChanged!(1);
+    await tester.pump();
+    final dock = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
+    expect(dock.settings?.glassColor.a, 1);
+
+    final glassTheme = tester.widget<GlassTheme>(find.byType(GlassTheme));
+    expect(glassTheme.data.light.settings?.fresnelStrength, 0);
+    expect(glassTheme.data.dark.settings?.fresnelStrength, 0);
+    expect(glassTheme.data.light.settings?.edgeAbsorption, 0.06);
+    expect(glassTheme.data.dark.settings?.edgeAbsorption, 0.09);
+    for (final button in tester.widgetList<GlassIconButton>(
+      find.byType(GlassIconButton),
+    )) {
+      expect(button.settings?.shadowElevation, 0);
+      expect(button.settings?.edgeAbsorption, 0.06);
+    }
   });
 
   testWidgets('圆形搜索按钮可以展开并过滤文档', (tester) async {
@@ -379,11 +412,25 @@ void main() {
       ),
     );
 
-    final tile = tester.widget<SwitchListTile>(
-      find.byType(SwitchListTile).first,
+    final inkSwitch = tester.widget<GlassSwitch>(
+      find.byType(GlassSwitch).first,
     );
-    expect(tile.value, isFalse);
-    expect(tile.onChanged, isNull);
+    expect(inkSwitch.value, isFalse);
+    expect(inkSwitch.width, 58);
+    expect(inkSwitch.height, 26);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('墨模式-switch-touch-area'))),
+      const Size(76, 48),
+    );
+    final disabledPointer = tester.widget<IgnorePointer>(
+      find
+          .ancestor(
+            of: find.byType(GlassSwitch).first,
+            matching: find.byType(IgnorePointer),
+          )
+          .first,
+    );
+    expect(disabledPointer.ignoring, isTrue);
     expect(find.text('暂未开放'), findsOneWidget);
   });
 }

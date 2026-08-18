@@ -76,4 +76,8 @@ class DisplayPreferencesScope extends InheritedNotifier<DisplayModeController> {
     assert(scope != null, 'DisplayPreferencesScope is missing.');
     return scope!.notifier!;
   }
+
+  static DisplayModeController? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<DisplayPreferencesScope>()
+      ?.notifier;
 }

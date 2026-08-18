@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
@@ -222,12 +223,14 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                             semanticLabel: '返回',
                             size: 44,
                             useOwnLayer: true,
+                            settings: moyueGlassSettings(context),
                           ),
                         ),
                         GlassContainer(
                           width: 150,
                           height: 42,
                           useOwnLayer: true,
+                          settings: moyueGlassSettings(context),
                           shape: const LiquidRoundedSuperellipse(
                             borderRadius: 12,
                           ),
@@ -260,6 +263,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                                 semanticLabel: _mode.value == 0 ? '预览' : '继续编辑',
                                 size: 44,
                                 useOwnLayer: true,
+                                settings: moyueGlassSettings(context),
                               ),
                               const SizedBox(width: 4),
                               GlassIconButton(
@@ -278,6 +282,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                                 semanticLabel: '保存',
                                 size: 44,
                                 useOwnLayer: true,
+                                settings: moyueGlassSettings(context),
                               ),
                             ],
                           ),
@@ -614,6 +619,7 @@ class _FormatBar extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: GlassButtonGroup.icons(
           useOwnLayer: true,
+          settings: moyueGlassSettings(context),
           items: [
             _item(Icons.title_rounded, '标题', _MarkdownFormat.heading),
             _item(Icons.format_bold_rounded, '粗体', _MarkdownFormat.bold),
