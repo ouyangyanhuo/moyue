@@ -44,6 +44,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
       child: Scaffold(
         backgroundColor: theme.colorScheme.surface,
         body: Stack(
+          fit: StackFit.expand,
           children: [
             Positioned.fill(
               child: MediaQuery(
@@ -90,6 +91,10 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: GlassButtonGroup.icons(
+                    // The dock is positioned independently over the reader.
+                    // Giving it a local glass layer keeps the shader and its
+                    // hit targets in the same bottom-screen coordinate space.
+                    useOwnLayer: true,
                     items: [
                       GlassButtonGroupItem(
                         icon: const Icon(Icons.format_list_bulleted_rounded),

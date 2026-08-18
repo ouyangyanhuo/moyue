@@ -4,6 +4,15 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// 从环境变量读取发布签名配置（由 GitHub Actions 等 CI 注入）。
+// 未配置时回退到 debug 签名，便于本地运行与未签名构建。
+val keystorePath = providers.environmentVariable("KEYSTORE_PATH").orNull
+val keystorePassword = providers.environmentVariable("KEYSTORE_PASSWORD").orNull
+val keyAlias = providers.environmentVariable("KEY_ALIAS").orNull
+val keyPassword = providers.environmentVariable("KEY_PASSWORD").orNull
+val hasReleaseSigning = listOf(keystorePath, keystorePassword, keyAlias, keyPassword)
+    .all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.moyue.application"
     compileSdk = flutter.compileSdkVersion
@@ -30,11 +39,26 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(keystorePath!!)
+                storePassword = keystorePassword
+                keyAlias = keyAlias
+                keyPassword = keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO：为发布构建添加你自己的签名配置。
-            // 目前使用调试密钥签名，以便 `flutter run --release` 可以正常运行。
-            signingConfig = signingConfigs.getByName("debug")
+            // 已配置签名环境变量（KEYSTORE_PATH 等，由 CI 注入）时使用正式签名，
+            // 否则使用 debug 密钥签名，方便本地运行和未签名构建。
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

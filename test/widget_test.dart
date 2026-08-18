@@ -315,9 +315,10 @@ void main() {
     final text = find.text('这是一个明显超出容器边界的超长文件名称.md');
     final before = tester.getTopLeft(text).dx;
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    await mouse.addPointer(location: const Offset(20, 10));
+    await mouse.addPointer(location: const Offset(300, 300));
     await mouse.moveTo(const Offset(20, 10));
-    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 300));
     final after = tester.getTopLeft(text).dx;
     await mouse.removePointer();
 

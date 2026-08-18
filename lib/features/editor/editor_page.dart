@@ -524,6 +524,7 @@ class _FormatBar extends StatelessWidget {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: GlassButtonGroup.icons(
+          useOwnLayer: true,
           items: [
             _item(Icons.title_rounded, '标题', _MarkdownFormat.heading),
             _item(Icons.format_bold_rounded, '粗体', _MarkdownFormat.bold),
