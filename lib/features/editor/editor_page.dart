@@ -75,8 +75,6 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _titleFocus.addListener(_focusChanged);
-    _bodyFocus.addListener(_focusChanged);
     _currentDocument = widget.document;
     _title = RestorableTextEditingController(
       text: widget.document?.title ?? '',
@@ -117,20 +115,12 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     }
   }
 
-  void _focusChanged() {
-    if (mounted) setState(() {});
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _autosaveTimer?.cancel();
-    _titleFocus
-      ..removeListener(_focusChanged)
-      ..dispose();
-    _bodyFocus
-      ..removeListener(_focusChanged)
-      ..dispose();
+    _titleFocus.dispose();
+    _bodyFocus.dispose();
     _title.value.removeListener(_changed);
     _body.value.removeListener(_changed);
     _title.dispose();
@@ -299,10 +289,9 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
               ),
             ),
             _SettledKeyboardDock(
-              visible:
-                  _mode.value == 0 &&
-                  (_titleFocus.hasFocus || _bodyFocus.hasFocus),
-              keyboardInset: MediaQuery.viewInsetsOf(context).bottom,
+              enabled: _mode.value == 0,
+              titleFocus: _titleFocus,
+              bodyFocus: _bodyFocus,
               child: _FormatBar(onFormat: _applyFormat),
             ),
           ],
@@ -500,13 +489,15 @@ enum _MarkdownFormat { heading, bold, italic, quote, list, link, code }
 
 class _SettledKeyboardDock extends StatefulWidget {
   const _SettledKeyboardDock({
-    required this.visible,
-    required this.keyboardInset,
+    required this.enabled,
+    required this.titleFocus,
+    required this.bodyFocus,
     required this.child,
   });
 
-  final bool visible;
-  final double keyboardInset;
+  final bool enabled;
+  final FocusNode titleFocus;
+  final FocusNode bodyFocus;
   final Widget child;
 
   @override
@@ -514,48 +505,95 @@ class _SettledKeyboardDock extends StatefulWidget {
 }
 
 class _SettledKeyboardDockState extends State<_SettledKeyboardDock> {
-  Timer? _settleTimer;
+  Timer? _sampleTimer;
   bool _settled = false;
+  double _keyboardInset = 0;
+  double? _lastSample;
+  int _stableSamples = 0;
+
+  bool get _visible =>
+      widget.enabled &&
+      (widget.titleFocus.hasFocus || widget.bodyFocus.hasFocus);
 
   @override
   void initState() {
     super.initState();
-    _schedule();
+    widget.titleFocus.addListener(_focusChanged);
+    widget.bodyFocus.addListener(_focusChanged);
   }
 
   @override
   void didUpdateWidget(covariant _SettledKeyboardDock oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.visible != widget.visible ||
-        oldWidget.keyboardInset != widget.keyboardInset) {
-      _schedule();
+    if (oldWidget.titleFocus != widget.titleFocus) {
+      oldWidget.titleFocus.removeListener(_focusChanged);
+      widget.titleFocus.addListener(_focusChanged);
+    }
+    if (oldWidget.bodyFocus != widget.bodyFocus) {
+      oldWidget.bodyFocus.removeListener(_focusChanged);
+      widget.bodyFocus.addListener(_focusChanged);
+    }
+    if (oldWidget.enabled != widget.enabled ||
+        oldWidget.titleFocus != widget.titleFocus ||
+        oldWidget.bodyFocus != widget.bodyFocus) {
+      _beginSampling();
     }
   }
 
-  void _schedule() {
-    _settleTimer?.cancel();
-    if (_settled) setState(() => _settled = false);
-    if (!widget.visible || widget.keyboardInset <= 0) return;
-    _settleTimer = Timer(const Duration(milliseconds: 90), () {
-      if (mounted) setState(() => _settled = true);
-    });
+  void _focusChanged() => _beginSampling();
+
+  void _beginSampling() {
+    _sampleTimer?.cancel();
+    _lastSample = null;
+    _stableSamples = 0;
+    final needsRebuild = _settled || _keyboardInset != 0;
+    _settled = false;
+    _keyboardInset = 0;
+    if (needsRebuild && mounted) setState(() {});
+    if (!_visible) return;
+    _sampleTimer = Timer(const Duration(milliseconds: 80), _sampleInset);
+  }
+
+  void _sampleInset() {
+    if (!mounted || !_visible) return;
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    if (views.isEmpty) return;
+    final view = views.first;
+    final inset = view.viewInsets.bottom / view.devicePixelRatio;
+    final previous = _lastSample;
+    if (inset > 0 && previous != null && (inset - previous).abs() < 0.5) {
+      _stableSamples++;
+    } else {
+      _stableSamples = inset > 0 ? 1 : 0;
+    }
+    _lastSample = inset;
+    if (_stableSamples >= 3) {
+      setState(() {
+        _keyboardInset = inset;
+        _settled = true;
+      });
+      return;
+    }
+    _sampleTimer = Timer(const Duration(milliseconds: 45), _sampleInset);
   }
 
   @override
   void dispose() {
-    _settleTimer?.cancel();
+    _sampleTimer?.cancel();
+    widget.titleFocus.removeListener(_focusChanged);
+    widget.bodyFocus.removeListener(_focusChanged);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_settled || !widget.visible || widget.keyboardInset <= 0) {
+    if (!_settled || !_visible || _keyboardInset <= 0) {
       return const SizedBox.shrink();
     }
     return Positioned(
       left: 12,
       right: 12,
-      bottom: widget.keyboardInset + 10,
+      bottom: _keyboardInset + 10,
       child: KeyedSubtree(
         key: const ValueKey('keyboard-format-dock'),
         child: widget.child,
