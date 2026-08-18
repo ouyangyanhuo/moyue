@@ -125,12 +125,55 @@ class DocumentPackageService {
     );
   }
 
+  Future<ReadingDocument> importIntoFolder({
+    required LibraryFolder folder,
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
+    final extension = _extension(fileName);
+    if (extension != 'md' && extension != 'html') {
+      throw const FormatException('文件夹内仅支持导入 .md 或 .html 文件');
+    }
+    final folderRow = await (await index).folder(folder.id);
+    if (folderRow == null) throw StateError('文件夹不存在');
+    final safeName = p.posix.basename(_safeArchivePath(fileName));
+    final relativePath = '${folderRow['relative_path']}/$safeName';
+    final existing = await (await index).packageDocuments(folder.id);
+    if (existing.any((row) => row['relative_path'] == relativePath)) {
+      throw FormatException('文件夹中已存在 $safeName');
+    }
+    final now = DateTime.now();
+    final record = DocumentRecord(
+      id: '${now.microsecondsSinceEpoch}-doc',
+      folderId: folder.id,
+      name: p.posix.basenameWithoutExtension(safeName),
+      kind: extension == 'html' ? 'html' : 'markdown',
+      relativePath: relativePath,
+      isPrimary: existing.isEmpty,
+      contentHash: sha256.convert(bytes).toString(),
+      createdAt: now,
+      updatedAt: now,
+    );
+    await (await index).insertDocument(
+      document: record,
+      writeFile: () => _files.writeFiles({relativePath: bytes}),
+    );
+    return ReadingDocument(
+      id: record.id,
+      title: record.name,
+      content: decodeImportedText(bytes),
+      kind: extension == 'html' ? DocumentKind.html : DocumentKind.markdown,
+      updatedAt: now,
+      sourceLabel: '文件夹',
+      filePath: relativePath,
+      folderId: folder.id,
+      relativePath: relativePath,
+    );
+  }
+
   Future<ReadingDocument> importFile(String fileName, Uint8List bytes) async {
     final extension = _extension(fileName);
-    if (extension == 'md' ||
-        extension == 'markdown' ||
-        extension == 'html' ||
-        extension == 'htm') {
+    if (extension == 'md' || extension == 'html') {
       return _importEntries(
         sourceName: fileName,
         entries: {_safeArchivePath(fileName): bytes},
@@ -145,9 +188,15 @@ class DocumentPackageService {
     for (final file in archive) {
       if (!file.isFile || file.isSymbolicLink) continue;
       final path = _safeArchivePath(decodeArchiveFileName(file.name));
+      if (!_isAllowedPackageEntry(path)) {
+        throw FormatException('压缩包包含不支持的文件类型：$path');
+      }
       entries[path] = file.readBytes() ?? Uint8List(0);
     }
     if (entries.isEmpty) throw const FormatException('压缩包为空');
+    if (entries.length < 2) {
+      throw const FormatException('ZIP 或 .moyue 中至少需要包含 2 个文件');
+    }
     return _importEntries(
       sourceName: fileName,
       entries: entries,
@@ -309,9 +358,20 @@ class DocumentPackageService {
     if (folderId == null) return;
     final folder = await (await index).folder(folderId);
     if (folder == null) return;
-    await (await index).deleteFolder(folderId);
-    await _files.deleteFolder(folder['relative_path']! as String);
+    final documents = await (await index).packageDocuments(folderId);
+    if (documents.length <= 1) {
+      await (await index).deleteFolder(folderId);
+      await _files.deleteFolder(folder['relative_path']! as String);
+      return;
+    }
+    await (await index).deleteDocument(document.id, folderId);
+    if (document.relativePath case final path?) {
+      await _files.deleteFile(path);
+    }
   }
+
+  Future<void> renameFolder(String folderId, String name) =>
+      index.then((db) => db.renameFolder(folderId, name));
 
   Future<void> deleteFolderById(String folderId) async {
     final folder = await (await index).folder(folderId);
@@ -494,11 +554,34 @@ class DocumentPackageService {
   String _extension(String value) =>
       p.extension(value).replaceFirst('.', '').toLowerCase();
   bool _isDocument(String value) =>
-      const {'md', 'markdown', 'html', 'htm'}.contains(_extension(value));
+      const {'md', 'html'}.contains(_extension(value));
   DocumentKind _kindFor(String value) =>
-      const {'html', 'htm'}.contains(_extension(value))
-      ? DocumentKind.html
-      : DocumentKind.markdown;
+      _extension(value) == 'html' ? DocumentKind.html : DocumentKind.markdown;
+
+  bool _isAllowedPackageEntry(String value) {
+    if (value == 'meta.json') return true;
+    return const {
+      'md',
+      'html',
+      'css',
+      'js',
+      'png',
+      'jpg',
+      'jpeg',
+      'gif',
+      'webp',
+      'svg',
+      'avif',
+      'bmp',
+      'ico',
+      'mp4',
+      'webm',
+      'mov',
+      'm4v',
+      'ogv',
+    }.contains(_extension(value));
+  }
+
   String _safeFileName(String value) =>
       value.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
 
@@ -509,8 +592,16 @@ class DocumentPackageService {
       'gif' => 'image/gif',
       'webp' => 'image/webp',
       'svg' => 'image/svg+xml',
+      'avif' => 'image/avif',
+      'bmp' => 'image/bmp',
+      'ico' => 'image/x-icon',
       'css' => 'text/css',
       'js' => 'text/javascript',
+      'mp4' => 'video/mp4',
+      'webm' => 'video/webm',
+      'mov' => 'video/quicktime',
+      'm4v' => 'video/x-m4v',
+      'ogv' => 'video/ogg',
       _ => 'application/octet-stream',
     };
   }

@@ -12,4 +12,15 @@ class LibraryFolder {
   final String name;
   final List<ReadingDocument> documents;
   final DateTime updatedAt;
+
+  LibraryFolder copyWith({
+    String? name,
+    List<ReadingDocument>? documents,
+    DateTime? updatedAt,
+  }) => LibraryFolder(
+    id: id,
+    name: name ?? this.name,
+    documents: documents ?? this.documents,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }

@@ -16,7 +16,6 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final display = DisplayPreferencesScope.of(context);
-    final isInk = display.mode == ReadingDisplayMode.ink;
     final query = _query.trim();
     final showDisplay = query.isEmpty || '显示墨模式对比度护眼Liquid透明度'.contains(query);
     final showReading = query.isEmpty || '阅读动画翻页动效'.contains(query);
@@ -27,7 +26,7 @@ class _SettingsPageState extends State<SettingsPage> {
         SliverToBoxAdapter(
           child: PageHeading(
             title: '设置',
-            subtitle: isInk ? '墨模式已开启' : '纸张模式 · 温和护眼',
+            subtitle: '纸张模式 · 温和护眼',
             searchHint: '搜索设置',
             onSearch: (value) => setState(() => _query = value),
           ),
@@ -38,13 +37,11 @@ class _SettingsPageState extends State<SettingsPage> {
             child: _SettingsCard(
               children: [
                 SwitchListTile.adaptive(
-                  value: isInk,
-                  onChanged: (value) => display.setMode(
-                    value ? ReadingDisplayMode.ink : ReadingDisplayMode.paper,
-                  ),
+                  value: false,
+                  onChanged: null,
                   secondary: const Icon(Icons.water_drop_outlined),
                   title: const Text('墨模式'),
-                  subtitle: const Text('降低色彩与动效，模拟电子墨水阅读体验'),
+                  subtitle: const Text('暂未开放'),
                 ),
                 const Divider(indent: 56),
                 Padding(

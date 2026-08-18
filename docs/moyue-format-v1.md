@@ -44,8 +44,14 @@ must not contain `..`, absolute paths, drive letters, or symbolic links.
   entry and selects `primary_document` as the opening document.
 - `primary_document` must point to one entry in `documents`.
 - `documents[].kind` is `markdown` or `html`.
-- `resources` contains images, stylesheets, scripts, and attachments. Relative
-  links inside documents are resolved from the document's own directory.
+- A package must contain at least two files including the required
+  `meta.json`, so a single-document `.moyue` remains valid.
+- Package entries are restricted to `.md`, `.html`, `.css`, `.js`, common
+  image formats (`png`, `jpg`, `jpeg`, `gif`, `webp`, `svg`, `avif`, `bmp`,
+  `ico`) and common video formats (`mp4`, `webm`, `mov`, `m4v`, `ogv`).
+- `resources` contains allowed images, videos, stylesheets, and scripts.
+  Relative links inside documents are resolved from the document's own
+  directory.
 - `sha256` is calculated over the uncompressed file bytes.
 - Unknown fields must be ignored for forward compatibility.
 

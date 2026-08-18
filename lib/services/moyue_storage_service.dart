@@ -34,6 +34,25 @@ class MoyueStorageService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> renameFolder(LibraryFolder folder, String name) async {
+    await _packages.renameFolder(folder.id, name);
+    notifyListeners();
+  }
+
+  Future<ReadingDocument> importIntoFolder({
+    required LibraryFolder folder,
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
+    final document = await _packages.importIntoFolder(
+      folder: folder,
+      fileName: fileName,
+      bytes: bytes,
+    );
+    notifyListeners();
+    return document;
+  }
+
   Future<ReadingDocument> saveDocument({
     required String title,
     required String content,

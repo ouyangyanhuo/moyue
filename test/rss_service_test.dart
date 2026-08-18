@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:charset/charset.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -66,5 +67,30 @@ void main() {
 
     expect(result.articles, isEmpty);
     expect(result.errorMessage, contains('连接失败'));
+  });
+
+  test('未声明 charset 的 GBK 中文 RSS 会按原始字节正确解码', () async {
+    final xml = '''
+      <rss version="2.0"><channel><title>中文订阅</title>
+      <item><guid>cn-1</guid><title>中文文章</title>
+      <description>正文内容</description></item></channel></rss>
+    ''';
+    final client = MockClient(
+      (_) async => http.Response.bytes(gbk.encode(xml), 200),
+    );
+    final service = RssService(client: client);
+    addTearDown(service.dispose);
+
+    final result = await service.load(
+      FeedSource(
+        id: 'gbk',
+        title: '占位名称',
+        url: Uri.parse('https://example.com/cn.xml'),
+      ),
+    );
+
+    expect(result.title, '中文订阅');
+    expect(result.articles.single.title, '中文文章');
+    expect(result.articles.single.summary, '正文内容');
   });
 }

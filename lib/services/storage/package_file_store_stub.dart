@@ -30,6 +30,11 @@ class _WebPackageFileStore implements PackageFileStore {
       utf8.decode(await readBytes(relativePath), allowMalformed: true);
 
   @override
+  Future<void> deleteFile(String relativePath) async {
+    _files.remove(relativePath);
+  }
+
+  @override
   Future<void> deleteFolder(String relativePath) async {
     _files.removeWhere(
       (path, _) => path == relativePath || path.startsWith('$relativePath/'),

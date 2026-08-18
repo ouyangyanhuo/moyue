@@ -62,6 +62,8 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   bool _saving = false;
   bool _listenersAttached = false;
   Timer? _autosaveTimer;
+  final FocusNode _titleFocus = FocusNode();
+  final FocusNode _bodyFocus = FocusNode();
   ReadingDocument? _currentDocument;
 
   @override
@@ -72,6 +74,8 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _titleFocus.addListener(_focusChanged);
+    _bodyFocus.addListener(_focusChanged);
     _currentDocument = widget.document;
     _title = RestorableTextEditingController(
       text: widget.document?.title ?? '',
@@ -112,10 +116,20 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     }
   }
 
+  void _focusChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _autosaveTimer?.cancel();
+    _titleFocus
+      ..removeListener(_focusChanged)
+      ..dispose();
+    _bodyFocus
+      ..removeListener(_focusChanged)
+      ..dispose();
     _title.value.removeListener(_changed);
     _body.value.removeListener(_changed);
     _title.dispose();
@@ -131,6 +145,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     return PopScope<ReadingDocument?>(
       canPop: true,
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         extendBody: true,
         extendBodyBehindAppBar: true,
         backgroundColor: Colors.transparent,
@@ -160,8 +175,9 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                 _mode.value == 0 ? CupertinoIcons.eye : CupertinoIcons.pencil,
                 size: 20,
               ),
-              onPressed: () =>
-                  setState(() => _mode.value = _mode.value == 0 ? 1 : 0),
+              onPressed: () => setState(() {
+                _mode.value = _mode.value == 0 ? 1 : 0;
+              }),
               semanticLabel: _mode.value == 0 ? '预览' : '继续编辑',
               size: 44,
               useOwnLayer: true,
@@ -180,16 +196,6 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
             ),
           ],
         ),
-        bottomNavigationBar: _mode.value == 0
-            ? AnimatedPadding(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.viewInsetsOf(context).bottom,
-                ),
-                child: _FormatBar(onFormat: _applyFormat),
-              )
-            : null,
         body: Stack(
           children: [
             const Positioned.fill(child: MoyueBackdrop()),
@@ -236,12 +242,21 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                           ? _EditorCanvas(
                               title: _title.value,
                               body: _body.value,
+                              titleFocus: _titleFocus,
+                              bodyFocus: _bodyFocus,
                             )
                           : _PreviewCanvas(body: _body.value.text),
                     ),
                   ),
                 ],
               ),
+            ),
+            _SettledKeyboardDock(
+              visible:
+                  _mode.value == 0 &&
+                  (_titleFocus.hasFocus || _bodyFocus.hasFocus),
+              keyboardInset: MediaQuery.viewInsetsOf(context).bottom,
+              child: _FormatBar(onFormat: _applyFormat),
             ),
           ],
         ),
@@ -343,9 +358,16 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
 }
 
 class _EditorCanvas extends StatelessWidget {
-  const _EditorCanvas({required this.title, required this.body});
+  const _EditorCanvas({
+    required this.title,
+    required this.body,
+    required this.titleFocus,
+    required this.bodyFocus,
+  });
   final TextEditingController title;
   final TextEditingController body;
+  final FocusNode titleFocus;
+  final FocusNode bodyFocus;
 
   @override
   Widget build(BuildContext context) {
@@ -362,6 +384,7 @@ class _EditorCanvas extends StatelessWidget {
           children: [
             TextField(
               controller: title,
+              focusNode: titleFocus,
               textCapitalization: TextCapitalization.sentences,
               style: theme.textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.w700,
@@ -378,6 +401,7 @@ class _EditorCanvas extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: body,
+                focusNode: bodyFocus,
                 expands: true,
                 minLines: null,
                 maxLines: null,
@@ -426,36 +450,96 @@ class _PreviewCanvas extends StatelessWidget {
 
 enum _MarkdownFormat { heading, bold, italic, quote, list, link, code }
 
+class _SettledKeyboardDock extends StatefulWidget {
+  const _SettledKeyboardDock({
+    required this.visible,
+    required this.keyboardInset,
+    required this.child,
+  });
+
+  final bool visible;
+  final double keyboardInset;
+  final Widget child;
+
+  @override
+  State<_SettledKeyboardDock> createState() => _SettledKeyboardDockState();
+}
+
+class _SettledKeyboardDockState extends State<_SettledKeyboardDock> {
+  Timer? _settleTimer;
+  bool _settled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _schedule();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SettledKeyboardDock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.visible != widget.visible ||
+        oldWidget.keyboardInset != widget.keyboardInset) {
+      _schedule();
+    }
+  }
+
+  void _schedule() {
+    _settleTimer?.cancel();
+    if (_settled) setState(() => _settled = false);
+    if (!widget.visible || widget.keyboardInset <= 0) return;
+    _settleTimer = Timer(const Duration(milliseconds: 90), () {
+      if (mounted) setState(() => _settled = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _settleTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_settled || !widget.visible || widget.keyboardInset <= 0) {
+      return const SizedBox.shrink();
+    }
+    return Positioned(
+      left: 12,
+      right: 12,
+      bottom: widget.keyboardInset,
+      child: widget.child,
+    );
+  }
+}
+
 class _FormatBar extends StatelessWidget {
   const _FormatBar({required this.onFormat});
   final ValueChanged<_MarkdownFormat> onFormat;
 
   @override
-  Widget build(BuildContext context) => GlassToolbar(
-    height: 64,
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    children: [
-      Expanded(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: GlassButtonGroup.icons(
-            items: [
-              _item(Icons.title_rounded, '标题', _MarkdownFormat.heading),
-              _item(Icons.format_bold_rounded, '粗体', _MarkdownFormat.bold),
-              _item(Icons.format_italic_rounded, '斜体', _MarkdownFormat.italic),
-              _item(Icons.format_quote_rounded, '引用', _MarkdownFormat.quote),
-              _item(
-                Icons.format_list_bulleted_rounded,
-                '列表',
-                _MarkdownFormat.list,
-              ),
-              _item(Icons.link_rounded, '链接', _MarkdownFormat.link),
-              _item(Icons.code_rounded, '代码', _MarkdownFormat.code),
-            ],
-          ),
+  Widget build(BuildContext context) => Center(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 560),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: GlassButtonGroup.icons(
+          items: [
+            _item(Icons.title_rounded, '标题', _MarkdownFormat.heading),
+            _item(Icons.format_bold_rounded, '粗体', _MarkdownFormat.bold),
+            _item(Icons.format_italic_rounded, '斜体', _MarkdownFormat.italic),
+            _item(Icons.format_quote_rounded, '引用', _MarkdownFormat.quote),
+            _item(
+              Icons.format_list_bulleted_rounded,
+              '列表',
+              _MarkdownFormat.list,
+            ),
+            _item(Icons.link_rounded, '链接', _MarkdownFormat.link),
+            _item(Icons.code_rounded, '代码', _MarkdownFormat.code),
+          ],
         ),
       ),
-    ],
+    ),
   );
 
   GlassButtonGroupItem _item(

@@ -1,6 +1,7 @@
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 import 'package:moyue_application/models/feed_models.dart';
+import 'package:moyue_application/services/text_decoder.dart';
 import 'package:rss_dart/dart_rss.dart';
 
 class FeedLoadResult {
@@ -39,7 +40,7 @@ class RssService {
           errorMessage: '订阅源返回 ${response.statusCode}',
         );
       }
-      return parse(source, response.body);
+      return parse(source, decodeImportedText(response.bodyBytes));
     } on Object catch (error) {
       return FeedLoadResult(
         title: source.title,

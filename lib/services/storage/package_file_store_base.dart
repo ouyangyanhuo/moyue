@@ -6,5 +6,6 @@ abstract interface class PackageFileStore {
   Future<void> writeFiles(Map<String, Uint8List> files);
   Future<Uint8List> readBytes(String relativePath);
   Future<String> readText(String relativePath);
+  Future<void> deleteFile(String relativePath);
   Future<void> deleteFolder(String relativePath);
 }

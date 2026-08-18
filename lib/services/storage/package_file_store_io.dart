@@ -69,6 +69,12 @@ class _IoPackageFileStore implements PackageFileStore {
       utf8.decode(await readBytes(relativePath), allowMalformed: true);
 
   @override
+  Future<void> deleteFile(String relativePath) async {
+    final file = _safeTarget((await _root()).path, relativePath);
+    if (await file.exists()) await file.delete();
+  }
+
+  @override
   Future<void> deleteFolder(String relativePath) async {
     final directory = Directory(
       _safeTarget((await _root()).path, relativePath).path,

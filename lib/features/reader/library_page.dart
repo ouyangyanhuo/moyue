@@ -6,8 +6,10 @@ import 'package:moyue_application/features/reader/reader_detail_page.dart';
 import 'package:moyue_application/models/library_folder.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
+import 'package:moyue_application/widgets/floating_document_header.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
 import 'package:moyue_application/widgets/page_heading.dart';
+import 'package:moyue_application/widgets/scrolling_title.dart';
 import 'package:moyue_application/widgets/section_label.dart';
 
 class LibraryPage extends StatefulWidget {
@@ -234,8 +236,8 @@ class _LibraryPageState extends State<LibraryPage> {
     builder: (context) => AlertDialog(
       title: const Text('支持的文件'),
       content: const Text(
-        '支持 markdown、html、zip 和 moyue。\n\n'
-        'ZIP 中需要包含 markdown 或 html；其中的文档数量大于 2 时，会自动创建文件夹。',
+        '支持 .md、.html、.zip 和 .moyue。\n\n'
+        'ZIP 或 .moyue 至少需要 2 个文件，并包含 Markdown 或 HTML。包内只允许 HTML、Markdown、CSS、JS、常见图片和视频；文档数量大于 2 时会自动创建文件夹。',
       ),
       actions: [
         TextButton(
@@ -247,36 +249,11 @@ class _LibraryPageState extends State<LibraryPage> {
   );
 
   Future<void> _createFolder() async {
-    final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('新建文件夹'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 80,
-          decoration: const InputDecoration(hintText: '文件夹名称'),
-          onSubmitted: (value) {
-            if (value.trim().isNotEmpty) Navigator.pop(context, value.trim());
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isNotEmpty) Navigator.pop(context, value);
-            },
-            child: const Text('创建'),
-          ),
-        ],
-      ),
+      builder: (_) =>
+          const _FolderNameDialog(title: '新建文件夹', actionLabel: '创建'),
     );
-    controller.dispose();
     if (name == null || !mounted) return;
     try {
       await MoyueStorageService.instance.createFolder(name);
@@ -309,14 +286,7 @@ class _LibraryPageState extends State<LibraryPage> {
       }
       final extension = (file.extension ?? file.name.split('.').last)
           .toLowerCase();
-      if (!const {
-        'md',
-        'markdown',
-        'html',
-        'htm',
-        'zip',
-        'moyue',
-      }.contains(extension)) {
+      if (!const {'md', 'html', 'zip', 'moyue'}.contains(extension)) {
         throw const FormatException('请选择 Markdown、HTML、ZIP 或 .moyue 文件');
       }
       final document = await MoyueStorageService.instance.importDocumentPackage(
@@ -376,10 +346,8 @@ class _FolderTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    ScrollingTitle(
                       folder.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: 4),
@@ -406,51 +374,262 @@ class _FolderTile extends StatelessWidget {
   }
 }
 
-class _FolderPage extends StatelessWidget {
+class _FolderPage extends StatefulWidget {
   const _FolderPage({required this.folder});
   final LibraryFolder folder;
 
   @override
+  State<_FolderPage> createState() => _FolderPageState();
+}
+
+class _FolderPageState extends State<_FolderPage> {
+  late LibraryFolder _folder;
+  final Set<String> _selectedIds = {};
+
+  bool get _selecting => _selectedIds.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _folder = widget.folder;
+    MoyueStorageService.instance.addListener(_reloadFolder);
+  }
+
+  @override
+  void dispose() {
+    MoyueStorageService.instance.removeListener(_reloadFolder);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => Scaffold(
-    extendBodyBehindAppBar: true,
     backgroundColor: Colors.transparent,
-    appBar: GlassAppBar(
-      leading: GlassIconButton(
-        icon: const Icon(Icons.chevron_left_rounded),
-        semanticLabel: '返回',
-        size: 44,
-        useOwnLayer: true,
-        onPressed: () => Navigator.pop(context),
-      ),
-      title: Text(folder.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-    ),
     body: Stack(
       children: [
         const Positioned.fill(child: MoyueBackdrop()),
         SafeArea(
-          child: folder.documents.isEmpty
-              ? const Center(child: Text('这个文件夹还是空的'))
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
-                  itemCount: folder.documents.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final document = folder.documents[index];
-                    return _DocumentTile(
-                      document: document,
-                      selected: false,
-                      onLongPress: () {},
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => ReaderDetailPage(document: document),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 62),
+            child: _folder.documents.isEmpty
+                ? const Center(child: Text('这个文件夹还是空的'))
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
+                    itemCount: _folder.documents.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final document = _folder.documents[index];
+                      final selected = _selectedIds.contains(document.id);
+                      return _DocumentTile(
+                        document: document,
+                        selected: selected,
+                        onLongPress: () => _toggleSelection(document),
+                        onTap: () {
+                          if (_selecting) {
+                            _toggleSelection(document);
+                          } else {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    ReaderDetailPage(document: document),
+                              ),
+                            );
+                          }
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ),
+        SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: FloatingDocumentHeader(
+              title: _selecting ? '已选择 ${_selectedIds.length} 项' : _folder.name,
+              onBack: () => Navigator.pop(context),
+              actionIcon: _selecting ? Icons.delete_rounded : Icons.add_rounded,
+              actionLabel: _selecting ? '删除所选文档' : '导入文档到文件夹',
+              actionColor: _selecting
+                  ? Theme.of(context).colorScheme.error
+                  : null,
+              onAction: _selecting ? _deleteSelected : _importDocument,
+              onTitleTap: _selecting ? null : _renameFolder,
+            ),
+          ),
         ),
       ],
     ),
+  );
+
+  void _toggleSelection(ReadingDocument document) {
+    setState(() {
+      if (!_selectedIds.add(document.id)) {
+        _selectedIds.remove(document.id);
+      }
+    });
+  }
+
+  Future<void> _reloadFolder() async {
+    final folders = await MoyueStorageService.instance.loadFolders();
+    final matches = folders.where((folder) => folder.id == _folder.id);
+    if (mounted && matches.isNotEmpty) {
+      setState(() => _folder = matches.first);
+    }
+  }
+
+  Future<void> _deleteSelected() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('删除 ${_selectedIds.length} 个文档？'),
+        content: const Text('只会删除所选文档，文件夹中的其他内容会保留。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final selected = _folder.documents
+        .where((document) => _selectedIds.contains(document.id))
+        .toList(growable: false);
+    for (final document in selected) {
+      await MoyueStorageService.instance.deleteDocument(document);
+    }
+    if (!mounted) return;
+    final remaining = _folder.documents
+        .where((document) => !_selectedIds.contains(document.id))
+        .toList(growable: false);
+    setState(() {
+      _folder = _folder.copyWith(documents: remaining);
+      _selectedIds.clear();
+    });
+    if (remaining.isEmpty && mounted) Navigator.pop(context);
+  }
+
+  Future<void> _renameFolder() async {
+    if (_selecting) return;
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => _FolderNameDialog(
+        title: '修改文件夹名称',
+        actionLabel: '保存',
+        initialValue: _folder.name,
+      ),
+    );
+    if (name == null || name == _folder.name || !mounted) return;
+    try {
+      await MoyueStorageService.instance.renameFolder(_folder, name);
+      if (mounted) setState(() => _folder = _folder.copyWith(name: name));
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('重命名失败：$error')));
+      }
+    }
+  }
+
+  Future<void> _importDocument() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.any,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty || !mounted) return;
+      final file = result.files.single;
+      final extension = (file.extension ?? file.name.split('.').last)
+          .toLowerCase();
+      if (!const {'md', 'html'}.contains(extension)) {
+        throw const FormatException('文件夹内仅支持导入 .md 或 .html 文件');
+      }
+      final bytes = file.bytes;
+      if (bytes == null) throw const FormatException('无法读取文件内容');
+      if (bytes.length > 8 * 1024 * 1024) {
+        throw const FormatException('文件不能超过 8 MB');
+      }
+      final document = await MoyueStorageService.instance.importIntoFolder(
+        folder: _folder,
+        fileName: file.name,
+        bytes: bytes,
+      );
+      if (mounted) {
+        setState(() {
+          _folder = _folder.copyWith(
+            documents: [..._folder.documents, document],
+          );
+        });
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导入失败：$error')));
+      }
+    }
+  }
+}
+
+class _FolderNameDialog extends StatefulWidget {
+  const _FolderNameDialog({
+    required this.title,
+    required this.actionLabel,
+    this.initialValue = '',
+  });
+
+  final String title;
+  final String actionLabel;
+  final String initialValue;
+
+  @override
+  State<_FolderNameDialog> createState() => _FolderNameDialogState();
+}
+
+class _FolderNameDialogState extends State<_FolderNameDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+    _controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _controller.text.length,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = _controller.text.trim();
+    if (value.isNotEmpty) Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      maxLength: 80,
+      decoration: const InputDecoration(hintText: '文件夹名称'),
+      onSubmitted: (_) => _submit(),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(onPressed: _submit, child: Text(widget.actionLabel)),
+    ],
   );
 }
 
@@ -500,11 +679,9 @@ class _DocumentTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    ScrollingTitle(
                       document.title,
                       style: theme.textTheme.titleMedium,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 5),
                     Text(

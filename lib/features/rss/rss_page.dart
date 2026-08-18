@@ -8,7 +8,9 @@ import 'package:moyue_application/widgets/section_label.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class RssPage extends StatefulWidget {
-  const RssPage({super.key});
+  const RssPage({this.initialSources = const [], super.key});
+
+  final List<FeedSource> initialSources;
 
   @override
   State<RssPage> createState() => _RssPageState();
@@ -20,6 +22,9 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
   List<FeedArticle> _articles = [];
   String _query = '';
   String? _loadingSourceId;
+  final Set<String> _selectedSourceIds = {};
+
+  bool get _selecting => _selectedSourceIds.isNotEmpty;
 
   @override
   bool get wantKeepAlive => true;
@@ -28,6 +33,7 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
   void initState() {
     super.initState();
     _rssService = RssService();
+    _sources.addAll(widget.initialSources);
     _loadStoredFeeds();
   }
 
@@ -65,14 +71,22 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
         slivers: [
           SliverToBoxAdapter(
             child: PageHeading(
-              title: '订阅',
-              subtitle: '${_sources.length} 个订阅源 · 下拉即可刷新',
+              title: _selecting ? '已选择 ${_selectedSourceIds.length} 项' : '订阅',
+              subtitle: _selecting
+                  ? '轻点订阅源可继续选择或取消'
+                  : '${_sources.length} 个订阅源 · 下拉即可刷新',
               searchHint: '搜索订阅或文章',
               onSearch: (value) => setState(() => _query = value),
+              showSearch: !_selecting,
               trailing: GlassIconButton(
-                icon: const Icon(Icons.add_rounded),
-                onPressed: _showAddSource,
-                semanticLabel: '添加订阅',
+                icon: Icon(
+                  _selecting ? Icons.delete_rounded : Icons.add_rounded,
+                  color: _selecting
+                      ? Theme.of(context).colorScheme.error
+                      : null,
+                ),
+                onPressed: _selecting ? _deleteSelectedSources : _showAddSource,
+                semanticLabel: _selecting ? '删除所选订阅' : '添加订阅',
                 size: 46,
                 useOwnLayer: true,
               ),
@@ -103,27 +117,14 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
                     separatorBuilder: (_, _) => const SizedBox(height: 6),
                     itemBuilder: (context, index) {
                       final source = sources[index];
-                      return Dismissible(
-                        key: ValueKey(source.id),
-                        direction: DismissDirection.endToStart,
-                        confirmDismiss: (_) => _confirmDelete(source),
-                        onDismissed: (_) => _deleteSource(source),
-                        background: Container(
-                          alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.only(right: 22),
-                          color: Theme.of(context).colorScheme.errorContainer,
-                          child: const Icon(Icons.delete_outline_rounded),
-                        ),
-                        child: _FeedSourceTile(
-                          source: source,
-                          loading: _loadingSourceId == source.id,
-                          onTap: () => _refreshSource(source),
-                          onDelete: () async {
-                            if (await _confirmDelete(source) == true) {
-                              await _deleteSource(source);
-                            }
-                          },
-                        ),
+                      return _FeedSourceTile(
+                        source: source,
+                        loading: _loadingSourceId == source.id,
+                        selected: _selectedSourceIds.contains(source.id),
+                        onLongPress: () => _toggleSourceSelection(source),
+                        onTap: () => _selecting
+                            ? _toggleSourceSelection(source)
+                            : _refreshSource(source),
                       );
                     },
                   ),
@@ -262,28 +263,44 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
     }
   }
 
-  Future<bool?> _confirmDelete(FeedSource source) => showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('删除订阅？'),
-      content: Text('“${source.title}”及已保存的 RSS 文件会一并删除。'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('删除'),
-        ),
-      ],
-    ),
-  );
+  void _toggleSourceSelection(FeedSource source) {
+    setState(() {
+      if (!_selectedSourceIds.add(source.id)) {
+        _selectedSourceIds.remove(source.id);
+      }
+    });
+  }
 
-  Future<void> _deleteSource(FeedSource source) async {
-    await MoyueStorageService.instance.deleteFeed(source);
-    _sources.removeWhere((item) => item.id == source.id);
-    _articles = _articles.where((item) => item.sourceId != source.id).toList();
+  Future<void> _deleteSelectedSources() async {
+    final selected = _sources
+        .where((source) => _selectedSourceIds.contains(source.id))
+        .toList(growable: false);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('删除 ${selected.length} 个订阅？'),
+        content: const Text('所选订阅源及已保存的 RSS 文件会一并删除。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    for (final source in selected) {
+      await MoyueStorageService.instance.deleteFeed(source);
+    }
+    _sources.removeWhere((item) => _selectedSourceIds.contains(item.id));
+    _articles = _articles
+        .where((item) => !_selectedSourceIds.contains(item.sourceId))
+        .toList();
+    _selectedSourceIds.clear();
     await MoyueStorageService.instance.saveFeedSources(_sources);
     if (mounted) setState(() {});
   }
@@ -368,12 +385,14 @@ class _FeedSourceTile extends StatelessWidget {
     required this.source,
     required this.loading,
     required this.onTap,
-    required this.onDelete,
+    required this.onLongPress,
+    required this.selected,
   });
   final FeedSource source;
   final bool loading;
   final VoidCallback onTap;
-  final VoidCallback onDelete;
+  final VoidCallback onLongPress;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -386,9 +405,13 @@ class _FeedSourceTile extends StatelessWidget {
     ];
     final color = colors[source.id.hashCode.abs() % colors.length];
     return Material(
-      color: Colors.transparent,
+      color: selected
+          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.72)
+          : Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -431,13 +454,11 @@ class _FeedSourceTile extends StatelessWidget {
                   ],
                 ),
               ),
-              PopupMenuButton<String>(
-                tooltip: '更多操作',
-                onSelected: (_) => onDelete(),
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'delete', child: Text('删除')),
-                ],
-              ),
+              if (selected)
+                Icon(
+                  Icons.check_circle_rounded,
+                  color: theme.colorScheme.primary,
+                ),
             ],
           ),
         ),

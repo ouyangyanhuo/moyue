@@ -1,15 +1,14 @@
 import 'dart:typed_data';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
-import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/features/editor/editor_page.dart';
 import 'package:moyue_application/features/reader/native_html_view.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
+import 'package:moyue_application/widgets/floating_document_header.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ReaderDetailPage extends StatefulWidget {
@@ -40,122 +39,86 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final display = DisplayPreferencesScope.of(context);
-    final isInk = display.mode == ReadingDisplayMode.ink;
     return PopScope<void>(
       canPop: true,
       child: Scaffold(
-        extendBodyBehindAppBar: true,
         backgroundColor: theme.colorScheme.surface,
-        appBar: GlassAppBar(
-          toolbarHeight: 58,
-          leading: GlassIconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(CupertinoIcons.chevron_back, size: 21),
-            semanticLabel: '返回',
-            size: 44,
-            useOwnLayer: true,
-          ),
-          title: GlassContainer(
-            width: 204,
-            height: 42,
-            useOwnLayer: true,
-            shape: const LiquidRoundedSuperellipse(borderRadius: 12),
-            alignment: Alignment.center,
-            child: LayoutBuilder(
-              builder: (context, constraints) => SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minWidth: (constraints.maxWidth - 32).clamp(
-                      0,
-                      double.infinity,
-                    ),
-                  ),
-                  child: Text(
-                    _document.title,
-                    maxLines: 1,
-                    softWrap: false,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.labelLarge,
-                  ),
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(_textScale)),
+                child: _document.kind == DocumentKind.markdown
+                    ? _MarkdownDocument(
+                        data: _document.content,
+                        document: _document,
+                      )
+                    : SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 118),
+                        child: NativeHtmlView(
+                          data: _document.content,
+                          resourceLoader: (source) => MoyueStorageService
+                              .instance
+                              .readLinkedResource(_document, source),
+                        ),
+                      ),
+              ),
+            ),
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: FloatingDocumentHeader(
+                  title: _document.title,
+                  onBack: () => Navigator.of(context).pop(),
+                  actionIcon: Icons.edit_outlined,
+                  actionLabel: '编辑 Markdown',
+                  onAction: _document.kind == DocumentKind.markdown
+                      ? _editDocument
+                      : null,
                 ),
               ),
             ),
-          ),
-          actions: [
-            if (_document.kind == DocumentKind.markdown)
-              GlassIconButton(
-                icon: const Icon(CupertinoIcons.pencil, size: 20),
-                semanticLabel: '编辑 Markdown',
-                onPressed: _editDocument,
-                useOwnLayer: true,
-                size: 44,
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: MediaQuery.paddingOf(context).bottom + 12,
+              height: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: GlassButtonGroup.icons(
+                    items: [
+                      GlassButtonGroupItem(
+                        icon: const Icon(Icons.format_list_bulleted_rounded),
+                        label: '目录',
+                        onTap: () => _message('目录导航将在文档索引阶段接入'),
+                      ),
+                      GlassButtonGroupItem(
+                        icon: const Icon(Icons.text_decrease_rounded),
+                        label: '缩小字体',
+                        onTap: () => setState(
+                          () => _textScale = (_textScale - 0.1).clamp(0.8, 1.4),
+                        ),
+                      ),
+                      GlassButtonGroupItem(
+                        icon: const Icon(Icons.text_increase_rounded),
+                        label: '放大字体',
+                        onTap: () => setState(
+                          () => _textScale = (_textScale + 0.1).clamp(0.8, 1.4),
+                        ),
+                      ),
+                      GlassButtonGroupItem(
+                        icon: const Icon(Icons.ios_share_rounded),
+                        label: '导出 .moyue',
+                        onTap: _exportDocument,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-          ],
-        ),
-        body: SafeArea(
-          bottom: false,
-          child: MediaQuery(
-            data: MediaQuery.of(context)
-                .copyWith(textScaler: TextScaler.linear(_textScale)),
-            child: _document.kind == DocumentKind.markdown
-                ? _MarkdownDocument(
-                    data: _document.content,
-                    document: _document,
-                  )
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 92),
-                    child: NativeHtmlView(
-                      data: _document.content,
-                      resourceLoader: (source) => MoyueStorageService.instance
-                          .readLinkedResource(_document, source),
-                    ),
-                  ),
-          ),
-        ),
-        bottomNavigationBar: GlassToolbar(
-          height: 62,
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 9),
-          children: [
-            GlassButtonGroup.icons(
-              items: [
-                GlassButtonGroupItem(
-                  icon: Icon(
-                    isInk ? Icons.water_drop : Icons.water_drop_outlined,
-                  ),
-                  label: '墨模式',
-                  onTap: () => display.setMode(
-                    isInk ? ReadingDisplayMode.paper : ReadingDisplayMode.ink,
-                  ),
-                ),
-                GlassButtonGroupItem(
-                  icon: const Icon(Icons.format_list_bulleted_rounded),
-                  label: '目录',
-                  onTap: () => _message('目录导航将在文档索引阶段接入'),
-                ),
-                GlassButtonGroupItem(
-                  icon: const Icon(Icons.text_decrease_rounded),
-                  label: '缩小字体',
-                  onTap: () => setState(
-                    () => _textScale = (_textScale - 0.1).clamp(0.8, 1.4),
-                  ),
-                ),
-                GlassButtonGroupItem(
-                  icon: const Icon(Icons.text_increase_rounded),
-                  label: '放大字体',
-                  onTap: () => setState(
-                    () => _textScale = (_textScale + 0.1).clamp(0.8, 1.4),
-                  ),
-                ),
-                GlassButtonGroupItem(
-                  icon: const Icon(Icons.ios_share_rounded),
-                  label: '导出 .moyue',
-                  onTap: _exportDocument,
-                ),
-              ],
             ),
           ],
         ),
@@ -172,7 +135,12 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
 
   Future<void> _reloadDocument() async {
     final documents = await MoyueStorageService.instance.loadDocuments();
-    final matches = documents.where(
+    final folders = await MoyueStorageService.instance.loadFolders();
+    final allDocuments = [
+      ...documents,
+      ...folders.expand((folder) => folder.documents),
+    ];
+    final matches = allDocuments.where(
       (item) => item.filePath == _document.filePath,
     );
     if (mounted && matches.isNotEmpty) {

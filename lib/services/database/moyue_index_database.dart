@@ -105,6 +105,25 @@ class MoyueIndexDatabase {
     });
   }
 
+  Future<void> insertDocument({
+    required DocumentRecord document,
+    required Future<void> Function() writeFile,
+  }) async {
+    final db = await _db;
+    await db.transaction((transaction) async {
+      await transaction.insert('documents', document.toMap());
+      await transaction.rawUpdate(
+        '''
+        UPDATE folders
+        SET entry_count = entry_count + 1, updated_at = ?
+        WHERE id = ?
+      ''',
+        [document.updatedAt.millisecondsSinceEpoch, document.folderId],
+      );
+      await writeFile();
+    });
+  }
+
   Future<List<Map<String, Object?>>> primaryDocuments() async {
     final db = await _db;
     return db.rawQuery('''
@@ -203,8 +222,37 @@ class MoyueIndexDatabase {
         'name': document.name,
         'updated_at': document.updatedAt.millisecondsSinceEpoch,
       },
-      where: 'id = ?',
+      where: 'id = ? AND single = 1',
       whereArgs: [document.folderId],
+    );
+  }
+
+  Future<void> deleteDocument(String documentId, String folderId) async {
+    final db = await _db;
+    await db.transaction((transaction) async {
+      await transaction.delete(
+        'documents',
+        where: 'id = ?',
+        whereArgs: [documentId],
+      );
+      await transaction.rawUpdate(
+        '''
+        UPDATE folders
+        SET entry_count = MAX(0, entry_count - 1), updated_at = ?
+        WHERE id = ?
+      ''',
+        [DateTime.now().millisecondsSinceEpoch, folderId],
+      );
+    });
+  }
+
+  Future<void> renameFolder(String folderId, String name) async {
+    final db = await _db;
+    await db.update(
+      'folders',
+      {'name': name, 'updated_at': DateTime.now().millisecondsSinceEpoch},
+      where: 'id = ?',
+      whereArgs: [folderId],
     );
   }
 
