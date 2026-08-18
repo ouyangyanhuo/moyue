@@ -448,11 +448,11 @@ class _FolderPageState extends State<_FolderPage> {
               title: _selecting ? '已选择 ${_selectedIds.length} 项' : _folder.name,
               onBack: () => Navigator.pop(context),
               actionIcon: _selecting ? Icons.delete_rounded : Icons.add_rounded,
-              actionLabel: _selecting ? '删除所选文档' : '导入文档到文件夹',
+              actionLabel: _selecting ? '删除所选文档' : '新建或导入文档',
               actionColor: _selecting
                   ? Theme.of(context).colorScheme.error
                   : null,
-              onAction: _selecting ? _deleteSelected : _importDocument,
+              onAction: _selecting ? _deleteSelected : _showAddMenu,
               onTitleTap: _selecting ? null : _renameFolder,
             ),
           ),
@@ -531,6 +531,57 @@ class _FolderPageState extends State<_FolderPage> {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('重命名失败：$error')));
+      }
+    }
+  }
+
+  Future<void> _showAddMenu() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.note_add_outlined),
+              title: const Text('新建 Markdown'),
+              onTap: () => Navigator.pop(context, 'create'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.file_open_outlined),
+              title: const Text('导入 Markdown 或 HTML'),
+              onTap: () => Navigator.pop(context, 'import'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'create') await _createMarkdown();
+    if (action == 'import') await _importDocument();
+  }
+
+  Future<void> _createMarkdown() async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) =>
+          const _FolderNameDialog(title: '新建 Markdown', actionLabel: '创建'),
+    );
+    if (name == null || !mounted) return;
+    try {
+      final document = await MoyueStorageService.instance
+          .createMarkdownInFolder(folder: _folder, title: name);
+      await _reloadFolder();
+      if (!mounted) return;
+      Navigator.of(context).restorablePush<ReadingDocument?>(
+        markdownEditorRoute,
+        arguments: markdownEditorArguments(document),
+      );
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('创建 Markdown 失败：$error')));
       }
     }
   }

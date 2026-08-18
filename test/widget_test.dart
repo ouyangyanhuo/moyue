@@ -87,7 +87,7 @@ void main() {
 
     await tester.restartAndRestore();
 
-    expect(find.text('恢复测试'), findsOneWidget);
+    expect(find.text('恢复测试'), findsWidgets);
     expect(find.text('不会因系统回收而丢失的正文'), findsOneWidget);
   });
 
@@ -168,6 +168,13 @@ void main() {
     final canvasHeight = tester
         .getSize(find.byKey(const ValueKey('edit')))
         .height;
+    expect(tester.getCenter(find.bySemanticsLabel('返回')).dy, lessThan(80));
+    expect(
+      tester
+          .getBottomLeft(find.byKey(const ValueKey('editor-writing-surface')))
+          .dy,
+      920,
+    );
     expect(find.byIcon(Icons.format_bold_rounded), findsNothing);
 
     await tester.tap(find.byType(TextField).last);
@@ -179,8 +186,10 @@ void main() {
 
     expect(find.byIcon(Icons.format_bold_rounded), findsOneWidget);
     expect(
-      tester.getBottomLeft(find.byIcon(Icons.format_bold_rounded)).dy,
-      lessThan(640),
+      tester
+          .getBottomLeft(find.byKey(const ValueKey('keyboard-format-dock')))
+          .dy,
+      622,
     );
     expect(
       tester.getSize(find.byKey(const ValueKey('edit'))).height,
@@ -259,7 +268,16 @@ void main() {
     await tester.tap(find.text('资料夹'));
     await tester.pumpAndSettle();
 
-    expect(find.bySemanticsLabel('导入文档到文件夹'), findsOneWidget);
+    expect(find.bySemanticsLabel('新建或导入文档'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('新建或导入文档'));
+    await tester.pumpAndSettle();
+    expect(find.text('新建 Markdown'), findsOneWidget);
+    expect(find.text('导入 Markdown 或 HTML'), findsOneWidget);
+    await tester.tap(find.text('新建 Markdown'));
+    await tester.pumpAndSettle();
+    expect(find.text('新建 Markdown'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('资料夹'));
     await tester.pumpAndSettle();
     expect(find.text('修改文件夹名称'), findsOneWidget);
@@ -288,8 +306,14 @@ void main() {
     await tester.pump();
 
     expect(find.text('正文内容'), findsOneWidget);
+    final initialBodyTop = tester.getTopLeft(find.text('正文内容')).dy;
+    expect(initialBodyTop, greaterThanOrEqualTo(72));
+    await tester.drag(find.text('正文内容'), const Offset(0, -90));
+    await tester.pump();
+    expect(tester.getTopLeft(find.text('正文内容')).dy, lessThan(initialBodyTop));
     expect(find.bySemanticsLabel('返回'), findsOneWidget);
     expect(find.bySemanticsLabel('编辑 Markdown'), findsOneWidget);
+    expect(tester.getCenter(find.bySemanticsLabel('返回')).dy, lessThan(80));
     expect(find.text('墨模式'), findsNothing);
     expect(find.byIcon(Icons.water_drop_outlined), findsNothing);
     expect(

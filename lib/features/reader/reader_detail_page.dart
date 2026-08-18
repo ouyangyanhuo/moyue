@@ -39,6 +39,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final readerTopInset = MediaQuery.paddingOf(context).top + 72;
     return PopScope<void>(
       canPop: true,
       child: Scaffold(
@@ -54,9 +55,15 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                     ? _MarkdownDocument(
                         data: _document.content,
                         document: _document,
+                        topInset: readerTopInset,
                       )
                     : SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 118),
+                        padding: EdgeInsets.fromLTRB(
+                          24,
+                          readerTopInset,
+                          24,
+                          118,
+                        ),
                         child: NativeHtmlView(
                           data: _document.content,
                           resourceLoader: (source) => MoyueStorageService
@@ -66,18 +73,23 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                       ),
               ),
             ),
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                child: FloatingDocumentHeader(
-                  title: _document.title,
-                  onBack: () => Navigator.of(context).pop(),
-                  actionIcon: Icons.edit_outlined,
-                  actionLabel: '编辑 Markdown',
-                  onAction: _document.kind == DocumentKind.markdown
-                      ? _editDocument
-                      : null,
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: FloatingDocumentHeader(
+                    title: _document.title,
+                    onBack: () => Navigator.of(context).pop(),
+                    actionIcon: Icons.edit_outlined,
+                    actionLabel: '编辑 Markdown',
+                    onAction: _document.kind == DocumentKind.markdown
+                        ? _editDocument
+                        : null,
+                  ),
                 ),
               ),
             ),
@@ -175,9 +187,14 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
 }
 
 class _MarkdownDocument extends StatelessWidget {
-  const _MarkdownDocument({required this.data, required this.document});
+  const _MarkdownDocument({
+    required this.data,
+    required this.document,
+    required this.topInset,
+  });
   final String data;
   final ReadingDocument document;
+  final double topInset;
 
   @override
   Widget build(BuildContext context) {
@@ -205,7 +222,7 @@ class _MarkdownDocument extends StatelessWidget {
           );
         },
       ),
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 92),
+      padding: EdgeInsets.fromLTRB(24, topInset, 24, 92),
       onTapLink: (_, href, _) async {
         final uri = href == null ? null : Uri.tryParse(href);
         if (uri != null) {

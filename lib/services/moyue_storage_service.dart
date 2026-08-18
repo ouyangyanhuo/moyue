@@ -53,6 +53,21 @@ class MoyueStorageService extends ChangeNotifier {
     return document;
   }
 
+  Future<ReadingDocument> createMarkdownInFolder({
+    required LibraryFolder folder,
+    required String title,
+  }) {
+    final trimmed = title.trim();
+    final fileName = trimmed.toLowerCase().endsWith('.md')
+        ? trimmed
+        : '$trimmed.md';
+    return importIntoFolder(
+      folder: folder,
+      fileName: fileName,
+      bytes: Uint8List(0),
+    );
+  }
+
   Future<ReadingDocument> saveDocument({
     required String title,
     required String content,

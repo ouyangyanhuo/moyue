@@ -7,6 +7,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
+import 'package:moyue_application/widgets/scrolling_title.dart';
 
 Route<ReadingDocument?> markdownEditorRoute(
   BuildContext context,
@@ -147,108 +148,154 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
       child: Scaffold(
         resizeToAvoidBottomInset: false,
         extendBody: true,
-        extendBodyBehindAppBar: true,
         backgroundColor: Colors.transparent,
-        appBar: GlassAppBar(
-          toolbarHeight: 58,
-          leading: GlassIconButton(
-            icon: const Icon(CupertinoIcons.chevron_back, size: 21),
-            onPressed: _closeEditor,
-            semanticLabel: '返回',
-            size: 44,
-            useOwnLayer: true,
-          ),
-          title: GlassContainer(
-            width: 132,
-            height: 40,
-            useOwnLayer: true,
-            shape: const LiquidRoundedSuperellipse(borderRadius: 12),
-            alignment: Alignment.center,
-            child: Text(
-              _mode.value == 0 ? '笔记' : '阅读预览',
-              style: theme.textTheme.labelLarge,
-            ),
-          ),
-          actions: [
-            GlassIconButton(
-              icon: Icon(
-                _mode.value == 0 ? CupertinoIcons.eye : CupertinoIcons.pencil,
-                size: 20,
-              ),
-              onPressed: () => setState(() {
-                _mode.value = _mode.value == 0 ? 1 : 0;
-              }),
-              semanticLabel: _mode.value == 0 ? '预览' : '继续编辑',
-              size: 44,
-              useOwnLayer: true,
-            ),
-            GlassIconButton(
-              icon: _saving
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(CupertinoIcons.check_mark_circled, size: 21),
-              onPressed: _saving ? null : _save,
-              semanticLabel: '保存',
-              size: 44,
-              useOwnLayer: true,
-            ),
-          ],
-        ),
         body: Stack(
+          fit: StackFit.expand,
           children: [
             const Positioned.fill(child: MoyueBackdrop()),
             SafeArea(
               bottom: false,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(22, 8, 22, 10),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _dirty.value
-                              ? Icons.cloud_upload_outlined
-                              : Icons.cloud_done_outlined,
-                          size: 15,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 7),
-                        Text(
-                          _saving
-                              ? '正在保存…'
-                              : _dirty.value
-                              ? '草稿已进入恢复队列'
-                              : '已自动保存',
-                          style: theme.textTheme.labelSmall?.copyWith(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 66),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(22, 8, 22, 10),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _dirty.value
+                                ? Icons.cloud_upload_outlined
+                                : Icons.cloud_done_outlined,
+                            size: 15,
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
+                          const SizedBox(width: 7),
+                          Text(
+                            _saving
+                                ? '正在保存…'
+                                : _dirty.value
+                                ? '草稿已进入恢复队列'
+                                : '已自动保存',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${_body.value.text.characters.length} 字',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        child: _mode.value == 0
+                            ? _EditorCanvas(
+                                title: _title.value,
+                                body: _body.value,
+                                titleFocus: _titleFocus,
+                                bodyFocus: _bodyFocus,
+                              )
+                            : _PreviewCanvas(body: _body.value.text),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: SizedBox(
+                    height: 44,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: GlassIconButton(
+                            icon: const Icon(
+                              CupertinoIcons.chevron_back,
+                              size: 21,
+                            ),
+                            onPressed: _closeEditor,
+                            semanticLabel: '返回',
+                            size: 44,
+                            useOwnLayer: true,
+                          ),
                         ),
-                        const Spacer(),
-                        Text(
-                          '${_body.value.text.characters.length} 字',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                        GlassContainer(
+                          width: 150,
+                          height: 42,
+                          useOwnLayer: true,
+                          shape: const LiquidRoundedSuperellipse(
+                            borderRadius: 12,
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          alignment: Alignment.center,
+                          child: ScrollingTitle(
+                            _title.value.text.trim().isEmpty
+                                ? '新建 Markdown'
+                                : _title.value.text.trim(),
+                            autoScroll: true,
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.labelLarge,
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              GlassIconButton(
+                                icon: Icon(
+                                  _mode.value == 0
+                                      ? CupertinoIcons.eye
+                                      : CupertinoIcons.pencil,
+                                  size: 20,
+                                ),
+                                onPressed: () => setState(() {
+                                  _mode.value = _mode.value == 0 ? 1 : 0;
+                                }),
+                                semanticLabel: _mode.value == 0 ? '预览' : '继续编辑',
+                                size: 44,
+                                useOwnLayer: true,
+                              ),
+                              const SizedBox(width: 4),
+                              GlassIconButton(
+                                icon: _saving
+                                    ? const SizedBox.square(
+                                        dimension: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        CupertinoIcons.check_mark_circled,
+                                        size: 21,
+                                      ),
+                                onPressed: _saving ? null : _save,
+                                semanticLabel: '保存',
+                                size: 44,
+                                useOwnLayer: true,
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 220),
-                      child: _mode.value == 0
-                          ? _EditorCanvas(
-                              title: _title.value,
-                              body: _body.value,
-                              titleFocus: _titleFocus,
-                              bodyFocus: _bodyFocus,
-                            )
-                          : _PreviewCanvas(body: _body.value.text),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
             _SettledKeyboardDock(
@@ -374,8 +421,9 @@ class _EditorCanvas extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       key: const ValueKey('edit'),
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 92),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: DecoratedBox(
+        key: const ValueKey('editor-writing-surface'),
         decoration: BoxDecoration(
           color: theme.colorScheme.surface.withValues(alpha: 0.92),
           borderRadius: BorderRadius.circular(22),
@@ -507,8 +555,11 @@ class _SettledKeyboardDockState extends State<_SettledKeyboardDock> {
     return Positioned(
       left: 12,
       right: 12,
-      bottom: widget.keyboardInset,
-      child: widget.child,
+      bottom: widget.keyboardInset + 10,
+      child: KeyedSubtree(
+        key: const ValueKey('keyboard-format-dock'),
+        child: widget.child,
+      ),
     );
   }
 }

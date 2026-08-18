@@ -23,6 +23,8 @@ class ScrollingTitle extends StatefulWidget {
 class _ScrollingTitleState extends State<ScrollingTitle> {
   final ScrollController _controller = ScrollController();
   int _run = 0;
+  Timer? _waitTimer;
+  Completer<void>? _waitCompleter;
 
   @override
   void initState() {
@@ -51,7 +53,7 @@ class _ScrollingTitleState extends State<ScrollingTitle> {
       return;
     }
     final run = ++_run;
-    await Future<void>.delayed(const Duration(milliseconds: 450));
+    await _wait(const Duration(milliseconds: 450));
     while (mounted && run == _run && _controller.hasClients) {
       final extent = _controller.position.maxScrollExtent;
       if (extent <= 0) return;
@@ -61,19 +63,43 @@ class _ScrollingTitleState extends State<ScrollingTitle> {
         curve: Curves.linear,
       );
       if (!mounted || run != _run) return;
-      await Future<void>.delayed(const Duration(milliseconds: 650));
+      await _wait(const Duration(milliseconds: 650));
+      if (!mounted || run != _run) return;
       await _controller.animateTo(
         0,
         duration: Duration(milliseconds: 700 + (extent * 12).round()),
         curve: Curves.easeOutCubic,
       );
       if (!mounted || run != _run) return;
-      await Future<void>.delayed(const Duration(milliseconds: 650));
+      await _wait(const Duration(milliseconds: 650));
     }
+  }
+
+  Future<void> _wait(Duration duration) {
+    _cancelWait();
+    final completer = Completer<void>();
+    _waitCompleter = completer;
+    _waitTimer = Timer(duration, () {
+      if (!completer.isCompleted) completer.complete();
+      if (identical(_waitCompleter, completer)) {
+        _waitCompleter = null;
+        _waitTimer = null;
+      }
+    });
+    return completer.future;
+  }
+
+  void _cancelWait() {
+    _waitTimer?.cancel();
+    _waitTimer = null;
+    final completer = _waitCompleter;
+    _waitCompleter = null;
+    if (completer != null && !completer.isCompleted) completer.complete();
   }
 
   void _stop({bool reset = false}) {
     _run++;
+    _cancelWait();
     if ((reset || !widget.autoScroll) && _controller.hasClients) {
       _controller.jumpTo(0);
     }
@@ -82,6 +108,7 @@ class _ScrollingTitleState extends State<ScrollingTitle> {
   @override
   void dispose() {
     _run++;
+    _cancelWait();
     _controller.dispose();
     super.dispose();
   }
