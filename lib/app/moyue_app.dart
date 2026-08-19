@@ -136,18 +136,21 @@ class _MoyueShellState extends State<MoyueShell> {
     final theme = Theme.of(context);
     final display = DisplayPreferencesScope.of(context);
     final dockSettings = LiquidGlassSettings(
+      ambientRim: 1,
       thickness: 30,
       blur: 3,
-      chromaticAberration: 0.3,
-      lightIntensity: 0.6,
+      chromaticAberration: 0.45,
+      lightIntensity: 0.4,
       refractiveIndex: 1.59,
       saturation: 0.7,
       ambientStrength: 1,
+      fresnelStrength: 1,
       lightAngle: 2.356,
-      glassColor: Colors.white.withValues(alpha: display.glassOpacity),
+      glowIntensity: 0.75,
       shadowElevation: 0,
-      shadow: moyueGlassShadow(display.glassOpacity),
       edgeAbsorption: 0.06,
+      shadow: moyueGlassShadow(display.glassOpacity),
+      glassColor: Colors.white.withValues(alpha: display.glassOpacity),
     );
     final pages = [
       LibraryPage(documents: _documents, folders: _folders, loading: _loading),

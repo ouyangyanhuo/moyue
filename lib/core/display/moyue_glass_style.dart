@@ -11,7 +11,7 @@ List<BoxShadow> moyueGlassShadow(double opacity) {
   final shadowOpacity = 0.065 - (opacity.clamp(0.0, 1.0) * 0.025);
   return [
     BoxShadow(
-      color: Colors.black.withValues(alpha: shadowOpacity),
+      color: const Color.fromARGB(255, 0, 0, 0).withValues(alpha: shadowOpacity),
       blurRadius: 20,
       spreadRadius: -3,
       offset: const Offset(0, 6),
@@ -24,18 +24,20 @@ List<BoxShadow> moyueGlassShadow(double opacity) {
 LiquidGlassSettings moyueGlassSettings(BuildContext context) {
   final opacity = DisplayPreferencesScope.maybeOf(context)?.glassOpacity ?? 0;
   return LiquidGlassSettings(
-    glassColor: Colors.white.withValues(alpha: opacity),
-    thickness: 12,
+    ambientRim: 1,
+    thickness: 30,
     blur: 5,
-    chromaticAberration: 0.01,
+    chromaticAberration: 0.45,
     lightIntensity: 0.2,
-    ambientStrength: 0,
-    fresnelStrength: 0,
-    refractiveIndex: 1.16,
-    saturation: 1.15,
+    refractiveIndex: 1.59,
+    saturation: 1.1,
+    ambientStrength: 1,
+    fresnelStrength: 0.4,
+    lightAngle: 2.356,
     glowIntensity: 0.75,
     shadowElevation: 0,
-    shadow: moyueGlassShadow(opacity),
     edgeAbsorption: 0.06,
+    shadow: moyueGlassShadow(opacity),
+    glassColor: Colors.white.withValues(alpha: opacity),
   );
 }
