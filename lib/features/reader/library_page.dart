@@ -1,7 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 import 'package:moyue_application/features/editor/editor_page.dart';
 import 'package:moyue_application/features/reader/reader_detail_page.dart';
 import 'package:moyue_application/models/library_folder.dart';
@@ -63,7 +63,7 @@ class _LibraryPageState extends State<LibraryPage> {
             searchHint: '搜索文档',
             onSearch: (value) => setState(() => _query = value),
             showSearch: !_selecting,
-            trailing: GlassIconButton(
+            trailing: MoyueGlassIconButton(
               icon: Icon(
                 _selecting ? Icons.delete_rounded : Icons.add_rounded,
                 color: _selecting ? Theme.of(context).colorScheme.error : null,

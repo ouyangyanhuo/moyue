@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
@@ -214,7 +215,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                       children: [
                         Align(
                           alignment: Alignment.centerLeft,
-                          child: GlassIconButton(
+                          child: MoyueGlassIconButton(
                             icon: const Icon(
                               CupertinoIcons.chevron_back,
                               size: 21,
@@ -230,6 +231,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                           width: 150,
                           height: 42,
                           useOwnLayer: true,
+                          quality: GlassQuality.standard,
                           settings: moyueGlassSettings(context),
                           shape: const LiquidRoundedSuperellipse(
                             borderRadius: 12,
@@ -250,7 +252,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              GlassIconButton(
+                              MoyueGlassIconButton(
                                 icon: Icon(
                                   _mode.value == 0
                                       ? CupertinoIcons.eye
@@ -266,7 +268,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                                 settings: moyueGlassSettings(context),
                               ),
                               const SizedBox(width: 4),
-                              GlassIconButton(
+                              MoyueGlassIconButton(
                                 icon: _saving
                                     ? const SizedBox.square(
                                         dimension: 18,

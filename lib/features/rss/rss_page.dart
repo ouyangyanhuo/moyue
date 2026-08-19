@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/services/rss_service.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
@@ -79,7 +79,7 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
               searchHint: '搜索订阅或文章',
               onSearch: (value) => setState(() => _query = value),
               showSearch: !_selecting,
-              trailing: GlassIconButton(
+              trailing: MoyueGlassIconButton(
                 icon: Icon(
                   _selecting ? Icons.delete_rounded : Icons.add_rounded,
                   color: _selecting

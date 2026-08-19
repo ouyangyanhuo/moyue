@@ -52,3 +52,7 @@ __pycache__/
 # vscode 临时文件。
 .vscode-test/
 .vscode/
+
+# Agent 相关文件。
+.agent/
+AGENTS.md

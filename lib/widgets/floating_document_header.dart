@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 import 'package:moyue_application/widgets/scrolling_title.dart';
 
 class FloatingDocumentHeader extends StatelessWidget {
@@ -26,7 +27,7 @@ class FloatingDocumentHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      GlassIconButton(
+      MoyueGlassIconButton(
         onPressed: onBack,
         icon: const Icon(Icons.chevron_left_rounded, size: 22),
         semanticLabel: '返回',
@@ -44,6 +45,7 @@ class FloatingDocumentHeader extends StatelessWidget {
             child: GlassContainer(
               height: 42,
               useOwnLayer: true,
+              quality: GlassQuality.standard,
               settings: moyueGlassSettings(context),
               shape: const LiquidRoundedSuperellipse(borderRadius: 12),
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -59,7 +61,7 @@ class FloatingDocumentHeader extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 8),
-      GlassIconButton(
+      MoyueGlassIconButton(
         icon: Icon(actionIcon, color: actionColor),
         semanticLabel: actionLabel,
         onPressed: onAction,

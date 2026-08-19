@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 
 class ExpandableGlassSearch extends StatefulWidget {
   const ExpandableGlassSearch({
@@ -52,19 +53,38 @@ class _ExpandableGlassSearchState extends State<ExpandableGlassSearch> {
           ? SizedBox(
               key: const ValueKey('expanded-search'),
               width: MediaQuery.sizeOf(context).width.clamp(0, 268),
-              child: GlassSearchBar(
-                controller: _controller,
-                focusNode: _focusNode,
-                placeholder: widget.hintText,
-                onChanged: widget.onChanged,
-                onCancel: _close,
-                showsCancelButton: true,
-                useOwnLayer: true,
-                settings: moyueGlassSettings(context),
-                height: 46,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GlassTextField.search(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      placeholder: widget.hintText,
+                      prefixIcon: const Icon(Icons.search_rounded, size: 19),
+                      onChanged: _handleChanged,
+                      suffixIcon: _controller.text.isEmpty
+                          ? null
+                          : const Icon(Icons.cancel_rounded, size: 18),
+                      onSuffixTap: _controller.text.isEmpty ? null : _clear,
+                      useOwnLayer: true,
+                      quality: GlassQuality.standard,
+                      settings: moyueGlassSettings(context),
+                      interactionBehavior: GlassInteractionBehavior.scaleOnly,
+                      height: 46,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  MoyueGlassIconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    onPressed: _close,
+                    semanticLabel: '关闭搜索',
+                    size: 46,
+                    settings: moyueGlassSettings(context),
+                  ),
+                ],
               ),
             )
-          : GlassIconButton(
+          : MoyueGlassIconButton(
               key: const ValueKey('round-search-button'),
               icon: const Icon(Icons.search_rounded),
               onPressed: _open,
@@ -74,5 +94,16 @@ class _ExpandableGlassSearchState extends State<ExpandableGlassSearch> {
               settings: moyueGlassSettings(context),
             ),
     );
+  }
+
+  void _handleChanged(String value) {
+    setState(() {});
+    widget.onChanged(value);
+  }
+
+  void _clear() {
+    _controller.clear();
+    widget.onChanged('');
+    setState(() {});
   }
 }

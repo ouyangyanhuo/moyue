@@ -14,6 +14,7 @@ import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/models/library_folder.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/widgets/scrolling_title.dart';
+import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 
 void main() {
   testWidgets('核心 Dock 仅包含阅读、订阅和设置，并展示空状态', (tester) async {
@@ -61,13 +62,30 @@ void main() {
     expect(glassTheme.data.dark.settings?.fresnelStrength, 0);
     expect(glassTheme.data.light.settings?.edgeAbsorption, 0.06);
     expect(glassTheme.data.dark.settings?.edgeAbsorption, 0.09);
-    for (final button in tester.widgetList<GlassIconButton>(
-      find.byType(GlassIconButton),
+    for (final button in tester.widgetList<MoyueGlassIconButton>(
+      find.byType(MoyueGlassIconButton),
     )) {
       expect(button.settings?.shadowElevation, 0);
       expect(button.settings?.shadow, isNotEmpty);
       expect(button.settings?.shadow?.single.spreadRadius, -3);
       expect(button.settings?.edgeAbsorption, 0.06);
+      expect(button.settings?.thickness, 20);
+      expect(button.settings?.chromaticAberration, 0.025);
+      expect(button.settings?.refractiveIndex, 1.32);
+    }
+    for (final button in tester.widgetList<GlassButton>(
+      find.descendant(
+        of: find.byType(MoyueGlassIconButton),
+        matching: find.byType(GlassButton),
+      ),
+    )) {
+      expect(button.quality, GlassQuality.premium);
+      expect(button.glowColor, Colors.transparent);
+      expect(button.glowOpacity, 0);
+      expect(button.ambientBaseLight, 0);
+      expect(button.anchorStretch, isTrue);
+      expect(button.stretch, 0.46);
+      expect(button.settings?.shadow, isEmpty);
     }
   });
 
@@ -89,6 +107,15 @@ void main() {
     await tester.tap(find.bySemanticsLabel('搜索').first);
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byKey(const ValueKey('expanded-search')), findsOneWidget);
+    final searchField = tester.widget<GlassTextField>(
+      find.descendant(
+        of: find.byKey(const ValueKey('expanded-search')),
+        matching: find.byType(GlassTextField),
+      ),
+    );
+    expect(searchField.quality, GlassQuality.standard);
+    expect(searchField.interactionBehavior, GlassInteractionBehavior.scaleOnly);
+    expect(find.bySemanticsLabel('关闭搜索'), findsOneWidget);
 
     await tester.enterText(find.byType(EditableText).first, '不存在的文档');
     await tester.pump(const Duration(milliseconds: 300));
