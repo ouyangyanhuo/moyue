@@ -4,7 +4,7 @@ import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/services/rss_service.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
-import 'package:moyue_application/widgets/page_heading.dart';
+import 'package:moyue_application/widgets/floating_page_shell.dart';
 import 'package:moyue_application/widgets/section_label.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -64,99 +64,108 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
         })
         .toList(growable: false);
 
-    return RefreshIndicator(
-      onRefresh: _refreshAll,
-      child: CustomScrollView(
-        key: const PageStorageKey('rss-scroll'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          SliverToBoxAdapter(
-            child: PageHeading(
-              title: _selecting ? '已选择 ${_selectedSourceIds.length} 项' : '订阅',
-              subtitle: _selecting
-                  ? '轻点订阅源可继续选择或取消'
-                  : '${_sources.length} 个订阅源 · 下拉即可刷新',
-              searchHint: '搜索订阅或文章',
-              onSearch: (value) => setState(() => _query = value),
-              showSearch: !_selecting,
-              trailing: MoyueGlassIconButton(
-                icon: Icon(
-                  _selecting ? Icons.delete_rounded : Icons.add_rounded,
-                  color: _selecting
-                      ? Theme.of(context).colorScheme.error
-                      : null,
-                ),
-                onPressed: _selecting ? _deleteSelectedSources : _showAddSource,
-                semanticLabel: _selecting ? '删除所选订阅' : '添加订阅',
-                size: 46,
-                useOwnLayer: true,
-                settings: moyueGlassSettings(context),
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: SectionLabel(
-              '订阅源',
-              action: Text(
-                '点按单独刷新',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            sliver: sources.isEmpty
-                ? SliverToBoxAdapter(
-                    child: _EmptySources(
-                      hasQuery: query.isNotEmpty,
-                      onAdd: _showAddSource,
-                    ),
-                  )
-                : SliverList.separated(
-                    itemCount: sources.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 6),
-                    itemBuilder: (context, index) {
-                      final source = sources[index];
-                      return _FeedSourceTile(
-                        source: source,
-                        loading: _loadingSourceId == source.id,
-                        selected: _selectedSourceIds.contains(source.id),
-                        onLongPress: () => _toggleSourceSelection(source),
-                        onTap: () => _selecting
-                            ? _toggleSourceSelection(source)
-                            : _refreshSource(source),
-                      );
-                    },
-                  ),
-          ),
-          SliverToBoxAdapter(
-            child: SectionLabel(
-              query.isEmpty ? '最新文章' : '搜索结果',
-              action: Text(
-                '${articles.length}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-          ),
-          if (articles.isEmpty)
+    final selectingTitle = '已选择 ${_selectedSourceIds.length} 项';
+    final selectingSubtitle = '轻点订阅源可继续选择或取消';
+
+    // 标题随列表滚动正常收起；玻璃按钮固定在视口之外的浮层里
+    // （与阅读页浮动头部一致），获得完全相同的 premium 按压效果。
+    return FloatingPageShell(
+      title: _selecting ? selectingTitle : '订阅',
+      subtitle: _selecting
+          ? selectingSubtitle
+          : '${_sources.length} 个订阅源 · 下拉即可刷新',
+      searchHint: '搜索订阅或文章',
+      onSearch: (value) => setState(() => _query = value),
+      showSearch: !_selecting,
+      trailing: MoyueGlassIconButton(
+        icon: Icon(
+          _selecting ? Icons.delete_rounded : Icons.add_rounded,
+          color: _selecting ? Theme.of(context).colorScheme.error : null,
+        ),
+        onPressed: _selecting ? _deleteSelectedSources : _showAddSource,
+        semanticLabel: _selecting ? '删除所选订阅' : '添加订阅',
+        size: 44,
+        useOwnLayer: true,
+        settings: moyueGlassSettings(context),
+      ),
+      child: RefreshIndicator(
+        onRefresh: _refreshAll,
+        child: CustomScrollView(
+          key: const PageStorageKey('rss-scroll'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
             SliverToBoxAdapter(
-              child: _EmptyArticles(hasQuery: query.isNotEmpty),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 118),
-              sliver: SliverList.separated(
-                itemCount: articles.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (context, index) => _ArticleCard(
-                  article: articles[index],
-                  onTap: () => _openArticle(articles[index]),
+              child: FloatingPageTitle(
+                title: _selecting ? selectingTitle : '订阅',
+                subtitle: _selecting
+                    ? selectingSubtitle
+                    : '${_sources.length} 个订阅源 · 下拉即可刷新',
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: SectionLabel(
+                '订阅源',
+                action: Text(
+                  '点按单独刷新',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
-        ],
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              sliver: sources.isEmpty
+                  ? SliverToBoxAdapter(
+                      child: _EmptySources(
+                        hasQuery: query.isNotEmpty,
+                        onAdd: _showAddSource,
+                      ),
+                    )
+                  : SliverList.separated(
+                      itemCount: sources.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 6),
+                      itemBuilder: (context, index) {
+                        final source = sources[index];
+                        return _FeedSourceTile(
+                          source: source,
+                          loading: _loadingSourceId == source.id,
+                          selected: _selectedSourceIds.contains(source.id),
+                          onLongPress: () => _toggleSourceSelection(source),
+                          onTap: () => _selecting
+                              ? _toggleSourceSelection(source)
+                              : _refreshSource(source),
+                        );
+                      },
+                    ),
+            ),
+            SliverToBoxAdapter(
+              child: SectionLabel(
+                query.isEmpty ? '最新文章' : '搜索结果',
+                action: Text(
+                  '${articles.length}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ),
+            if (articles.isEmpty)
+              SliverToBoxAdapter(
+                child: _EmptyArticles(hasQuery: query.isNotEmpty),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 118),
+                sliver: SliverList.separated(
+                  itemCount: articles.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) => _ArticleCard(
+                    article: articles[index],
+                    onTap: () => _openArticle(articles[index]),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

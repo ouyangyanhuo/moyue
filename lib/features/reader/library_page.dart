@@ -8,8 +8,8 @@ import 'package:moyue_application/models/library_folder.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/floating_document_header.dart';
+import 'package:moyue_application/widgets/floating_page_shell.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
-import 'package:moyue_application/widgets/page_heading.dart';
 import 'package:moyue_application/widgets/scrolling_title.dart';
 import 'package:moyue_application/widgets/section_label.dart';
 
@@ -53,92 +53,102 @@ class _LibraryPageState extends State<LibraryPage> {
         })
         .toList(growable: false);
 
-    return CustomScrollView(
-      key: const PageStorageKey('library-scroll'),
-      slivers: [
-        SliverToBoxAdapter(
-          child: PageHeading(
-            title: _selecting ? '已选择 $_selectionCount 项' : '阅读',
-            subtitle: _selecting ? '轻点条目可继续选择或取消' : '本地文档，安静阅读',
-            searchHint: '搜索文档',
-            onSearch: (value) => setState(() => _query = value),
-            showSearch: !_selecting,
-            trailing: MoyueGlassIconButton(
-              icon: Icon(
-                _selecting ? Icons.delete_rounded : Icons.add_rounded,
-                color: _selecting ? Theme.of(context).colorScheme.error : null,
-              ),
-              onPressed: _selecting ? _deleteSelected : _showAddMenu,
-              semanticLabel: _selecting ? '删除所选文档' : '新建或导入',
-              size: 46,
-              useOwnLayer: true,
-              settings: moyueGlassSettings(context),
+    final selectingTitle = '已选择 $_selectionCount 项';
+    final selectingSubtitle = '轻点条目可继续选择或取消';
+
+    // 标题随列表滚动正常收起；玻璃按钮固定在视口之外的浮层里
+    // （与阅读页浮动头部一致），获得完全相同的 premium 按压效果。
+    return FloatingPageShell(
+      title: _selecting ? selectingTitle : '阅读',
+      subtitle: _selecting ? selectingSubtitle : '本地文档，安静阅读',
+      searchHint: '搜索文档',
+      onSearch: (value) => setState(() => _query = value),
+      showSearch: !_selecting,
+      trailing: MoyueGlassIconButton(
+        icon: Icon(
+          _selecting ? Icons.delete_rounded : Icons.add_rounded,
+          color: _selecting ? Theme.of(context).colorScheme.error : null,
+        ),
+        onPressed: _selecting ? _deleteSelected : _showAddMenu,
+        semanticLabel: _selecting ? '删除所选文档' : '新建或导入',
+        size: 44,
+        useOwnLayer: true,
+        settings: moyueGlassSettings(context),
+      ),
+      child: CustomScrollView(
+        key: const PageStorageKey('library-scroll'),
+        slivers: [
+          SliverToBoxAdapter(
+            child: FloatingPageTitle(
+              title: _selecting ? selectingTitle : '阅读',
+              subtitle: _selecting ? selectingSubtitle : '本地文档，安静阅读',
             ),
           ),
-        ),
-        const SliverToBoxAdapter(child: SectionLabel('文档')),
-        if (widget.loading)
-          const SliverFillRemaining(
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (filtered.isEmpty && filteredFolders.isEmpty)
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: _EmptyLibrary(
-              hasQuery: query.isNotEmpty,
-              onCreate: _createMarkdown,
-              onImport: _importDocument,
-            ),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 118),
-            sliver: SliverList.separated(
-              itemCount: filteredFolders.length + filtered.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                if (index < filteredFolders.length) {
-                  final folder = filteredFolders[index];
-                  final selected = _selectedFolderIds.contains(folder.id);
-                  return _FolderTile(
-                    folder: folder,
+          const SliverToBoxAdapter(child: SectionLabel('文档')),
+          if (widget.loading)
+            const SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (filtered.isEmpty && filteredFolders.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _EmptyLibrary(
+                hasQuery: query.isNotEmpty,
+                onCreate: _createMarkdown,
+                onImport: _importDocument,
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 118),
+              sliver: SliverList.separated(
+                itemCount: filteredFolders.length + filtered.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  if (index < filteredFolders.length) {
+                    final folder = filteredFolders[index];
+                    final selected = _selectedFolderIds.contains(folder.id);
+                    return _FolderTile(
+                      folder: folder,
+                      selected: selected,
+                      onLongPress: () => _toggleFolderSelection(folder),
+                      onTap: () {
+                        if (_selecting) {
+                          _toggleFolderSelection(folder);
+                        } else {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => _FolderPage(folder: folder),
+                            ),
+                          );
+                        }
+                      },
+                    );
+                  }
+                  final document = filtered[index - filteredFolders.length];
+                  final selected = _selectedIds.contains(document.id);
+                  return _DocumentTile(
+                    document: document,
                     selected: selected,
-                    onLongPress: () => _toggleFolderSelection(folder),
+                    onLongPress: () => _toggleSelection(document),
                     onTap: () {
                       if (_selecting) {
-                        _toggleFolderSelection(folder);
+                        _toggleSelection(document);
                       } else {
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) => _FolderPage(folder: folder),
+                            builder: (_) =>
+                                ReaderDetailPage(document: document),
                           ),
                         );
                       }
                     },
                   );
-                }
-                final document = filtered[index - filteredFolders.length];
-                final selected = _selectedIds.contains(document.id);
-                return _DocumentTile(
-                  document: document,
-                  selected: selected,
-                  onLongPress: () => _toggleSelection(document),
-                  onTap: () {
-                    if (_selecting) {
-                      _toggleSelection(document);
-                    } else {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => ReaderDetailPage(document: document),
-                        ),
-                      );
-                    }
-                  },
-                );
-              },
+                },
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 

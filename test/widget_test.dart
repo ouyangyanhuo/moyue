@@ -14,6 +14,7 @@ import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/models/library_folder.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/widgets/scrolling_title.dart';
+import 'package:moyue_application/widgets/floating_document_header.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 
 void main() {
@@ -79,6 +80,9 @@ void main() {
         matching: find.byType(GlassButton),
       ),
     )) {
+      // 所有玻璃圆钮都必须保持 premium，并由 FloatingPageShell /
+      // FloatingDocumentHeader 固定在滚动视口之外的浮层里，
+      // 保证按压位移效果与阅读页完全一致。
       expect(button.quality, GlassQuality.premium);
       expect(button.glowColor, Colors.transparent);
       expect(button.glowOpacity, 0);
@@ -373,6 +377,16 @@ void main() {
     expect(find.bySemanticsLabel('返回'), findsOneWidget);
     expect(find.bySemanticsLabel('编辑 Markdown'), findsOneWidget);
     expect(tester.getCenter(find.bySemanticsLabel('返回')).dy, lessThan(80));
+    // 浮动头部的按钮固定在滚动内容之上（不在视口内），保留 premium 渲染。
+    final floatingQualities = tester
+        .widgetList<GlassButton>(
+          find.descendant(
+            of: find.byType(FloatingDocumentHeader),
+            matching: find.byType(GlassButton),
+          ),
+        )
+        .map((button) => button.quality);
+    expect(floatingQualities, everyElement(GlassQuality.premium));
     expect(find.text('墨模式'), findsNothing);
     expect(find.byIcon(Icons.water_drop_outlined), findsNothing);
     expect(

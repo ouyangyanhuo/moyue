@@ -7,6 +7,12 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 /// The package's stock icon button adds a white press veil. Moyue instead
 /// keeps the surface clear and lets the glass itself follow the pointer before
 /// springing home, matching the moving-glass language of the main dock.
+///
+/// Always renders at [GlassQuality.premium], so every call site MUST sit in a
+/// static overlay outside any scrolling viewport (floating headers, docks) —
+/// premium texture capture collapses into a black blob when the pressed
+/// button stretches inside a viewport. Host page headers via
+/// [FloatingPageShell] to guarantee that placement.
 class MoyueGlassIconButton extends StatelessWidget {
   const MoyueGlassIconButton({
     required this.icon,
