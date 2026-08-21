@@ -6,10 +6,10 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
+import 'package:moyue_application/widgets/moyue_glass_title_pill.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
-import 'package:moyue_application/widgets/scrolling_title.dart';
 
 Route<ReadingDocument?> markdownEditorRoute(
   BuildContext context,
@@ -227,25 +227,11 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                             settings: moyueGlassSettings(context),
                           ),
                         ),
-                        GlassContainer(
+                        MoyueGlassTitlePill(
                           width: 150,
-                          height: 42,
-                          useOwnLayer: true,
-                          quality: GlassQuality.standard,
-                          settings: moyueGlassSettings(context),
-                          shape: const LiquidRoundedSuperellipse(
-                            borderRadius: 12,
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          alignment: Alignment.center,
-                          child: ScrollingTitle(
-                            _title.value.text.trim().isEmpty
-                                ? '新建 Markdown'
-                                : _title.value.text.trim(),
-                            autoScroll: true,
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.labelLarge,
-                          ),
+                          title: _title.value.text.trim().isEmpty
+                              ? '新建 Markdown'
+                              : _title.value.text.trim(),
                         ),
                         Align(
                           alignment: Alignment.centerRight,

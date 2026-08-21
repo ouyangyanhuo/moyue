@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
-import 'package:moyue_application/widgets/scrolling_title.dart';
+import 'package:moyue_application/widgets/moyue_glass_title_pill.dart';
 
 class FloatingDocumentHeader extends StatelessWidget {
   const FloatingDocumentHeader({
@@ -37,27 +36,10 @@ class FloatingDocumentHeader extends StatelessWidget {
       ),
       const SizedBox(width: 8),
       Expanded(
-        child: Semantics(
-          button: onTitleTap != null,
-          label: onTitleTap == null ? null : '修改文件夹名称',
-          child: GestureDetector(
-            onTap: onTitleTap,
-            child: GlassContainer(
-              height: 42,
-              useOwnLayer: true,
-              quality: GlassQuality.standard,
-              settings: moyueGlassSettings(context),
-              shape: const LiquidRoundedSuperellipse(borderRadius: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              alignment: Alignment.center,
-              child: ScrollingTitle(
-                title,
-                autoScroll: true,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
-            ),
-          ),
+        child: MoyueGlassTitlePill(
+          title: title,
+          onTap: onTitleTap,
+          semanticLabel: '修改文件夹名称',
         ),
       ),
       const SizedBox(width: 8),

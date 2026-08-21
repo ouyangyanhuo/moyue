@@ -387,6 +387,16 @@ void main() {
         )
         .map((button) => button.quality);
     expect(floatingQualities, everyElement(GlassQuality.premium));
+    // 标题胶囊同样必须走 premium 折射管线，而不是 standard 高斯模糊。
+    final pillQualities = tester
+        .widgetList<GlassContainer>(
+          find.descendant(
+            of: find.byType(FloatingDocumentHeader),
+            matching: find.byType(GlassContainer),
+          ),
+        )
+        .map((container) => container.quality);
+    expect(pillQualities, everyElement(GlassQuality.premium));
     expect(find.text('墨模式'), findsNothing);
     expect(find.byIcon(Icons.water_drop_outlined), findsNothing);
     expect(

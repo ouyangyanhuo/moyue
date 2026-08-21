@@ -414,18 +414,28 @@ class _FolderPageState extends State<_FolderPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.transparent,
-    body: Stack(
-      children: [
-        const Positioned.fill(child: MoyueBackdrop()),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 62),
+  Widget build(BuildContext context) {
+    // 与阅读页一致：列表视口铺满全屏，顶部留白放进滚动 padding，
+    // 让文档横条从浮动头部的玻璃后方穿过（沉浸式）。
+    final topInset = MediaQuery.paddingOf(context).top + 72;
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          const Positioned.fill(child: MoyueBackdrop()),
+          Positioned.fill(
             child: _folder.documents.isEmpty
-                ? const Center(child: Text('这个文件夹还是空的'))
+                ? Padding(
+                    padding: EdgeInsets.only(top: topInset),
+                    child: const Center(child: Text('这个文件夹还是空的')),
+                  )
                 : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
+                    padding: EdgeInsets.fromLTRB(
+                      18,
+                      topInset,
+                      18,
+                      MediaQuery.paddingOf(context).bottom + 24,
+                    ),
                     itemCount: _folder.documents.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
@@ -451,27 +461,36 @@ class _FolderPageState extends State<_FolderPage> {
                     },
                   ),
           ),
-        ),
-        SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: FloatingDocumentHeader(
-              title: _selecting ? '已选择 ${_selectedIds.length} 项' : _folder.name,
-              onBack: () => Navigator.pop(context),
-              actionIcon: _selecting ? Icons.delete_rounded : Icons.add_rounded,
-              actionLabel: _selecting ? '删除所选文档' : '新建或导入文档',
-              actionColor: _selecting
-                  ? Theme.of(context).colorScheme.error
-                  : null,
-              onAction: _selecting ? _deleteSelected : _showAddMenu,
-              onTitleTap: _selecting ? null : _renameFolder,
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: FloatingDocumentHeader(
+                  title: _selecting
+                      ? '已选择 ${_selectedIds.length} 项'
+                      : _folder.name,
+                  onBack: () => Navigator.pop(context),
+                  actionIcon: _selecting
+                      ? Icons.delete_rounded
+                      : Icons.add_rounded,
+                  actionLabel: _selecting ? '删除所选文档' : '新建或导入文档',
+                  actionColor: _selecting
+                      ? Theme.of(context).colorScheme.error
+                      : null,
+                  onAction: _selecting ? _deleteSelected : _showAddMenu,
+                  onTitleTap: _selecting ? null : _renameFolder,
+                ),
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 
   void _toggleSelection(ReadingDocument document) {
     setState(() {

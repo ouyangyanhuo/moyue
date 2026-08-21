@@ -6,12 +6,14 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/core/theme/moyue_theme.dart';
+import 'package:moyue_application/features/debug/debug_fps_overlay.dart';
 import 'package:moyue_application/features/reader/library_page.dart';
 import 'package:moyue_application/features/rss/rss_page.dart';
 import 'package:moyue_application/features/settings/settings_page.dart';
 import 'package:moyue_application/l10n/app_localizations.dart';
 import 'package:moyue_application/models/library_folder.dart';
 import 'package:moyue_application/models/reading_document.dart';
+import 'package:moyue_application/services/debug_service.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
 
@@ -22,13 +24,29 @@ class MoyueApp extends StatefulWidget {
   State<MoyueApp> createState() => _MoyueAppState();
 }
 
-class _MoyueAppState extends State<MoyueApp> {
+class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
   final MoyueDisplayPreferences _display = MoyueDisplayPreferences();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(DebugService.instance.refresh());
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _display.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 回到前台时重查 debug.lock，便于随时放入/移除文件切换调试模式。
+    if (state == AppLifecycleState.resumed) {
+      unawaited(DebugService.instance.refresh());
+    }
   }
 
   @override
@@ -70,7 +88,28 @@ class _MoyueAppState extends State<MoyueApp> {
               ),
               interaction: const GlassInteractionSettings(stretch: 0.18),
             ),
-            child: child!,
+            // 全局调试浮层挂在 Navigator 之上的最外层，
+            // 这样阅读页、文件夹页、编辑页等被推入的完整路由也能覆盖到。
+            child: Stack(
+              children: [
+                ?child,
+                ListenableBuilder(
+                  listenable: DebugService.instance,
+                  builder: (context, _) {
+                    final debug = DebugService.instance;
+                    if (!debug.enabled || !debug.fpsBadgeVisible) {
+                      return const SizedBox.shrink();
+                    }
+                    // 右上角、页面操作按钮行之下，避免遮挡玻璃控件。
+                    return Positioned(
+                      top: MediaQuery.paddingOf(context).top + 58,
+                      right: 12,
+                      child: const IgnorePointer(child: DebugFpsOverlay()),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
           home: const MoyueShell(),
         ),
@@ -119,7 +158,9 @@ class _MoyueShellState extends State<MoyueShell> {
           _folders = folders;
         });
       }
-    } on Exception {
+    } on Object {
+      // 加载失败（含存储后端缺失等 Error）一律回退到空状态，
+      // 避免未处理异步异常打断 UI。
       if (mounted) {
         setState(() {
           _documents = const [];

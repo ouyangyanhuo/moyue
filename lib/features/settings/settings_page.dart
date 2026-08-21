@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
+import 'package:moyue_application/services/debug_service.dart';
 import 'package:moyue_application/widgets/floating_page_shell.dart';
 import 'package:moyue_application/widgets/section_label.dart';
 
@@ -17,94 +18,116 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final display = DisplayPreferencesScope.of(context);
+    final debug = DebugService.instance;
     final query = _query.trim();
     final showDisplay = query.isEmpty || '显示墨模式对比度护眼'.contains(query);
     final showReading = query.isEmpty || '阅读动画翻页动效'.contains(query);
+    final showDebug = query.isEmpty || '调试帧率实时显示'.contains(query);
+    final debugVisible = debug.enabled && showDebug;
 
     // 标题随列表滚动正常收起；搜索按钮固定在视口之外的浮层里
     // （与阅读页浮动头部一致），获得完全相同的 premium 按压效果。
-    return FloatingPageShell(
-      title: '设置',
-      subtitle: '纸张模式 · 温和护眼',
-      searchHint: '搜索设置',
-      onSearch: (value) => setState(() => _query = value),
-      child: CustomScrollView(
-        key: const PageStorageKey('settings-scroll'),
-        slivers: [
-          const SliverToBoxAdapter(
-            child: FloatingPageTitle(title: '设置', subtitle: '纸张模式 · 温和护眼'),
-          ),
-          if (showDisplay) ...[
-            const SliverToBoxAdapter(child: SectionLabel('显示')),
-            SliverToBoxAdapter(
-              child: _SettingsCard(
-                children: [
-                  _GlassSwitchTile(
-                    value: false,
-                    onChanged: null,
-                    icon: Icons.water_drop_outlined,
-                    title: '墨模式',
-                    subtitle: '暂未开放',
-                  ),
-                  const Divider(indent: 56),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.contrast_rounded),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('对比度'),
-                              _ExpandedGlassSlider(
-                                touchAreaKey: const ValueKey(
-                                  'contrast-slider-touch-area',
-                                ),
-                                value: display.contrast,
-                                onChanged: display.setContrast,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+    return ListenableBuilder(
+      listenable: debug,
+      builder: (context, _) => FloatingPageShell(
+        title: '设置',
+        subtitle: '纸张模式 · 温和护眼',
+        searchHint: '搜索设置',
+        onSearch: (value) => setState(() => _query = value),
+        child: CustomScrollView(
+          key: const PageStorageKey('settings-scroll'),
+          slivers: [
+            const SliverToBoxAdapter(
+              child: FloatingPageTitle(title: '设置', subtitle: '纸张模式 · 温和护眼'),
+            ),
+            if (showDisplay) ...[
+              const SliverToBoxAdapter(child: SectionLabel('显示')),
+              SliverToBoxAdapter(
+                child: _SettingsCard(
+                  children: [
+                    _GlassSwitchTile(
+                      value: false,
+                      onChanged: null,
+                      icon: Icons.water_drop_outlined,
+                      title: '墨模式',
+                      subtitle: '暂未开放',
                     ),
-                  ),
-                ],
+                    const Divider(indent: 56),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.contrast_rounded),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('对比度'),
+                                _ExpandedGlassSlider(
+                                  touchAreaKey: const ValueKey(
+                                    'contrast-slider-touch-area',
+                                  ),
+                                  value: display.contrast,
+                                  onChanged: display.setContrast,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-          if (showReading) ...[
-            const SliverToBoxAdapter(child: SectionLabel('阅读')),
-            SliverToBoxAdapter(
-              child: _SettingsCard(
-                children: [
-                  _GlassSwitchTile(
-                    value: display.reduceMotion,
-                    onChanged: display.setReduceMotion,
-                    icon: Icons.motion_photos_off_outlined,
-                    title: '减少动态效果',
-                    subtitle: '让页面切换更稳定，适合墨水屏设备',
-                  ),
-                  const Divider(indent: 56),
-                  const ListTile(
-                    leading: Icon(Icons.auto_awesome_motion_outlined),
-                    title: Text('原生排版引擎'),
-                    subtitle: Text('Markdown 与 HTML 均由 Flutter 组件渲染'),
-                    trailing: Icon(Icons.verified_rounded),
-                  ),
-                ],
+            ],
+            if (showReading) ...[
+              const SliverToBoxAdapter(child: SectionLabel('阅读')),
+              SliverToBoxAdapter(
+                child: _SettingsCard(
+                  children: [
+                    _GlassSwitchTile(
+                      value: display.reduceMotion,
+                      onChanged: display.setReduceMotion,
+                      icon: Icons.motion_photos_off_outlined,
+                      title: '减少动态效果',
+                      subtitle: '让页面切换更稳定，适合墨水屏设备',
+                    ),
+                    const Divider(indent: 56),
+                    const ListTile(
+                      leading: Icon(Icons.auto_awesome_motion_outlined),
+                      title: Text('原生排版引擎'),
+                      subtitle: Text('Markdown 与 HTML 均由 Flutter 组件渲染'),
+                      trailing: Icon(Icons.verified_rounded),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
+            if (debugVisible) ...[
+              const SliverToBoxAdapter(child: SectionLabel('调试')),
+              SliverToBoxAdapter(
+                child: _SettingsCard(
+                  children: [
+                    _GlassSwitchTile(
+                      value: debug.fpsBadgeVisible,
+                      onChanged: (value) => debug.fpsBadgeVisible = value,
+                      icon: Icons.speed_rounded,
+                      title: '帧率显示',
+                      subtitle: '在屏幕右上角实时刷新渲染帧率',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (!showDisplay && !showReading && !debugVisible)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: Text('没有匹配的设置')),
+              ),
+            const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
           ],
-          if (!showDisplay && !showReading)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(child: Text('没有匹配的设置')),
-            ),
-          const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
-        ],
+        ),
       ),
     );
   }
