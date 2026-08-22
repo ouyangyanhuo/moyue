@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
+import 'package:moyue_application/widgets/image_lightbox.dart';
 
 /// A deliberately focused HTML-to-Flutter renderer. It parses the DOM and
 /// maps common editorial elements to native widgets; no browser view is used.
@@ -58,9 +59,12 @@ class NativeHtmlView extends StatelessWidget {
               if (bytes == null) return const SizedBox.shrink();
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.memory(bytes, fit: BoxFit.contain),
+                child: GestureDetector(
+                  onTap: () => ImageLightbox.show(context, bytes),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(bytes, fit: BoxFit.contain),
+                  ),
                 ),
               );
             },

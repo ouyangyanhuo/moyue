@@ -25,13 +25,11 @@ class _SettingsPageState extends State<SettingsPage> {
     final showDebug = query.isEmpty || '调试帧率实时显示'.contains(query);
     final debugVisible = debug.enabled && showDebug;
 
-    // 标题随列表滚动正常收起；搜索按钮固定在视口之外的浮层里
+    // 标题随页面滚动正常收起；搜索按钮固定在视口之外的浮层里
     // （与阅读页浮动头部一致），获得完全相同的 premium 按压效果。
     return ListenableBuilder(
       listenable: debug,
       builder: (context, _) => FloatingPageShell(
-        title: '设置',
-        subtitle: '纸张模式 · 温和护眼',
         searchHint: '搜索设置',
         onSearch: (value) => setState(() => _query = value),
         child: CustomScrollView(

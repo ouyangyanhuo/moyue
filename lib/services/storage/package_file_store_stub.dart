@@ -40,4 +40,14 @@ class _WebPackageFileStore implements PackageFileStore {
       (path, _) => path == relativePath || path.startsWith('$relativePath/'),
     );
   }
+
+  @override
+  Future<List<String>> listFiles(String relativeDir) async {
+    final prefix = '$relativeDir/';
+    return _files.keys
+        .where((path) => path.startsWith(prefix))
+        .where((path) => !path.substring(prefix.length).contains('/'))
+        .toList()
+      ..sort();
+  }
 }

@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io' show File;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -68,6 +71,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   final FocusNode _titleFocus = FocusNode();
   final FocusNode _bodyFocus = FocusNode();
   ReadingDocument? _currentDocument;
+  bool _importingImage = false;
 
   @override
   String? get restorationId =>
@@ -136,7 +140,13 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return PopScope<ReadingDocument?>(
-      canPop: true,
+      // 拦截系统返回：与「保存」一致，先落盘、再清理、最后退出，
+      // 保证磁盘正文始终包含已插入的图片链接，避免清理误删。
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        unawaited(_exitWithSave());
+      },
       child: Scaffold(
         resizeToAvoidBottomInset: false,
         extendBody: true,
@@ -220,7 +230,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                               CupertinoIcons.chevron_back,
                               size: 21,
                             ),
-                            onPressed: _closeEditor,
+                            onPressed: _exitWithSave,
                             semanticLabel: '返回',
                             size: 44,
                             useOwnLayer: true,
@@ -285,7 +295,10 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
               enabled: _mode.value == 0,
               titleFocus: _titleFocus,
               bodyFocus: _bodyFocus,
-              child: _FormatBar(onFormat: _applyFormat),
+              child: _FormatBar(
+                onFormat: _applyFormat,
+                onInsertImage: _insertImage,
+              ),
             ),
           ],
         ),
@@ -293,12 +306,120 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     );
   }
 
-  Future<void> _closeEditor() async {
+  /// 统一退出流程（头部返回按钮与系统返回手势共用）：
+  /// 先落盘保存，再基于最新正文清理未引用图片，最后退出页面。
+  Future<void> _exitWithSave() async {
     await _persist(popAfter: false);
-    if (mounted) await Navigator.maybePop(context, _currentDocument);
+    final pending = mounted ? _body.value.text : null;
+    unawaited(_cleanupImages(pendingContent: pending));
+    if (mounted) Navigator.pop(context, _currentDocument);
   }
 
   Future<void> _save() => _persist(popAfter: true);
+
+  /// 结束编辑（保存或退出）后清理 images/ 目录下未被引用的图片，
+  /// 例如插入后又被删掉链接的图片。失败静默，不影响主流程。
+  ///
+  /// [pendingContent] 必须传入当前正文快照：若退出时未保存，磁盘正文
+  /// 还不含刚插入的链接，缺少它会导致清理误删新图片。
+  Future<void> _cleanupImages({String? pendingContent}) async {
+    final document = _currentDocument;
+    if (document == null || document.relativePath == null) return;
+    try {
+      await MoyueStorageService.instance.cleanupUnreferencedImages(
+        document,
+        pendingContent: pendingContent,
+      );
+    } on Object {
+      // 忽略清理失败。
+    }
+  }
+
+  Future<void> _insertImage() async {
+    if (_importingImage) return;
+    var document = _currentDocument;
+    if (document == null ||
+        document.relativePath == null ||
+        document.folderId == null) {
+      // 旧版根目录文档（无 folderId）不支持资源写入：
+      // 先强制落盘迁移到索引存储，再基于迁移后的文档插入。
+      await _persist(popAfter: false);
+      document = _currentDocument;
+      if (document == null ||
+          document.relativePath == null ||
+          document.folderId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('请先填写标题，保存后再插入图片')));
+        }
+        return;
+      }
+    }
+    setState(() => _importingImage = true);
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+      if (!mounted) return;
+      final file = result == null || result.files.isEmpty
+          ? null
+          : result.files.single;
+      var bytes = file?.bytes;
+      // 部分平台的 file_picker 不会自动填充 bytes，需要从缓存路径补读。
+      if (bytes == null && !kIsWeb && file?.path != null) {
+        try {
+          bytes = await File(file!.path!).readAsBytes();
+        } on Object {
+          bytes = null;
+        }
+      }
+      if (!mounted) return;
+      if (file == null || bytes == null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('无法读取所选图片')));
+        return;
+      }
+      if (bytes.length > 8 * 1024 * 1024) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('图片不能超过 8 MB')));
+        return;
+      }
+      final link = await MoyueStorageService.instance.saveDocumentImage(
+        document: document,
+        fileName: file.name,
+        bytes: bytes,
+      );
+      if (!mounted) return;
+      if (link == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('仅支持 png/jpg/jpeg/gif/webp/bmp 图片')),
+        );
+        return;
+      }
+      final controller = _body.value;
+      final text = controller.text;
+      final caret = controller.selection.isValid
+          ? controller.selection.end
+          : text.length;
+      final snippet = '![${file.name}]($link)\n';
+      controller.value = TextEditingValue(
+        text: text.replaceRange(caret, caret, snippet),
+        selection: TextSelection.collapsed(offset: caret + snippet.length),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('图片已保存到 $link')));
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('插入图片失败：$error')));
+      }
+    } finally {
+      if (mounted) setState(() => _importingImage = false);
+    }
+  }
 
   Future<void> _persist({required bool popAfter}) async {
     _autosaveTimer?.cancel();
@@ -325,6 +446,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
       );
       _currentDocument = document;
       _dirty.value = false;
+      unawaited(_cleanupImages(pendingContent: _body.value.text));
       if (popAfter && mounted) Navigator.pop(context, document);
     } on Object catch (error) {
       if (popAfter && mounted) {
@@ -497,7 +619,8 @@ class _SettledKeyboardDock extends StatefulWidget {
   State<_SettledKeyboardDock> createState() => _SettledKeyboardDockState();
 }
 
-class _SettledKeyboardDockState extends State<_SettledKeyboardDock> {
+class _SettledKeyboardDockState extends State<_SettledKeyboardDock>
+    with WidgetsBindingObserver {
   Timer? _sampleTimer;
   bool _settled = false;
   double _keyboardInset = 0;
@@ -511,8 +634,16 @@ class _SettledKeyboardDockState extends State<_SettledKeyboardDock> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.titleFocus.addListener(_focusChanged);
     widget.bodyFocus.addListener(_focusChanged);
+  }
+
+  @override
+  void didChangeMetrics() {
+    // 焦点不变时键盘也可能收起（如系统返回键关闭输入法），
+    // 监听窗口度量变化，重新采样以及时隐藏工具栏。
+    if (mounted && _visible) _beginSampling();
   }
 
   @override
@@ -554,6 +685,11 @@ class _SettledKeyboardDockState extends State<_SettledKeyboardDock> {
     final view = views.first;
     final inset = view.viewInsets.bottom / view.devicePixelRatio;
     final previous = _lastSample;
+    if (inset <= 0 && previous != null && (inset - previous).abs() < 0.5) {
+      // 键盘确认已收起：停在隐藏状态，等待焦点或窗口变化再次触发采样，
+      // 避免无限轮询。
+      return;
+    }
     if (inset > 0 && previous != null && (inset - previous).abs() < 0.5) {
       _stableSamples++;
     } else {
@@ -572,6 +708,7 @@ class _SettledKeyboardDockState extends State<_SettledKeyboardDock> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sampleTimer?.cancel();
     widget.titleFocus.removeListener(_focusChanged);
     widget.bodyFocus.removeListener(_focusChanged);
@@ -596,8 +733,9 @@ class _SettledKeyboardDockState extends State<_SettledKeyboardDock> {
 }
 
 class _FormatBar extends StatelessWidget {
-  const _FormatBar({required this.onFormat});
+  const _FormatBar({required this.onFormat, required this.onInsertImage});
   final ValueChanged<_MarkdownFormat> onFormat;
+  final VoidCallback onInsertImage;
 
   @override
   Widget build(BuildContext context) => Center(
@@ -620,6 +758,11 @@ class _FormatBar extends StatelessWidget {
             ),
             _item(Icons.link_rounded, '链接', _MarkdownFormat.link),
             _item(Icons.code_rounded, '代码', _MarkdownFormat.code),
+            GlassButtonGroupItem(
+              icon: const Icon(Icons.image_outlined),
+              label: '图片',
+              onTap: onInsertImage,
+            ),
           ],
         ),
       ),

@@ -56,11 +56,9 @@ class _LibraryPageState extends State<LibraryPage> {
     final selectingTitle = '已选择 $_selectionCount 项';
     final selectingSubtitle = '轻点条目可继续选择或取消';
 
-    // 标题随列表滚动正常收起；玻璃按钮固定在视口之外的浮层里
+    // 标题随页面滚动正常收起；玻璃按钮固定在视口之外的浮层里
     // （与阅读页浮动头部一致），获得完全相同的 premium 按压效果。
     return FloatingPageShell(
-      title: _selecting ? selectingTitle : '阅读',
-      subtitle: _selecting ? selectingSubtitle : '本地文档，安静阅读',
       searchHint: '搜索文档',
       onSearch: (value) => setState(() => _query = value),
       showSearch: !_selecting,
@@ -387,8 +385,11 @@ class _FolderTile extends StatelessWidget {
 }
 
 class _FolderPage extends StatefulWidget {
-  const _FolderPage({required this.folder});
+  const _FolderPage({required this.folder, this.subPath = ''});
   final LibraryFolder folder;
+
+  /// 包内相对子路径（如 `二级文件夹` 或 `a/b`）；空串表示包根目录。
+  final String subPath;
 
   @override
   State<_FolderPage> createState() => _FolderPageState();
@@ -418,16 +419,21 @@ class _FolderPageState extends State<_FolderPage> {
     // 与阅读页一致：列表视口铺满全屏，顶部留白放进滚动 padding，
     // 让文档横条从浮动头部的玻璃后方穿过（沉浸式）。
     final topInset = MediaQuery.paddingOf(context).top + 72;
+    final children = _childrenOf(_folder.documents);
+    final itemCount = children.dirs.length + children.docs.length;
+    final currentName = widget.subPath.isEmpty
+        ? _folder.name
+        : widget.subPath.split('/').last;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
           const Positioned.fill(child: MoyueBackdrop()),
           Positioned.fill(
-            child: _folder.documents.isEmpty
+            child: itemCount == 0
                 ? Padding(
                     padding: EdgeInsets.only(top: topInset),
-                    child: const Center(child: Text('这个文件夹还是空的')),
+                    child: const Center(child: Text('这个目录还是空的')),
                   )
                 : ListView.separated(
                     padding: EdgeInsets.fromLTRB(
@@ -436,10 +442,29 @@ class _FolderPageState extends State<_FolderPage> {
                       18,
                       MediaQuery.paddingOf(context).bottom + 24,
                     ),
-                    itemCount: _folder.documents.length,
+                    itemCount: itemCount,
                     separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
-                      final document = _folder.documents[index];
+                      if (index < children.dirs.length) {
+                        final name = children.dirs[index];
+                        final childPath = widget.subPath.isEmpty
+                            ? name
+                            : '${widget.subPath}/$name';
+                        return _SubDirTile(
+                          name: name,
+                          docCount: children.dirDocCounts[name] ?? 0,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => _FolderPage(
+                                folder: _folder,
+                                subPath: childPath,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      final document =
+                          children.docs[index - children.dirs.length];
                       final selected = _selectedIds.contains(document.id);
                       return _DocumentTile(
                         document: document,
@@ -472,7 +497,7 @@ class _FolderPageState extends State<_FolderPage> {
                 child: FloatingDocumentHeader(
                   title: _selecting
                       ? '已选择 ${_selectedIds.length} 项'
-                      : _folder.name,
+                      : currentName,
                   onBack: () => Navigator.pop(context),
                   actionIcon: _selecting
                       ? Icons.delete_rounded
@@ -482,7 +507,10 @@ class _FolderPageState extends State<_FolderPage> {
                       ? Theme.of(context).colorScheme.error
                       : null,
                   onAction: _selecting ? _deleteSelected : _showAddMenu,
-                  onTitleTap: _selecting ? null : _renameFolder,
+                  // 只有包根目录支持重命名整个文件夹。
+                  onTitleTap: _selecting || widget.subPath.isNotEmpty
+                      ? null
+                      : _renameFolder,
                 ),
               ),
             ),
@@ -490,6 +518,49 @@ class _FolderPageState extends State<_FolderPage> {
         ],
       ),
     );
+  }
+
+  /// 计算当前子路径下的直系内容：子目录（含各自递归文档数）与直系文档。
+  /// 文档的 relativePath 形如 `markdown/{folderId}/{包内路径}`，
+  /// 去掉前两段即包内物理层级，据此还原嵌套结构。
+  ({
+    List<String> dirs,
+    Map<String, int> dirDocCounts,
+    List<ReadingDocument> docs,
+  })
+  _childrenOf(List<ReadingDocument> documents) {
+    final prefix = widget.subPath.isEmpty
+        ? const <String>[]
+        : widget.subPath.split('/');
+    final dirDocCounts = <String, int>{};
+    final docs = <ReadingDocument>[];
+    for (final document in documents) {
+      final segments = document.relativePath?.split('/') ?? const <String>[];
+      if (segments.length < 3) {
+        // 缺少包内路径的旧数据一律视为根目录文档。
+        if (widget.subPath.isEmpty) docs.add(document);
+        continue;
+      }
+      final inner = segments.sublist(2);
+      if (inner.length < prefix.length) continue;
+      var matched = true;
+      for (var i = 0; i < prefix.length; i++) {
+        if (inner[i] != prefix[i]) {
+          matched = false;
+          break;
+        }
+      }
+      if (!matched) continue;
+      if (inner.length == prefix.length + 1) {
+        docs.add(document);
+      } else {
+        final name = inner[prefix.length];
+        dirDocCounts[name] = (dirDocCounts[name] ?? 0) + 1;
+      }
+    }
+    final dirs = dirDocCounts.keys.toList()..sort();
+    docs.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return (dirs: dirs, dirDocCounts: dirDocCounts, docs: docs);
   }
 
   void _toggleSelection(ReadingDocument document) {
@@ -653,6 +724,63 @@ class _FolderPageState extends State<_FolderPage> {
             .showSnackBar(SnackBar(content: Text('导入失败：$error')));
       }
     }
+  }
+}
+
+/// 包内子目录横条：进入后展示该物理目录下的递归内容。
+class _SubDirTile extends StatelessWidget {
+  const _SubDirTile({
+    required this.name,
+    required this.docCount,
+    required this.onTap,
+  });
+
+  final String name;
+  final int docCount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+          child: Row(
+            children: [
+              Icon(
+                Icons.folder_rounded,
+                size: 48,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ScrollingTitle(name, style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$docCount 个文档',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

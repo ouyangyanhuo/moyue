@@ -108,6 +108,32 @@ class MoyueStorageService extends ChangeNotifier {
     String link,
   ) => _packages.readLinkedResource(document, link);
 
+  /// 把编辑器选中的图片写入文档目录的 images/ 子目录，
+  /// 返回 Markdown 相对链接；文档不支持时返回 null。
+  Future<String?> saveDocumentImage({
+    required ReadingDocument document,
+    required String fileName,
+    required Uint8List bytes,
+  }) {
+    return _packages.saveImageResource(
+      document: document,
+      fileName: fileName,
+      bytes: bytes,
+    );
+  }
+
+  /// 清理文档 images/ 目录下未被同目录任何文档引用的图片。
+  /// [pendingContent] 为编辑器未落盘的正文快照，参与引用判定。
+  Future<int> cleanupUnreferencedImages(
+    ReadingDocument document, {
+    String? pendingContent,
+  }) {
+    return _packages.cleanupUnreferencedImages(
+      document,
+      pendingContent: pendingContent,
+    );
+  }
+
   Future<void> deleteDocument(ReadingDocument document) async {
     if (document.folderId == null) {
       await _backend.deleteDocument(document);

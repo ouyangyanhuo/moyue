@@ -84,6 +84,20 @@ class _IoPackageFileStore implements PackageFileStore {
     }
   }
 
+  @override
+  Future<List<String>> listFiles(String relativeDir) async {
+    final root = (await _root()).path;
+    final directory = Directory(_safeTarget(root, relativeDir).path);
+    if (!await directory.exists()) return const [];
+    final names = <String>[];
+    await for (final entity in directory.list(followLinks: false)) {
+      if (entity is! File) continue;
+      names.add(p.relative(entity.path, from: root).replaceAll(r'\', '/'));
+    }
+    names.sort();
+    return names;
+  }
+
   File _safeTarget(String root, String relativePath) {
     final normalized = p.normalize(p.join(root, relativePath));
     if (!p.isWithin(root, normalized)) {

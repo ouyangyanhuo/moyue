@@ -70,10 +70,6 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
     // 标题随列表滚动正常收起；玻璃按钮固定在视口之外的浮层里
     // （与阅读页浮动头部一致），获得完全相同的 premium 按压效果。
     return FloatingPageShell(
-      title: _selecting ? selectingTitle : '订阅',
-      subtitle: _selecting
-          ? selectingSubtitle
-          : '${_sources.length} 个订阅源 · 下拉即可刷新',
       searchHint: '搜索订阅或文章',
       onSearch: (value) => setState(() => _query = value),
       showSearch: !_selecting,

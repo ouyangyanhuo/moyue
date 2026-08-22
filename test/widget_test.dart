@@ -295,6 +295,60 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('文件夹页支持递归子目录并按物理层级导航', (tester) async {
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    ReadingDocument doc(String id, String title, String relativePath) =>
+        ReadingDocument(
+          id: id,
+          title: title,
+          content: '',
+          kind: DocumentKind.markdown,
+          updatedAt: DateTime(2026),
+          folderId: 'folder-1',
+          filePath: relativePath,
+          relativePath: relativePath,
+        );
+    final folder = LibraryFolder(
+      id: 'folder-1',
+      name: '资料夹',
+      updatedAt: DateTime(2026),
+      documents: [
+        doc('root-doc', '根文档', 'markdown/folder-1/root.md'),
+        doc('deep-doc', '深层文档', 'markdown/folder-1/二级文件夹/deep.md'),
+      ],
+    );
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: MaterialApp(
+          home: Scaffold(
+            body: LibraryPage(
+              documents: const [],
+              folders: [folder],
+              loading: false,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('资料夹'));
+    await tester.pumpAndSettle();
+
+    // 包根目录：直系文档可见，深层文档收在子目录内。
+    expect(find.text('根文档'), findsOneWidget);
+    expect(find.text('二级文件夹'), findsOneWidget);
+    expect(find.text('深层文档'), findsNothing);
+
+    await tester.tap(find.text('二级文件夹'));
+    await tester.pumpAndSettle();
+
+    // 进入子目录后标题为目录名，且能看到递归文档。
+    expect(find.text('深层文档'), findsOneWidget);
+    expect(find.text('二级文件夹'), findsOneWidget);
+    expect(find.text('根文档'), findsNothing);
+  });
+
   testWidgets('文件夹内文档支持长按多选，标题支持重命名入口', (tester) async {
     final display = MoyueDisplayPreferences();
     addTearDown(display.dispose);

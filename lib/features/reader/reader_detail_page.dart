@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:moyue_application/features/reader/native_html_view.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/floating_document_header.dart';
+import 'package:moyue_application/widgets/image_lightbox.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ReaderDetailPage extends StatefulWidget {
@@ -218,9 +220,12 @@ class _MarkdownDocument extends StatelessWidget {
               child: Center(child: Icon(Icons.broken_image_outlined)),
             );
           }
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.memory(bytes, fit: BoxFit.contain),
+          return GestureDetector(
+            onTap: () => unawaited(ImageLightbox.show(context, bytes)),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.memory(bytes, fit: BoxFit.contain),
+            ),
           );
         },
       ),

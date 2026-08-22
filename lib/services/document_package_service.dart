@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/models/library_folder.dart';
 import 'package:moyue_application/models/reading_document.dart';
@@ -20,12 +21,133 @@ class MoyueExport {
 }
 
 class DocumentPackageService {
-  DocumentPackageService() : _files = createPackageFileStore();
+  /// [store] 与 [documentsLoader] 供测试注入内存实现，
+  /// 生产环境保持默认的平台存储与索引查询。
+  DocumentPackageService({
+    PackageFileStore? store,
+    Future<List<ReadingDocument>> Function()? documentsLoader,
+  }) : _files = store ?? createPackageFileStore(),
+       // ignore: prefer_initializing_formals
+       _documentsLoader = documentsLoader;
+
   final PackageFileStore _files;
+  final Future<List<ReadingDocument>> Function()? _documentsLoader;
   MoyueIndexDatabase? _index;
+
+  /// 编辑器插入图片允许的扩展名。
+  static const Set<String> imageExtensions = {
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'webp',
+    'bmp',
+  };
+
+  /// 编辑器插入图片统一存放的子目录（相对文档所在目录）。
+  static const String imageDirName = 'images';
 
   Future<MoyueIndexDatabase> get index async =>
       _index ??= MoyueIndexDatabase(await _files.databasePath());
+
+  /// 把编辑器选中的图片写入文档所在目录的 images/ 子目录，
+  /// 返回可直接用于 Markdown 的相对链接（如 `images/xxx.png`）。
+  /// 文档缺少目录信息（folderId / relativePath）时返回 null。
+  Future<String?> saveImageResource({
+    required ReadingDocument document,
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
+    final documentPath = document.relativePath;
+    final folderId = document.folderId;
+    if (documentPath == null || folderId == null) return null;
+    final extension = fileName.contains('.')
+        ? fileName.split('.').last.toLowerCase()
+        : 'png';
+    if (!imageExtensions.contains(extension)) return null;
+    final baseName = fileName
+        .split('.')
+        .first
+        .replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final name = baseName.isEmpty
+        ? 'img_$stamp.$extension'
+        : 'img_${stamp}_$baseName.$extension';
+    final documentDir = p.posix.dirname(documentPath);
+    final resourcePath = p.posix.join(documentDir, imageDirName, name);
+    await _files.writeFiles({resourcePath: bytes});
+    return '$imageDirName/$name';
+  }
+
+  /// 清理文档所在目录 images/ 下未被引用的图片。
+  ///
+  /// 「被引用」以同一目录内所有文档（Markdown/HTML）的图片链接为准，
+  /// 避免误删同文件夹其他文档正在使用的资源。[pendingContent] 是编辑器
+  /// 中尚未落盘的正文快照：退出编辑器时若未保存，磁盘正文还不含新插入
+  /// 的链接，必须把它并入引用判定，否则刚插入的图片会被误删。
+  /// 返回删除的文件数。
+  Future<int> cleanupUnreferencedImages(
+    ReadingDocument document, {
+    String? pendingContent,
+  }) async {
+    final documentPath = document.relativePath;
+    if (documentPath == null || document.folderId == null) return 0;
+    final documentDir = p.posix.dirname(documentPath);
+    final imagesDir = p.posix.join(documentDir, imageDirName);
+
+    final referenced = <String>{};
+    if (pendingContent != null) {
+      referenced.addAll(extractImageReferences(pendingContent));
+    }
+    final siblings = await (_documentsLoader?.call() ?? loadDocuments());
+    for (final sibling in siblings) {
+      final siblingPath = sibling.relativePath;
+      if (siblingPath == null) continue;
+      if (p.posix.dirname(siblingPath) != documentDir) continue;
+      referenced.addAll(extractImageReferences(sibling.content));
+    }
+
+    final stored = await _files.listFiles(imagesDir);
+    var deleted = 0;
+    for (final path in stored) {
+      final link = '$imageDirName/${p.posix.basename(path)}';
+      if (referenced.contains(link)) continue;
+      await _files.deleteFile(path);
+      deleted++;
+    }
+    return deleted;
+  }
+
+  /// 从 Markdown / HTML 文本中提取本地图片引用，
+  /// 归一化为相对文档目录的链接（忽略网络与 data: URI）。
+  @visibleForTesting
+  static Set<String> extractImageReferences(String content) {
+    final references = <String>{};
+    void addMatch(String raw) {
+      var link = raw.trim();
+      if (link.isEmpty || link.contains('://')) return;
+      final uri = Uri.tryParse(link);
+      if (uri == null || uri.hasScheme) return;
+      link = uri.path;
+      if (link.startsWith('./')) link = link.substring(2);
+      if (link.isEmpty || link.startsWith('/')) return;
+      references.add(Uri.decodeComponent(link));
+    }
+
+    final markdown = RegExp(r'!\[[^\]]*\]\(\s*<?([^)<>\s]+)>?\s*');
+    for (final match in markdown.allMatches(content)) {
+      addMatch(match.group(1)!);
+    }
+    final html = RegExp(
+      r"""<img[^>]+src\s*=\s*["']([^"']+)["']""",
+      caseSensitive: false,
+    );
+    for (final match in html.allMatches(content)) {
+      addMatch(match.group(1)!);
+    }
+    return references;
+  }
 
   Future<List<ReadingDocument>> loadDocuments() async {
     final rows = await (await index).primaryDocuments();
@@ -450,11 +572,13 @@ class DocumentPackageService {
     if (documentPath == null || folderId == null) return null;
     final uri = Uri.tryParse(link);
     if (uri == null || uri.hasScheme || uri.path.isEmpty) return null;
+    var relative = uri.path;
+    if (relative.startsWith('./')) relative = relative.substring(2);
     final folder = await (await index).folder(folderId);
     if (folder == null) return null;
     final folderPath = folder['relative_path']! as String;
     final resolved = p.posix.normalize(
-      p.posix.join(p.posix.dirname(documentPath), uri.path),
+      p.posix.join(p.posix.dirname(documentPath), relative),
     );
     if (resolved != folderPath && !p.posix.isWithin(folderPath, resolved)) {
       return null;
