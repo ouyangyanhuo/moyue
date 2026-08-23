@@ -32,6 +32,7 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(DebugService.instance.refresh());
+    unawaited(_display.load());
   }
 
   @override
@@ -127,6 +128,9 @@ class MoyueShell extends StatefulWidget {
 
 class _MoyueShellState extends State<MoyueShell> {
   int _selectedIndex = 0;
+  final _libraryKey = GlobalKey<LibraryPageState>();
+  final _rssKey = GlobalKey<RssPageState>();
+  final _settingsKey = GlobalKey<SettingsPageState>();
   final _storage = MoyueStorageService.instance;
   List<ReadingDocument> _documents = const [];
   List<LibraryFolder> _folders = const [];
@@ -194,9 +198,14 @@ class _MoyueShellState extends State<MoyueShell> {
       glassColor: Colors.white.withValues(alpha: display.glassOpacity),
     );
     final pages = [
-      LibraryPage(documents: _documents, folders: _folders, loading: _loading),
-      const RssPage(),
-      const SettingsPage(),
+      LibraryPage(
+        key: _libraryKey,
+        documents: _documents,
+        folders: _folders,
+        loading: _loading,
+      ),
+      RssPage(key: _rssKey),
+      SettingsPage(key: _settingsKey),
     ];
 
     return PopScope<void>(
@@ -247,6 +256,20 @@ class _MoyueShellState extends State<MoyueShell> {
                       setState(() => _selectedIndex = index),
                   settings: dockSettings,
                   quality: GlassQuality.standard,
+                  extraButton: GlassTabBarExtraButton(
+                    icon: Icon(
+                      _selectedIndex == 2
+                          ? Icons.info_outline_rounded
+                          : Icons.add_rounded,
+                    ),
+                    label: switch (_selectedIndex) {
+                      0 => '新建或导入',
+                      1 => '添加订阅',
+                      _ => '关于墨阅',
+                    },
+                    size: 64,
+                    onTap: _invokePrimaryAction,
+                  ),
                   barHeight: 64,
                   horizontalPadding: 16,
                   verticalPadding: 14,
@@ -298,5 +321,15 @@ class _MoyueShellState extends State<MoyueShell> {
         ],
       ),
     );
+  }
+
+  void _invokePrimaryAction() {
+    if (_selectedIndex == 0) {
+      _libraryKey.currentState?.showAddMenu();
+    } else if (_selectedIndex == 1) {
+      _rssKey.currentState?.showAddSource();
+    } else {
+      _settingsKey.currentState?.showAbout();
+    }
   }
 }

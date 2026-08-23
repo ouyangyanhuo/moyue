@@ -103,6 +103,50 @@ class MoyueStorageService extends ChangeNotifier {
   Future<MoyueExport> exportMoyue(ReadingDocument document) =>
       _packages.exportMoyue(document);
 
+  Future<MoyueExport> exportFolder(LibraryFolder folder) =>
+      _packages.exportMoyueFolder(folder.id);
+
+  Future<ReadingDocument> moveDocument({
+    required ReadingDocument document,
+    required LibraryFolder target,
+  }) async {
+    final moved = await _packages.moveDocument(
+      document: document,
+      target: target,
+    );
+    notifyListeners();
+    return moved;
+  }
+
+  /// 批量移动期间只在全部文件完成后刷新一次页面，避免每个文件都触发一次
+  /// 文件夹重载并与拖拽结束动画争用 widget 生命周期。
+  Future<List<ReadingDocument>> moveDocuments({
+    required List<ReadingDocument> documents,
+    required LibraryFolder target,
+  }) async {
+    final moved = <ReadingDocument>[];
+    for (final document in documents) {
+      if (document.folderId == target.id) continue;
+      moved.add(
+        await _packages.moveDocument(document: document, target: target),
+      );
+    }
+    if (moved.isNotEmpty) notifyListeners();
+    return moved;
+  }
+
+  /// 把文件夹内文档拆成首页上的独立文档。
+  Future<List<ReadingDocument>> moveDocumentsToLibrary(
+    List<ReadingDocument> documents,
+  ) async {
+    final moved = <ReadingDocument>[];
+    for (final document in documents) {
+      moved.add(await _packages.moveDocumentToLibrary(document));
+    }
+    if (moved.isNotEmpty) notifyListeners();
+    return moved;
+  }
+
   Future<Uint8List?> readLinkedResource(
     ReadingDocument document,
     String link,

@@ -3,17 +3,55 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/services/debug_service.dart';
 import 'package:moyue_application/widgets/floating_page_shell.dart';
+import 'package:moyue_application/widgets/expandable_glass_search.dart';
 import 'package:moyue_application/widgets/section_label.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
   @override
-  State<SettingsPage> createState() => _SettingsPageState();
+  State<SettingsPage> createState() => SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class SettingsPageState extends State<SettingsPage> {
   String _query = '';
+  final _searchKey = GlobalKey<ExpandableGlassSearchState>();
+
+  void openSearch() => _searchKey.currentState?.open();
+
+  Future<void> showAbout() => showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    useSafeArea: true,
+    builder: (sheetContext) => const Padding(
+      padding: EdgeInsets.fromLTRB(24, 4, 24, 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '墨阅',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+          ),
+          SizedBox(height: 6),
+          Text('朴素、护眼的 Markdown、HTML 与 RSS 阅读器'),
+          SizedBox(height: 22),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.person_outline_rounded),
+            title: Text('作者'),
+            subtitle: Text('Magneto'),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.info_outline_rounded),
+            title: Text('版本'),
+            subtitle: Text('1.0.1'),
+          ),
+        ],
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +59,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final debug = DebugService.instance;
     final query = _query.trim();
     final showDisplay = query.isEmpty || '显示墨模式对比度护眼'.contains(query);
-    final showReading = query.isEmpty || '阅读动画翻页动效'.contains(query);
+    final showReading =
+        query.isEmpty || '阅读动画翻页动效HTML WebView网页原生'.contains(query);
     final showDebug = query.isEmpty || '调试帧率实时显示'.contains(query);
     final debugVisible = debug.enabled && showDebug;
 
@@ -31,6 +70,7 @@ class _SettingsPageState extends State<SettingsPage> {
       listenable: debug,
       builder: (context, _) => FloatingPageShell(
         searchHint: '搜索设置',
+        searchKey: _searchKey,
         onSearch: (value) => setState(() => _query = value),
         child: CustomScrollView(
           key: const PageStorageKey('settings-scroll'),
@@ -92,10 +132,20 @@ class _SettingsPageState extends State<SettingsPage> {
                       subtitle: '让页面切换更稳定，适合墨水屏设备',
                     ),
                     const Divider(indent: 56),
+                    _GlassSwitchTile(
+                      value: display.htmlWebViewEnabled,
+                      onChanged: display.setHtmlWebViewEnabled,
+                      icon: Icons.language_rounded,
+                      title: 'HTML WebView 阅读器',
+                      subtitle: display.htmlWebViewEnabled
+                          ? '已开启：使用系统网页引擎并运行页面脚本'
+                          : '已关闭：使用原生 Flutter 排版引擎',
+                    ),
+                    const Divider(indent: 56),
                     const ListTile(
                       leading: Icon(Icons.auto_awesome_motion_outlined),
                       title: Text('原生排版引擎'),
-                      subtitle: Text('Markdown 与 HTML 均由 Flutter 组件渲染'),
+                      subtitle: Text('Markdown 始终原生；HTML 可在上方切换'),
                       trailing: Icon(Icons.verified_rounded),
                     ),
                   ],

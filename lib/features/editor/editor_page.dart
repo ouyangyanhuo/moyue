@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:io' show File;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -32,6 +30,7 @@ Route<ReadingDocument?> markdownEditorRoute(
           filePath: value['filePath'] as String?,
           folderId: value['folderId'] as String?,
           relativePath: value['relativePath'] as String?,
+          logicalPath: value['logicalPath'] as String?,
         );
   return MaterialPageRoute(
     builder: (_) => MarkdownEditorPage(document: document),
@@ -49,6 +48,7 @@ Map<String, Object?>? markdownEditorArguments(ReadingDocument? document) =>
         'filePath': document.filePath,
         'folderId': document.folderId,
         'relativePath': document.relativePath,
+        'logicalPath': document.logicalPath,
       };
 
 class MarkdownEditorPage extends StatefulWidget {
@@ -357,29 +357,11 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     }
     setState(() => _importingImage = true);
     try {
-      final result = await FilePicker.pickFiles(
-        type: FileType.image,
-        withData: true,
-      );
+      final file = await FilePicker.pickFile(type: FileType.image);
       if (!mounted) return;
-      final file = result == null || result.files.isEmpty
-          ? null
-          : result.files.single;
-      var bytes = file?.bytes;
-      // 部分平台的 file_picker 不会自动填充 bytes，需要从缓存路径补读。
-      if (bytes == null && !kIsWeb && file?.path != null) {
-        try {
-          bytes = await File(file!.path!).readAsBytes();
-        } on Object {
-          bytes = null;
-        }
-      }
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
       if (!mounted) return;
-      if (file == null || bytes == null) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('无法读取所选图片')));
-        return;
-      }
       if (bytes.length > 8 * 1024 * 1024) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('图片不能超过 8 MB')));

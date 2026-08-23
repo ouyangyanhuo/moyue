@@ -7,15 +7,12 @@ FolderBundlePicker createFolderBundlePicker() => _WebFolderBundlePicker();
 class _WebFolderBundlePicker implements FolderBundlePicker {
   @override
   Future<FolderBundle?> pick() async {
-    final result = await FilePicker.pickFiles(
-      allowMultiple: true,
-      withData: true,
-    );
-    if (result == null) return null;
+    final result = await FilePicker.pickFiles();
+    if (result.isEmpty) return null;
     final archive = Archive();
-    for (final file in result.files) {
-      final bytes = file.bytes;
-      if (bytes != null) archive.addFile(ArchiveFile.bytes(file.name, bytes));
+    for (final file in result) {
+      final bytes = await file.readAsBytes();
+      archive.addFile(ArchiveFile.bytes(file.name, bytes));
     }
     return FolderBundle(
       name: 'Web 文件夹',

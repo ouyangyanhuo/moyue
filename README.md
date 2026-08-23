@@ -8,7 +8,7 @@
 
 - 阅读 `.md`、`.markdown`、`.html`、`.htm` 本地文件。
 - Markdown 由 `flutter_markdown_plus` 转换为 Flutter Widget；没有 WebView 依赖。
-- HTML 由 `package:html` 解析 DOM，再映射为 Flutter 文本、列表、引用和代码区块；没有 WebView 依赖。
+- HTML 默认由 `flutter_widget_from_html_core` 映射为原生 Flutter Widget；也可在设置中开启系统 WebView 阅读器，以兼容需要浏览器脚本和完整网页排版的文档。
 - Markdown 编辑、快捷格式工具和原生实时预览。
 - 自定义 `.moyue` 文档包（ZIP + `meta.json`）导入 / 导出。
 - RSS 1.0 / 2.0 / Atom 订阅、刷新、搜索与外部浏览器打开原文。

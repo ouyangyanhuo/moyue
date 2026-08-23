@@ -41,6 +41,7 @@ class DocumentRecord {
     required this.name,
     required this.kind,
     required this.relativePath,
+    required this.logicalPath,
     required this.isPrimary,
     required this.contentHash,
     required this.createdAt,
@@ -53,6 +54,7 @@ class DocumentRecord {
   final String name;
   final String kind;
   final String relativePath;
+  final String logicalPath;
   final bool isPrimary;
   final String contentHash;
   final DateTime createdAt;
@@ -65,6 +67,7 @@ class DocumentRecord {
     'name': name,
     'kind': kind,
     'relative_path': relativePath,
+    'logical_path': logicalPath,
     'is_primary': isPrimary ? 1 : 0,
     'content_hash': contentHash,
     'created_at': createdAt.millisecondsSinceEpoch,

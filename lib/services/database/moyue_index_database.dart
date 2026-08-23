@@ -10,7 +10,7 @@ class MoyueIndexDatabase {
   Future<Database> get _db async => _database ??= await openIndexDatabase(
     databasePath,
     OpenDatabaseOptions(
-      version: 3,
+      version: 4,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _create,
       onUpgrade: _upgrade,
@@ -38,6 +38,7 @@ class MoyueIndexDatabase {
         name TEXT NOT NULL,
         kind TEXT NOT NULL CHECK(kind IN ('markdown','html','rss')),
         relative_path TEXT NOT NULL UNIQUE,
+        logical_path TEXT NOT NULL,
         is_primary INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0,1)),
         content_hash TEXT NOT NULL,
         created_at INTEGER NOT NULL,
@@ -82,6 +83,24 @@ class MoyueIndexDatabase {
       if (!hasSourceUrl) {
         await db.execute('ALTER TABLE documents ADD COLUMN source_url TEXT');
       }
+    }
+    if (oldVersion < 4) {
+      final columns = await db.rawQuery('PRAGMA table_info(documents)');
+      final hasLogicalPath = columns.any(
+        (column) => column['name'] == 'logical_path',
+      );
+      if (!hasLogicalPath) {
+        await db.execute('ALTER TABLE documents ADD COLUMN logical_path TEXT');
+      }
+      await db.execute('''
+        UPDATE documents
+        SET logical_path = COALESCE(NULLIF(logical_path, ''),
+          CASE kind
+            WHEN 'markdown' THEN name || '.md'
+            WHEN 'html' THEN name || '.html'
+            ELSE name || '.xml'
+          END)
+      ''');
     }
   }
 
@@ -134,6 +153,7 @@ class MoyueIndexDatabase {
       FROM documents d
       JOIN folders f ON f.id = d.folder_id
       WHERE d.kind IN ('markdown','html')
+        AND f.marker != 'user-folder'
         AND (SELECT COUNT(*) FROM documents dc
              WHERE dc.folder_id = f.id) <= 2
       ORDER BY d.updated_at DESC
@@ -227,9 +247,106 @@ class MoyueIndexDatabase {
     );
   }
 
+  /// 将文档索引切换到另一个文件夹。文件写入在同一事务回调中执行，
+  /// 写盘失败时数据库修改会回滚。
+  Future<void> moveDocument({
+    required DocumentRecord document,
+    required String sourceFolderId,
+    required List<ResourceRecord> resources,
+    required Future<void> Function() writeFiles,
+  }) async {
+    final db = await _db;
+    await db.transaction((transaction) async {
+      final oldResourceCount =
+          Sqflite.firstIntValue(
+            await transaction.rawQuery(
+              'SELECT COUNT(*) FROM resources WHERE document_id = ?',
+              [document.id],
+            ),
+          ) ??
+          0;
+      await transaction.update(
+        'documents',
+        document.toMap(),
+        where: 'id = ?',
+        whereArgs: [document.id],
+      );
+      await transaction.delete(
+        'resources',
+        where: 'document_id = ?',
+        whereArgs: [document.id],
+      );
+      for (final resource in resources) {
+        await transaction.insert('resources', resource.toMap());
+      }
+      await transaction.rawUpdate(
+        '''
+        UPDATE folders
+        SET entry_count = MAX(0, entry_count - ?), updated_at = ?
+        WHERE id = ?
+        ''',
+        [
+          1 + oldResourceCount,
+          document.updatedAt.millisecondsSinceEpoch,
+          sourceFolderId,
+        ],
+      );
+      await transaction.rawUpdate(
+        '''
+        UPDATE folders
+        SET entry_count = entry_count + ?, updated_at = ?
+        WHERE id = ?
+        ''',
+        [
+          1 + resources.length,
+          document.updatedAt.millisecondsSinceEpoch,
+          document.folderId,
+        ],
+      );
+      await writeFiles();
+    });
+  }
+
+  Future<void> upsertResource(ResourceRecord resource) async {
+    final db = await _db;
+    await db.transaction((transaction) async {
+      final previous = await transaction.query(
+        'resources',
+        columns: const ['id'],
+        where: 'relative_path = ?',
+        whereArgs: [resource.relativePath],
+        limit: 1,
+      );
+      await transaction.insert(
+        'resources',
+        resource.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      if (previous.isEmpty) {
+        await transaction.rawUpdate(
+          'UPDATE folders SET entry_count = entry_count + 1 WHERE id = ?',
+          [resource.folderId],
+        );
+      }
+    });
+  }
+
   Future<void> deleteDocument(String documentId, String folderId) async {
     final db = await _db;
     await db.transaction((transaction) async {
+      final resourceCount =
+          Sqflite.firstIntValue(
+            await transaction.rawQuery(
+              'SELECT COUNT(*) FROM resources WHERE document_id = ?',
+              [documentId],
+            ),
+          ) ??
+          0;
+      await transaction.delete(
+        'resources',
+        where: 'document_id = ?',
+        whereArgs: [documentId],
+      );
       await transaction.delete(
         'documents',
         where: 'id = ?',
@@ -238,10 +355,10 @@ class MoyueIndexDatabase {
       await transaction.rawUpdate(
         '''
         UPDATE folders
-        SET entry_count = MAX(0, entry_count - 1), updated_at = ?
+        SET entry_count = MAX(0, entry_count - ?), updated_at = ?
         WHERE id = ?
       ''',
-        [DateTime.now().millisecondsSinceEpoch, folderId],
+        [1 + resourceCount, DateTime.now().millisecondsSinceEpoch, folderId],
       );
     });
   }
@@ -281,5 +398,10 @@ class MoyueIndexDatabase {
         ) ??
         0;
     return {'folders': folderCount, 'mismatches': mismatches};
+  }
+
+  Future<void> close() async {
+    await _database?.close();
+    _database = null;
   }
 }

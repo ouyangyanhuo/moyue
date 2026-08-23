@@ -30,12 +30,17 @@ dependencies:
   # 跟随系统明暗模式，并为后续的主题切换设置保留统一入口。
   adaptive_theme: 3.7.2
   liquid_glass_widgets: ^0.29.6
-  file_picker: ^11.0.2
+  file_picker: ^12.0.0
   flutter_markdown_plus: ^1.0.12
+  markdown: ^7.3.0
+  flutter_widget_from_html_core: ^0.17.2
+  webview_flutter: ^4.14.1
   html: ^0.15.6
   http: ^1.6.0
   rss_dart: ^1.0.14
   url_launcher: ^6.3.2
+  share_plus: ^13.3.0
+  shared_preferences: ^2.5.5
   archive: ^4.0.9
   charset: ^2.0.1
   crypto: ^3.0.7
@@ -61,6 +66,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
   shared_preferences_platform_interface: ^2.4.2
+  sqflite_common_ffi: ^2.4.2+1
   # https://github.com/jonbhanson/flutter_native_splash
   flutter_native_splash: ^2.4.8
 

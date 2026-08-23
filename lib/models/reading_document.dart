@@ -18,6 +18,7 @@ class ReadingDocument {
     this.filePath,
     this.folderId,
     this.relativePath,
+    this.logicalPath,
   });
 
   final String id;
@@ -30,6 +31,9 @@ class ReadingDocument {
   final String? folderId;
   final String? relativePath;
 
+  /// 文档在用户文件夹中的可见路径。物理路径可用 ID 隔离，二者不可混用。
+  final String? logicalPath;
+
   ReadingDocument copyWith({
     String? id,
     String? title,
@@ -40,6 +44,7 @@ class ReadingDocument {
     String? filePath,
     String? folderId,
     String? relativePath,
+    String? logicalPath,
   }) => ReadingDocument(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -50,5 +55,6 @@ class ReadingDocument {
     filePath: filePath ?? this.filePath,
     folderId: folderId ?? this.folderId,
     relativePath: relativePath ?? this.relativePath,
+    logicalPath: logicalPath ?? this.logicalPath,
   );
 }

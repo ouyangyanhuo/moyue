@@ -12,6 +12,7 @@ class FloatingDocumentHeader extends StatelessWidget {
     required this.onAction,
     this.actionColor,
     this.onTitleTap,
+    this.useOwnLayer = true,
     super.key,
   });
 
@@ -22,6 +23,7 @@ class FloatingDocumentHeader extends StatelessWidget {
   final VoidCallback? onAction;
   final Color? actionColor;
   final VoidCallback? onTitleTap;
+  final bool useOwnLayer;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -31,7 +33,7 @@ class FloatingDocumentHeader extends StatelessWidget {
         icon: const Icon(Icons.chevron_left_rounded, size: 22),
         semanticLabel: '返回',
         size: 44,
-        useOwnLayer: true,
+        useOwnLayer: useOwnLayer,
         settings: moyueGlassSettings(context),
       ),
       const SizedBox(width: 8),
@@ -40,6 +42,7 @@ class FloatingDocumentHeader extends StatelessWidget {
           title: title,
           onTap: onTitleTap,
           semanticLabel: '修改文件夹名称',
+          useOwnLayer: useOwnLayer,
         ),
       ),
       const SizedBox(width: 8),
@@ -47,7 +50,7 @@ class FloatingDocumentHeader extends StatelessWidget {
         icon: Icon(actionIcon, color: actionColor),
         semanticLabel: actionLabel,
         onPressed: onAction,
-        useOwnLayer: true,
+        useOwnLayer: useOwnLayer,
         settings: moyueGlassSettings(context),
         size: 44,
       ),

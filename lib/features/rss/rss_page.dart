@@ -14,10 +14,10 @@ class RssPage extends StatefulWidget {
   final List<FeedSource> initialSources;
 
   @override
-  State<RssPage> createState() => _RssPageState();
+  State<RssPage> createState() => RssPageState();
 }
 
-class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
+class RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
   late final RssService _rssService;
   final List<FeedSource> _sources = [];
   List<FeedArticle> _articles = [];
@@ -73,17 +73,19 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
       searchHint: '搜索订阅或文章',
       onSearch: (value) => setState(() => _query = value),
       showSearch: !_selecting,
-      trailing: MoyueGlassIconButton(
-        icon: Icon(
-          _selecting ? Icons.delete_rounded : Icons.add_rounded,
-          color: _selecting ? Theme.of(context).colorScheme.error : null,
-        ),
-        onPressed: _selecting ? _deleteSelectedSources : _showAddSource,
-        semanticLabel: _selecting ? '删除所选订阅' : '添加订阅',
-        size: 44,
-        useOwnLayer: true,
-        settings: moyueGlassSettings(context),
-      ),
+      trailing: _selecting
+          ? MoyueGlassIconButton(
+              icon: Icon(
+                Icons.delete_rounded,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: _deleteSelectedSources,
+              semanticLabel: '删除所选订阅',
+              size: 44,
+              useOwnLayer: true,
+              settings: moyueGlassSettings(context),
+            )
+          : null,
       child: RefreshIndicator(
         onRefresh: _refreshAll,
         child: CustomScrollView(
@@ -165,6 +167,8 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
       ),
     );
   }
+
+  Future<void> showAddSource() => _showAddSource();
 
   Future<void> _refreshSource(FeedSource source) async {
     if (_loadingSourceId != null) return;

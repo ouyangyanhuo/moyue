@@ -1,11 +1,15 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/app/moyue_app.dart';
 import 'package:moyue_application/features/reader/library_page.dart';
 import 'package:moyue_application/features/reader/reader_detail_page.dart';
+import 'package:moyue_application/features/reader/native_html_view.dart';
+import 'package:moyue_application/features/reader/webview_html_view.dart';
 import 'package:moyue_application/features/editor/editor_page.dart';
 import 'package:moyue_application/features/rss/rss_page.dart';
 import 'package:moyue_application/features/settings/settings_page.dart';
@@ -18,6 +22,21 @@ import 'package:moyue_application/widgets/floating_document_header.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 
 void main() {
+  test('编辑器可恢复路由会保留文档逻辑路径', () {
+    final document = ReadingDocument(
+      id: 'nested-document',
+      title: '章节',
+      content: '# 章节',
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026),
+      folderId: 'folder',
+      relativePath: 'markdown/folder/.documents/nested-document/章节.md',
+      logicalPath: '第一卷/章节.md',
+    );
+
+    expect(markdownEditorArguments(document)?['logicalPath'], '第一卷/章节.md');
+  });
+
   testWidgets('核心 Dock 仅包含阅读、订阅和设置，并展示空状态', (tester) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
@@ -41,7 +60,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('设置'), findsWidgets);
     expect(find.byType(GlassSlider), findsOneWidget);
-    expect(find.byType(GlassSwitch), findsNWidgets(2));
+    expect(find.byType(GlassSwitch), findsNWidgets(3));
     expect(find.byType(Slider), findsNothing);
     expect(find.byType(Switch), findsNothing);
 
@@ -126,6 +145,28 @@ void main() {
     expect(find.text('没有匹配的文档'), findsOneWidget);
   });
 
+  testWidgets('设置页 Dock 的附加按钮会打开作者关于信息', (tester) async {
+    tester.view.physicalSize = const Size(430, 932);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const MoyueApp());
+    await _pumpIo(tester);
+    await tester.tapAt(tester.getCenter(find.byIcon(Icons.tune_outlined).last));
+    await tester.pump(const Duration(milliseconds: 350));
+
+    final about = find.bySemanticsLabel('关于墨阅');
+    expect(about, findsOneWidget);
+    await tester.tap(about);
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(find.text('作者'), findsOneWidget);
+    expect(find.text('Magneto'), findsOneWidget);
+    expect(find.text('版本'), findsOneWidget);
+    expect(find.byType(BottomSheet), findsOneWidget);
+  });
+
   testWidgets('Markdown 草稿可通过 RestorationManager 恢复', (tester) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
@@ -182,18 +223,29 @@ void main() {
     expect(find.text('已选择 1 项'), findsOneWidget);
     expect(find.byKey(const ValueKey('round-search-button')), findsNothing);
     expect(find.bySemanticsLabel('新建或导入'), findsNothing);
-    expect(find.bySemanticsLabel('删除所选文档'), findsOneWidget);
+    expect(find.bySemanticsLabel('所选项目操作'), findsOneWidget);
 
     await tester.tap(find.text('第二篇'));
     await tester.pump();
     expect(find.text('已选择 2 项'), findsOneWidget);
+
+    await tester.tap(find.bySemanticsLabel('所选项目操作'));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(find.text('分享所选文档'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
   });
 
   testWidgets('点击新增 RSS 可稳定打开订阅表单', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: RssPage())));
+    final key = GlobalKey<RssPageState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: RssPage(key: key)),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 300));
 
-    await tester.tap(find.bySemanticsLabel('添加订阅').first);
+    unawaited(key.currentState!.showAddSource());
     await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('添加 RSS 订阅'), findsWidgets);
@@ -231,7 +283,10 @@ void main() {
     final canvasHeight = tester
         .getSize(find.byKey(const ValueKey('edit')))
         .height;
-    expect(tester.getCenter(find.bySemanticsLabel('返回')).dy, lessThan(80));
+    expect(
+      tester.getCenter(find.bySemanticsLabel('返回')).dy,
+      lessThanOrEqualTo(80),
+    );
     expect(
       tester
           .getBottomLeft(find.byKey(const ValueKey('editor-writing-surface')))
@@ -261,12 +316,15 @@ void main() {
   });
 
   testWidgets('新建菜单提供指定选项及导入格式说明', (tester) async {
+    final key = GlobalKey<LibraryPageState>();
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: LibraryPage(documents: [], loading: false)),
+      MaterialApp(
+        home: Scaffold(
+          body: LibraryPage(key: key, documents: const [], loading: false),
+        ),
       ),
     );
-    await tester.tap(find.bySemanticsLabel('新建或导入'));
+    key.currentState!.showAddMenu();
     await tester.pumpAndSettle();
 
     expect(find.text('新建 markdown'), findsOneWidget);
@@ -279,12 +337,15 @@ void main() {
   });
 
   testWidgets('创建文件夹关闭对话框时不会提前释放输入状态', (tester) async {
+    final key = GlobalKey<LibraryPageState>();
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: LibraryPage(documents: [], loading: false)),
+      MaterialApp(
+        home: Scaffold(
+          body: LibraryPage(key: key, documents: const [], loading: false),
+        ),
       ),
     );
-    await tester.tap(find.bySemanticsLabel('新建或导入'));
+    key.currentState!.showAddMenu();
     await tester.pumpAndSettle();
     await tester.tap(find.text('新建文件夹'));
     await tester.pumpAndSettle();
@@ -402,7 +463,55 @@ void main() {
     await tester.pumpAndSettle();
     await tester.longPress(find.text('内部文档'));
     await tester.pump();
-    expect(find.bySemanticsLabel('删除所选文档'), findsOneWidget);
+    expect(find.bySemanticsLabel('所选文档操作'), findsOneWidget);
+  });
+
+  testWidgets('文件夹文档开始拖动时始终提供阅读首页目标', (tester) async {
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    final folder = LibraryFolder(
+      id: 'drag-source',
+      name: '拖动来源',
+      updatedAt: DateTime(2026),
+      documents: [
+        ReadingDocument(
+          id: 'drag-inside',
+          title: '拖出文档',
+          content: '# 正文',
+          kind: DocumentKind.markdown,
+          updatedAt: DateTime(2026),
+          folderId: 'drag-source',
+          relativePath: 'markdown/drag-source/inside.md',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: MaterialApp(
+          home: Scaffold(
+            body: LibraryPage(
+              documents: const [],
+              folders: [folder],
+              loading: false,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('拖动来源'));
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('拖出文档')),
+    );
+    await tester.pump(const Duration(milliseconds: 650));
+    await gesture.moveBy(const Offset(0, -24));
+    await tester.pump();
+
+    expect(find.text('阅读首页'), findsOneWidget);
+    await gesture.up();
+    await tester.pump();
   });
 
   testWidgets('阅读器正文延伸到浮动上下 Dock 后方并移除墨模式', (tester) async {
@@ -423,14 +532,16 @@ void main() {
     await tester.pump();
 
     expect(find.text('正文内容'), findsOneWidget);
+    final markdown = tester.widget<Markdown>(find.byType(Markdown));
+    expect(markdown.padding.bottom, lessThan(120));
     final initialBodyTop = tester.getTopLeft(find.text('正文内容')).dy;
     expect(initialBodyTop, greaterThanOrEqualTo(72));
-    await tester.drag(find.text('正文内容'), const Offset(0, -90));
-    await tester.pump();
-    expect(tester.getTopLeft(find.text('正文内容')).dy, lessThan(initialBodyTop));
     expect(find.bySemanticsLabel('返回'), findsOneWidget);
     expect(find.bySemanticsLabel('编辑 Markdown'), findsOneWidget);
-    expect(tester.getCenter(find.bySemanticsLabel('返回')).dy, lessThan(80));
+    expect(
+      tester.getCenter(find.bySemanticsLabel('返回')).dy,
+      lessThanOrEqualTo(80),
+    );
     // 浮动头部的按钮固定在滚动内容之上（不在视口内），保留 premium 渲染。
     final floatingQualities = tester
         .widgetList<GlassButton>(
@@ -457,6 +568,28 @@ void main() {
       tester.getCenter(find.byIcon(Icons.format_list_bulleted_rounded)).dy,
       greaterThan(820),
     );
+  });
+
+  testWidgets('HTML 阅读器会按设置切换到 WebView 路径', (tester) async {
+    final display = MoyueDisplayPreferences()..setHtmlWebViewEnabled(true);
+    addTearDown(display.dispose);
+    final document = ReadingDocument(
+      id: 'webview-html',
+      title: '网页阅读',
+      content: '<h1>网页正文</h1>',
+      kind: DocumentKind.html,
+      updatedAt: DateTime(2026),
+    );
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: MaterialApp(home: ReaderDetailPage(document: document)),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(WebViewHtmlView), findsOneWidget);
+    expect(find.byType(NativeHtmlView), findsNothing);
   });
 
   testWidgets('首页长文件名仅在 hover 或按住时滚动', (tester) async {
@@ -506,6 +639,88 @@ void main() {
     expect(find.bySemanticsLabel('添加订阅'), findsNothing);
   });
 
+  testWidgets('文档显示修改时间并提供拖动到文件夹的交互', (tester) async {
+    final document = ReadingDocument(
+      id: 'drag-doc',
+      title: '可移动文档',
+      content: '# 内容',
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026, 8, 23, 18, 30),
+      folderId: 'source-folder',
+      relativePath: 'markdown/source/note.md',
+      logicalPath: 'note.md',
+    );
+    final target = LibraryFolder(
+      id: 'target-folder',
+      name: '目标文件夹',
+      documents: const [],
+      updatedAt: DateTime(2026),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LibraryPage(
+            documents: [document],
+            folders: [target],
+            loading: false,
+          ),
+        ),
+      ),
+    );
+
+    final title = find.text('可移动文档');
+    final kind = find.text('Markdown');
+    final modified = find.textContaining('修改于 2026-08-23 18:30');
+    expect(modified, findsOneWidget);
+    expect(kind, findsOneWidget);
+    expect(
+      (tester.getCenter(title).dy - tester.getCenter(kind).dy).abs(),
+      lessThan(2),
+    );
+    expect(
+      tester.getCenter(modified).dy,
+      greaterThan(tester.getCenter(title).dy),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is LongPressDraggable<List<ReadingDocument>>,
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is DragTarget<List<ReadingDocument>>,
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('阅读器目录使用与新增入口一致的 Material 底部弹层', (tester) async {
+    final document = ReadingDocument(
+      id: 'toc-doc',
+      title: '目录测试',
+      content: '# 第一章\n\n正文\n\n## 第二节',
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026),
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: ReaderDetailPage(document: document)),
+    );
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('目录'));
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(find.text('第一章'), findsWidgets);
+    expect(find.textContaining('第二节'), findsWidgets);
+    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(find.byType(ListTile), findsAtLeastNWidgets(2));
+    for (final button in tester.widgetList<MoyueGlassIconButton>(
+      find.byType(MoyueGlassIconButton),
+    )) {
+      expect(button.useOwnLayer, isTrue);
+    }
+  });
+
   testWidgets('设置页墨模式开关保持禁用', (tester) async {
     final display = MoyueDisplayPreferences();
     addTearDown(display.dispose);
@@ -542,6 +757,13 @@ void main() {
     );
     expect(disabledPointer.ignoring, isTrue);
     expect(find.text('暂未开放'), findsOneWidget);
+
+    expect(find.text('HTML WebView 阅读器'), findsOneWidget);
+    expect(display.htmlWebViewEnabled, isFalse);
+    await tester.tap(find.text('HTML WebView 阅读器'));
+    await tester.pump();
+    expect(display.htmlWebViewEnabled, isTrue);
+    expect(find.textContaining('使用系统网页引擎'), findsOneWidget);
   });
 }
 

@@ -11,6 +11,7 @@ class FloatingPageShell extends StatelessWidget {
     required this.child,
     this.searchHint,
     this.onSearch,
+    this.searchKey,
     this.showSearch = true,
     this.trailing,
     super.key,
@@ -21,6 +22,7 @@ class FloatingPageShell extends StatelessWidget {
 
   final String? searchHint;
   final ValueChanged<String>? onSearch;
+  final GlobalKey<ExpandableGlassSearchState>? searchKey;
   final bool showSearch;
 
   /// 页面滚动内容，通常是 CustomScrollView。
@@ -50,6 +52,7 @@ class FloatingPageShell extends StatelessWidget {
                   ],
                   if (showSearch && onSearch != null)
                     ExpandableGlassSearch(
+                      key: searchKey,
                       hintText: searchHint ?? '',
                       onChanged: onSearch!,
                     ),

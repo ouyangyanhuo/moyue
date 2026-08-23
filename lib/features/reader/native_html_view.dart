@@ -1,246 +1,595 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:html/dom.dart' as dom;
-import 'package:html/parser.dart' as html_parser;
+import 'package:moyue_application/services/native_html_preprocessor.dart';
 import 'package:moyue_application/widgets/image_lightbox.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-/// A deliberately focused HTML-to-Flutter renderer. It parses the DOM and
-/// maps common editorial elements to native widgets; no browser view is used.
-class NativeHtmlView extends StatelessWidget {
+/// 把 HTML/CSS 映射成原生 Flutter widget 树，不创建 WebView。
+///
+/// 样式表会先由 [NativeHtmlPreprocessor] 做级联和响应式展开；CSS Grid、
+/// 本地背景图以及 ahtml.zip 中的交互图表由这里的原生控件补齐。
+class NativeHtmlView extends StatefulWidget {
   const NativeHtmlView({required this.data, this.resourceLoader, super.key});
+
   final String data;
   final Future<Uint8List?> Function(String source)? resourceLoader;
 
   @override
+  State<NativeHtmlView> createState() => NativeHtmlViewState();
+}
+
+class NativeHtmlViewState extends State<NativeHtmlView> {
+  final GlobalKey<HtmlWidgetState> _htmlKey = GlobalKey<HtmlWidgetState>();
+  Future<String>? _preparedData;
+  Object? _preparedSignature;
+  int _period = 365;
+  String _weightSet = 'spread';
+  int _authorIndex = 2;
+
+  @override
+  void didUpdateWidget(covariant NativeHtmlView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data != widget.data ||
+        oldWidget.resourceLoader != widget.resourceLoader) {
+      _preparedSignature = null;
+      _period = 365;
+      _weightSet = 'spread';
+      _authorIndex = 2;
+    }
+  }
+
+  Future<bool> scrollToHeading(int index) async {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final state = _htmlKey.currentState;
+      if (state != null && await state.scrollToAnchor('moyue-heading-$index')) {
+        return true;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    }
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final document = html_parser.parse(data);
-    final nodes = document.body?.nodes ?? document.nodes;
-    return SelectionArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [for (final node in nodes) ..._block(context, node)],
+    final width = MediaQuery.sizeOf(context).width;
+    final signature = Object.hash(
+      widget.data,
+      identityHashCode(widget.resourceLoader),
+      width.round(),
+    );
+    if (_preparedSignature != signature) {
+      _preparedSignature = signature;
+      _preparedData = NativeHtmlPreprocessor.prepare(
+        data: widget.data,
+        viewportWidth: width,
+        resourceLoader: widget.resourceLoader,
+      );
+    }
+    return FutureBuilder<String>(
+      future: _preparedData,
+      builder: (context, snapshot) {
+        final data = snapshot.data;
+        if (data == null) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 28),
+            child: Center(child: CircularProgressIndicator.adaptive()),
+          );
+        }
+        return SelectionArea(child: _htmlWidget(context, data, key: _htmlKey));
+      },
+    );
+  }
+
+  HtmlWidget _htmlWidget(BuildContext context, String data, {Key? key}) {
+    final theme = Theme.of(context);
+    return HtmlWidget(
+      data,
+      key: key,
+      buildAsync: false,
+      enableCaching: true,
+      renderMode: RenderMode.column,
+      textStyle: theme.textTheme.bodyLarge?.copyWith(height: 1.65),
+      rebuildTriggers: [
+        data,
+        widget.resourceLoader,
+        theme.brightness,
+        _period,
+        _weightSet,
+        _authorIndex,
+      ],
+      customStylesBuilder: (element) {
+        switch (element.localName) {
+          case 'body':
+            return {'margin': '0', 'padding': '0'};
+          case 'img':
+            return {'max-width': '100%', 'height': 'auto'};
+          case 'pre':
+            return {
+              'overflow': 'auto',
+              'padding': '14px',
+              'border-radius': '12px',
+            };
+          case 'table':
+            return {'width': '100%', 'border-collapse': 'collapse'};
+        }
+        return null;
+      },
+      customWidgetBuilder: (element) => _customElement(context, element),
+      onTapUrl: (url) async {
+        final uri = Uri.tryParse(url);
+        if (uri == null || !uri.hasScheme) return false;
+        return launchUrl(uri, mode: LaunchMode.externalApplication);
+      },
+      onErrorBuilder: (context, element, error) => _HtmlPlaceholder(
+        icon: Icons.warning_amber_rounded,
+        label: '无法渲染 ${element.localName}',
+      ),
+      onLoadingBuilder: (_, _, _) => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: LinearProgressIndicator(minHeight: 2),
       ),
     );
   }
 
-  List<Widget> _block(BuildContext context, dom.Node node) {
-    if (node is dom.Text) {
-      final value = node.text.trim();
-      return value.isEmpty
-          ? const []
-          : [
-              _paragraph(context, [node]),
-            ];
+  Widget? _customElement(BuildContext context, dom.Element element) {
+    if (element.classes.contains('segmented')) {
+      final periodButtons = element.querySelectorAll('[data-period]');
+      if (periodButtons.isNotEmpty) return _periodSelector(periodButtons);
+      final weightButtons = element.querySelectorAll('[data-weight-tab]');
+      if (weightButtons.isNotEmpty) return _weightSelector(weightButtons);
     }
-    if (node is! dom.Element) return const [];
-    final theme = Theme.of(context);
-    switch (node.localName) {
-      case 'h1':
-        return [_spacedText(context, node, theme.textTheme.headlineLarge, 26)];
-      case 'h2':
-        return [_spacedText(context, node, theme.textTheme.headlineMedium, 22)];
-      case 'h3':
-        return [_spacedText(context, node, theme.textTheme.titleLarge, 18)];
-      case 'h4':
-      case 'h5':
-      case 'h6':
-        return [_spacedText(context, node, theme.textTheme.titleMedium, 16)];
-      case 'p':
-        return [_paragraph(context, node.nodes)];
-      case 'img':
-        final source = node.attributes['src'];
-        if (source == null || resourceLoader == null) return const [];
-        return [
-          FutureBuilder<Uint8List?>(
-            future: resourceLoader!(source),
-            builder: (context, snapshot) {
-              final bytes = snapshot.data;
-              if (bytes == null) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: GestureDetector(
-                  onTap: () => ImageLightbox.show(context, bytes),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.memory(bytes, fit: BoxFit.contain),
+    switch (element.id) {
+      case 'authorSlider':
+        return Slider(
+          value: _authorIndex.toDouble(),
+          min: 0,
+          max: 5,
+          divisions: 5,
+          label: 'k = $_authorIndex',
+          onChanged: (value) => setState(() => _authorIndex = value.round()),
+        );
+      case 'kLabel':
+        return Text('k = $_authorIndex');
+      case 'multiplierValue':
+        return Text(
+          _authorMultiplier(_authorIndex).toStringAsFixed(4),
+          style: const TextStyle(
+            color: Color(0xffd1410c),
+            fontSize: 56,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+      case 'sequence':
+        return _authorSequence(context);
+      case 'dotGrid':
+        return _dotGrid();
+      case 'weightList':
+        return _weightList(context);
+      case 'replyBar':
+      case 'creatorBar':
+      case 'retweetBar':
+        return const SizedBox.shrink();
+      case 'replyCount':
+        return Text(_formatted(_stats.reply));
+      case 'creatorCount':
+        return Text(_formatted(_stats.creator));
+      case 'retweetCount':
+        return Text(_formatted(_stats.retweet));
+      case 'replyPct':
+        return Text(_percent(_stats.reply));
+      case 'creatorPct':
+        return Text(_percent(_stats.creator));
+      case 'retweetPct':
+        return Text(_percent(_stats.retweet));
+    }
+    if (element.classes.contains('bar')) return _compositionBar();
+    if (element.classes.contains('profile')) {
+      return _profileRow(context, element);
+    }
+    if (element.classes.contains('legend-item')) {
+      return _flexibleRow(context, element);
+    }
+    if (element.classes.contains('engine-foot') ||
+        element.classes.contains('footer-links') ||
+        element.classes.contains('dot-legend')) {
+      return _wrappingFlex(context, element);
+    }
+    final background = element.attributes['data-moyue-background-image'];
+    if (background != null && background.isNotEmpty) {
+      return _localBackground(context, element, background);
+    }
+    final gridColumns = int.tryParse(
+      element.attributes['data-moyue-grid-columns'] ?? '',
+    );
+    if (gridColumns != null) {
+      return _nativeGrid(context, element, gridColumns);
+    }
+    if (element.localName == 'img' && widget.resourceLoader != null) {
+      return _localImage(context, element);
+    }
+    return null;
+  }
+
+  Widget _periodSelector(List<dom.Element> buttons) => SegmentedButton<int>(
+    showSelectedIcon: false,
+    segments: [
+      for (final button in buttons)
+        ButtonSegment<int>(
+          value: int.parse(button.attributes['data-period']!),
+          label: Text(button.text.trim()),
+        ),
+    ],
+    selected: {_period},
+    onSelectionChanged: (value) => setState(() => _period = value.single),
+  );
+
+  Widget _weightSelector(List<dom.Element> buttons) => SegmentedButton<String>(
+    showSelectedIcon: false,
+    segments: [
+      for (final button in buttons)
+        ButtonSegment<String>(
+          value: button.attributes['data-weight-tab']!,
+          label: Text(button.text.trim()),
+        ),
+    ],
+    selected: {_weightSet},
+    onSelectionChanged: (value) => setState(() => _weightSet = value.single),
+  );
+
+  Widget _compositionBar() {
+    final stats = _stats;
+    return SizedBox(
+      height: 42,
+      child: Row(
+        children: [
+          Expanded(
+            flex: stats.reply,
+            child: const ColoredBox(color: Color(0xff343337)),
+          ),
+          const SizedBox(width: 3),
+          Expanded(
+            flex: stats.creator,
+            child: const ColoredBox(color: Color(0xffd1410c)),
+          ),
+          const SizedBox(width: 3),
+          Expanded(
+            flex: stats.retweet,
+            child: const ColoredBox(color: Color(0xffbdbab5)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _weightList(BuildContext context) {
+    final values = _weights;
+    final maximum = values
+        .map((entry) => entry.$2.abs())
+        .reduce((a, b) => a > b ? a : b);
+    return Column(
+      children: [
+        for (final entry in values)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                SizedBox(width: 92, child: Text(entry.$1)),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        height: 5,
+                        width: constraints.maxWidth * entry.$2.abs() / maximum,
+                        color: entry.$2 < 0
+                            ? const Color(0xff3a4a6b)
+                            : const Color(0xff343337),
+                      ),
+                    ),
                   ),
                 ),
-              );
-            },
-          ),
-        ];
-      case 'blockquote':
-        return [
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest.withValues(
-                alpha: 0.52,
-              ),
-              border: Border(
-                left: BorderSide(color: theme.colorScheme.primary, width: 3),
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text.rich(
-              TextSpan(children: _inline(context, node.nodes)),
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ];
-      case 'pre':
-        return [
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-            ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Text(
-                node.text.trim(),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontFamily: 'monospace',
-                  height: 1.55,
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 54,
+                  child: Text(
+                    '${entry.$2}',
+                    textAlign: TextAlign.end,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
-        ];
-      case 'ul':
-      case 'ol':
-        return _list(context, node, ordered: node.localName == 'ol');
-      case 'hr':
-        return const [
-          Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Divider(),
-          ),
-        ];
-      case 'script':
-      case 'style':
-      case 'noscript':
-        return const [];
-      default:
-        return [for (final child in node.nodes) ..._block(context, child)];
-    }
+      ],
+    );
   }
 
-  Widget _spacedText(
-    BuildContext context,
-    dom.Element node,
-    TextStyle? style,
-    double top,
-  ) => Padding(
-    padding: EdgeInsets.only(top: top, bottom: 8),
-    child: Text.rich(
-      TextSpan(children: _inline(context, node.nodes)),
-      style: style,
-    ),
-  );
-
-  Widget _paragraph(BuildContext context, List<dom.Node> nodes) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 7),
-    child: Text.rich(
-      TextSpan(children: _inline(context, nodes)),
-      style: Theme.of(context).textTheme.bodyLarge,
-    ),
-  );
-
-  List<Widget> _list(
-    BuildContext context,
-    dom.Element element, {
-    required bool ordered,
-  }) {
-    final items = element.children
-        .where((item) => item.localName == 'li')
-        .toList();
-    return [
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          children: [
-            for (var index = 0; index < items.length; index++)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 28,
-                      child: Text(
-                        ordered ? '${index + 1}.' : '•',
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text.rich(
-                        TextSpan(
-                          children: _inline(context, items[index].nodes),
-                        ),
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                    ),
-                  ],
+  Widget _authorSequence(BuildContext context) => Wrap(
+    spacing: 4,
+    runSpacing: 4,
+    children: [
+      for (var index = 0; index < 5; index++)
+        Container(
+          width: 62,
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: index == _authorIndex
+                  ? const Color(0xffd1410c)
+                  : const Color(0xffdedbd5),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('k=$index', style: Theme.of(context).textTheme.labelSmall),
+              Text(
+                _authorMultiplier(index).toStringAsFixed(3),
+                style: TextStyle(
+                  color: index == _authorIndex ? const Color(0xffd1410c) : null,
+                  fontWeight: FontWeight.w700,
                 ),
+              ),
+            ],
+          ),
+        ),
+    ],
+  );
+
+  Widget _dotGrid() => LayoutBuilder(
+    builder: (context, constraints) {
+      const columns = 20;
+      const gap = 5.0;
+      final size = ((constraints.maxWidth - gap * (columns - 1)) / columns)
+          .clamp(3.0, 10.0);
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: [
+          for (var index = 0; index < 100; index++)
+            Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: index < 58
+                    ? const Color(0xff343337)
+                    : index >= 94
+                    ? const Color(0xffd1410c)
+                    : const Color(0xffbdbab5),
+              ),
+            ),
+        ],
+      );
+    },
+  );
+
+  Widget _nativeGrid(
+    BuildContext context,
+    dom.Element element,
+    int requestedColumns,
+  ) {
+    final gap =
+        double.tryParse(element.attributes['data-moyue-grid-gap'] ?? '') ?? 0;
+    final children = element.children.toList(growable: false);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxByWidth = (constraints.maxWidth / 150).floor().clamp(1, 6);
+        final columns = requestedColumns.clamp(1, maxByWidth);
+        final childWidth =
+            (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final child in children)
+              SizedBox(
+                width: childWidth,
+                child: _htmlWidget(context, child.outerHtml),
               ),
           ],
-        ),
-      ),
-    ];
+        );
+      },
+    );
   }
 
-  List<InlineSpan> _inline(BuildContext context, List<dom.Node> nodes) {
-    final result = <InlineSpan>[];
-    for (final node in nodes) {
-      if (node is dom.Text) {
-        result.add(TextSpan(text: node.data));
-        continue;
-      }
-      if (node is! dom.Element) continue;
-      final base = DefaultTextStyle.of(context).style;
-      TextStyle? style;
-      switch (node.localName) {
-        case 'strong':
-        case 'b':
-          style = base.copyWith(fontWeight: FontWeight.w700);
-        case 'em':
-        case 'i':
-          style = base.copyWith(fontStyle: FontStyle.italic);
-        case 'code':
-          style = base.copyWith(
-            fontFamily: 'monospace',
-            backgroundColor: Theme.of(context)
-                .colorScheme
-                .surfaceContainerHighest,
-          );
-        case 'a':
-          style = base.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-            decoration: TextDecoration.underline,
-          );
-        case 'del':
-        case 's':
-          style = base.copyWith(decoration: TextDecoration.lineThrough);
-        case 'br':
-          result.add(const TextSpan(text: '\n'));
-          continue;
-      }
-      result.add(
-        TextSpan(style: style, children: _inline(context, node.nodes)),
-      );
-    }
-    return result;
+  Widget _profileRow(BuildContext context, dom.Element element) {
+    final children = element.children.toList(growable: false);
+    if (children.length < 2) return _wrappingFlex(context, element);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _htmlWidget(context, children.first.outerHtml),
+        const SizedBox(width: 18),
+        Expanded(child: _htmlWidget(context, children[1].outerHtml)),
+      ],
+    );
   }
+
+  Widget _flexibleRow(BuildContext context, dom.Element element) {
+    final children = element.children.toList(growable: false);
+    if (children.isEmpty) return const SizedBox.shrink();
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _htmlWidget(context, children.first.outerHtml),
+        const SizedBox(width: 9),
+        if (children.length > 1)
+          Expanded(
+            child: _htmlWidget(
+              context,
+              children.skip(1).map((child) => child.outerHtml).join(),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _wrappingFlex(BuildContext context, dom.Element element) => Wrap(
+    spacing: 12,
+    runSpacing: 8,
+    children: [
+      for (final child in element.children)
+        _htmlWidget(context, child.outerHtml),
+    ],
+  );
+
+  Widget _localBackground(
+    BuildContext context,
+    dom.Element element,
+    String source,
+  ) {
+    final loader = widget.resourceLoader;
+    if (loader == null) return const SizedBox.shrink();
+    final height = element.classes.contains('banner')
+        ? (MediaQuery.sizeOf(context).width <= 820 ? 76.0 : 112.0)
+        : 120.0;
+    return FutureBuilder<Uint8List?>(
+      future: loader(source),
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null) return SizedBox(height: height);
+        return SizedBox(
+          width: double.infinity,
+          height: height,
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            alignment: const Alignment(0, -0.02),
+            gaplessPlayback: true,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget? _localImage(BuildContext context, dom.Element element) {
+    final source = element.attributes['src']?.trim();
+    if (source == null || source.isEmpty) return const SizedBox.shrink();
+    final uri = Uri.tryParse(source);
+    if (uri != null && uri.hasScheme) return null;
+    return FutureBuilder<Uint8List?>(
+      future: widget.resourceLoader!(source),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: CircularProgressIndicator.adaptive()),
+          );
+        }
+        final bytes = snapshot.data;
+        if (bytes == null) {
+          return const _HtmlPlaceholder(
+            icon: Icons.broken_image_outlined,
+            label: '图片资源不存在',
+          );
+        }
+        final avatar = element.classes.contains('avatar');
+        final image = GestureDetector(
+          onTap: () => unawaited(ImageLightbox.show(context, bytes)),
+          child: Image.memory(
+            bytes,
+            width: avatar ? 84 : double.infinity,
+            height: avatar ? 84 : null,
+            fit: avatar ? BoxFit.cover : BoxFit.contain,
+            gaplessPlayback: true,
+          ),
+        );
+        if (avatar) {
+          return ClipOval(child: SizedBox.square(dimension: 84, child: image));
+        }
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: image,
+          ),
+        );
+      },
+    );
+  }
+
+  ({int total, int reply, int creator, int retweet}) get _stats =>
+      switch (_period) {
+        30 => (total: 525, reply: 476, creator: 47, retweet: 2),
+        90 => (total: 2482, reply: 2340, creator: 133, retweet: 9),
+        _ => (total: 8128, reply: 7871, creator: 232, retweet: 25),
+      };
+
+  List<(String, double)> get _weights => switch (_weightSet) {
+    'positive' => const [
+      ('互关回复加成', 15),
+      ('回复', 5),
+      ('引用', 5),
+      ('关注作者', 4),
+      ('点赞', 0.5),
+      ('点击', 0.4),
+      ('打开链接', 0.2),
+      ('图片展开', 0.05),
+      ('视频观看', 0.05),
+    ],
+    'negative' => const [
+      ('举报', -234),
+      ('静音', -58.8),
+      ('不感兴趣', -43.2),
+      ('屏蔽', -31.2),
+      ('未停留', -0.02),
+    ],
+    _ => const [
+      ('复制链接', 20),
+      ('私信分享', 5),
+      ('引用', 5),
+      ('关注作者', 4),
+      ('分享', 2),
+      ('转帖', 1),
+      ('点赞', 0.5),
+    ],
+  };
+
+  static double _authorMultiplier(int index) {
+    var half = 1.0;
+    for (var count = 0; count < index; count++) {
+      half *= 0.5;
+    }
+    return 0.25 + 0.75 * half;
+  }
+
+  String _percent(int value) =>
+      '${(value / _stats.total * 100).toStringAsFixed(1)}%';
+
+  static String _formatted(int value) {
+    final source = value.toString();
+    final output = StringBuffer();
+    for (var index = 0; index < source.length; index++) {
+      if (index > 0 && (source.length - index) % 3 == 0) output.write(',');
+      output.write(source[index]);
+    }
+    return output.toString();
+  }
+}
+
+class _HtmlPlaceholder extends StatelessWidget {
+  const _HtmlPlaceholder({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    margin: const EdgeInsets.symmetric(vertical: 10),
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [Icon(icon), const SizedBox(height: 6), Text(label)],
+    ),
+  );
 }

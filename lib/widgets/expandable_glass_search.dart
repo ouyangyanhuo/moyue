@@ -14,10 +14,10 @@ class ExpandableGlassSearch extends StatefulWidget {
   final ValueChanged<String> onChanged;
 
   @override
-  State<ExpandableGlassSearch> createState() => _ExpandableGlassSearchState();
+  State<ExpandableGlassSearch> createState() => ExpandableGlassSearchState();
 }
 
-class _ExpandableGlassSearchState extends State<ExpandableGlassSearch> {
+class ExpandableGlassSearchState extends State<ExpandableGlassSearch> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   bool _expanded = false;
@@ -29,7 +29,11 @@ class _ExpandableGlassSearchState extends State<ExpandableGlassSearch> {
     super.dispose();
   }
 
-  void _open() {
+  void open() {
+    if (_expanded) {
+      _focusNode.requestFocus();
+      return;
+    }
     setState(() => _expanded = true);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _focusNode.requestFocus(),
@@ -87,7 +91,7 @@ class _ExpandableGlassSearchState extends State<ExpandableGlassSearch> {
           : MoyueGlassIconButton(
               key: const ValueKey('round-search-button'),
               icon: const Icon(Icons.search_rounded),
-              onPressed: _open,
+              onPressed: open,
               semanticLabel: '搜索',
               size: 44,
               useOwnLayer: true,

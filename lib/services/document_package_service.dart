@@ -50,6 +50,11 @@ class DocumentPackageService {
   Future<MoyueIndexDatabase> get index async =>
       _index ??= MoyueIndexDatabase(await _files.databasePath());
 
+  Future<void> close() async {
+    await _index?.close();
+    _index = null;
+  }
+
   /// 把编辑器选中的图片写入文档所在目录的 images/ 子目录，
   /// 返回可直接用于 Markdown 的相对链接（如 `images/xxx.png`）。
   /// 文档缺少目录信息（folderId / relativePath）时返回 null。
@@ -77,6 +82,23 @@ class DocumentPackageService {
     final documentDir = p.posix.dirname(documentPath);
     final resourcePath = p.posix.join(documentDir, imageDirName, name);
     await _files.writeFiles({resourcePath: bytes});
+    try {
+      await (await index).upsertResource(
+        ResourceRecord(
+          id: '$folderId-res-${sha256.convert(utf8.encode(resourcePath)).toString().substring(0, 16)}',
+          folderId: folderId,
+          documentId: document.id,
+          name: name,
+          mimeType: _mimeType(name),
+          relativePath: resourcePath,
+          contentHash: sha256.convert(bytes).toString(),
+          sizeBytes: bytes.length,
+        ),
+      );
+    } on Object {
+      // 资源索引可由导出时的正文引用重新构建；索引暂不可用不应让编辑器
+      // 已成功写入的图片丢失。
+    }
     return '$imageDirName/$name';
   }
 
@@ -170,6 +192,10 @@ class DocumentPackageService {
             filePath: relativePath,
             folderId: row['folder_id']! as String,
             relativePath: relativePath,
+            logicalPath: _logicalPath(
+              row,
+              folderPath: row['folder_path']! as String,
+            ),
           ),
         );
       } on Object {
@@ -205,6 +231,10 @@ class DocumentPackageService {
               filePath: relativePath,
               folderId: folderId,
               relativePath: relativePath,
+              logicalPath: _logicalPath(
+                row,
+                folderPath: folderRow['relative_path']! as String,
+              ),
             ),
           );
         } on Object {
@@ -259,18 +289,22 @@ class DocumentPackageService {
     final folderRow = await (await index).folder(folder.id);
     if (folderRow == null) throw StateError('文件夹不存在');
     final safeName = p.posix.basename(_safeArchivePath(fileName));
-    final relativePath = '${folderRow['relative_path']}/$safeName';
     final existing = await (await index).packageDocuments(folder.id);
-    if (existing.any((row) => row['relative_path'] == relativePath)) {
-      throw FormatException('文件夹中已存在 $safeName');
-    }
     final now = DateTime.now();
+    final documentId = '${now.microsecondsSinceEpoch}-doc';
+    final relativePath = p.posix.join(
+      folderRow['relative_path']! as String,
+      '.documents',
+      documentId,
+      safeName,
+    );
     final record = DocumentRecord(
-      id: '${now.microsecondsSinceEpoch}-doc',
+      id: documentId,
       folderId: folder.id,
       name: p.posix.basenameWithoutExtension(safeName),
       kind: extension == 'html' ? 'html' : 'markdown',
       relativePath: relativePath,
+      logicalPath: safeName,
       isPrimary: existing.isEmpty,
       contentHash: sha256.convert(bytes).toString(),
       createdAt: now,
@@ -290,6 +324,7 @@ class DocumentPackageService {
       filePath: relativePath,
       folderId: folder.id,
       relativePath: relativePath,
+      logicalPath: safeName,
     );
   }
 
@@ -347,22 +382,63 @@ class DocumentPackageService {
       throw const FormatException('暂不支持此 .moyue 格式版本');
     }
 
-    final documentPaths = entries.keys.where(_isDocument).toList()..sort();
-    if (documentPaths.isEmpty) {
+    final declaredDocuments = meta['documents'];
+    final documentEntries =
+        <({String archivePath, String logicalPath, String sourceId})>[];
+    if (declaredDocuments is List) {
+      for (var index = 0; index < declaredDocuments.length; index++) {
+        final value = declaredDocuments[index];
+        if (value is! Map) throw const FormatException('文档元信息格式不正确');
+        final archivePath = _safeArchivePath(
+          (value['archive_path'] ?? value['path']) as String,
+        );
+        final logicalPath = _safeArchivePath(
+          (value['path'] ?? archivePath) as String,
+        );
+        if (!_isDocument(logicalPath) || !entries.containsKey(archivePath)) {
+          throw FormatException('文档元信息指向了不存在的文件：$logicalPath');
+        }
+        documentEntries.add((
+          archivePath: archivePath,
+          logicalPath: logicalPath,
+          sourceId: (value['id'] as String?) ?? 'document-${index + 1}',
+        ));
+      }
+    } else {
+      final paths = entries.keys.where(_isDocument).toList()..sort();
+      for (var index = 0; index < paths.length; index++) {
+        documentEntries.add((
+          archivePath: paths[index],
+          logicalPath: paths[index],
+          sourceId: 'document-${index + 1}',
+        ));
+      }
+    }
+    if (documentEntries.isEmpty) {
       throw const FormatException('没有找到 Markdown 或 HTML 文件');
     }
     final declaredPrimary = meta['primary_document'] as String?;
-    final primaryPath = declaredPrimary != null
-        ? _safeArchivePath(declaredPrimary)
-        : documentPaths.first;
-    if (!documentPaths.contains(primaryPath)) {
-      throw const FormatException('meta.json 指定的主文档不存在');
+    final declaredPrimaryId = meta['primary_document_id'] as String?;
+    var primaryEntry = documentEntries.first;
+    if (declaredPrimary != null || declaredPrimaryId != null) {
+      final matches = documentEntries.where(
+        (entry) =>
+            (declaredPrimaryId != null &&
+                entry.sourceId == declaredPrimaryId) ||
+            (declaredPrimary != null &&
+                (entry.archivePath == declaredPrimary ||
+                    entry.logicalPath == declaredPrimary)),
+      );
+      if (matches.isEmpty) {
+        throw const FormatException('meta.json 指定的主文档不存在');
+      }
+      primaryEntry = matches.first;
     }
 
     final now = DateTime.now();
     final folderId =
         '${now.microsecondsSinceEpoch}-${sha256.convert(bytesForId(sourceName, entries)).toString().substring(0, 10)}';
-    final kind = _kindFor(primaryPath);
+    final kind = _kindFor(primaryEntry.logicalPath);
     final category = kind == DocumentKind.html ? 'html' : 'markdown';
     final folderPath = '$category/$folderId';
     final displayName = (meta['display_name'] as String?)?.trim();
@@ -374,47 +450,105 @@ class DocumentPackageService {
     final resources = <ResourceRecord>[];
     final files = <String, Uint8List>{};
 
-    for (final path in documentPaths) {
-      final relativePath = '$folderPath/$path';
-      final data = entries[path]!;
-      documents.add(
-        DocumentRecord(
-          id: '$folderId-doc-${documents.length + 1}',
-          folderId: folderId,
-          name: p.posix.basenameWithoutExtension(path),
-          kind: _kindFor(path) == DocumentKind.html ? 'html' : 'markdown',
-          relativePath: relativePath,
-          isPrimary: path == primaryPath,
-          contentHash: sha256.convert(data).toString(),
-          createdAt: now,
-          updatedAt: now,
-        ),
+    final sourceDocumentIds = <String, DocumentRecord>{};
+    for (final entry in documentEntries) {
+      final documentId = '$folderId-doc-${documents.length + 1}';
+      final relativePath = declaredDocuments is List
+          ? p.posix.join(
+              folderPath,
+              '.documents',
+              documentId,
+              p.posix.basename(entry.logicalPath),
+            )
+          : '$folderPath/${entry.logicalPath}';
+      final data = entries[entry.archivePath]!;
+      final record = DocumentRecord(
+        id: documentId,
+        folderId: folderId,
+        name: p.posix.basenameWithoutExtension(entry.logicalPath),
+        kind: _kindFor(entry.logicalPath) == DocumentKind.html
+            ? 'html'
+            : 'markdown',
+        relativePath: relativePath,
+        logicalPath: entry.logicalPath,
+        isPrimary: entry == primaryEntry,
+        contentHash: sha256.convert(data).toString(),
+        createdAt: now,
+        updatedAt: now,
       );
+      documents.add(record);
+      sourceDocumentIds[entry.sourceId] = record;
       files[relativePath] = data;
     }
-    for (final entry in entries.entries) {
-      if (_isDocument(entry.key) || entry.key == 'meta.json') continue;
-      final relativePath = '$folderPath/${entry.key}';
+
+    final declaredResources = meta['resources'];
+    final resourceEntries =
+        <({String archivePath, String logicalPath, String? documentId})>[];
+    if (declaredResources is List) {
+      for (final value in declaredResources) {
+        if (value is! Map) throw const FormatException('资源元信息格式不正确');
+        final archivePath = _safeArchivePath(
+          (value['archive_path'] ?? value['path']) as String,
+        );
+        if (!entries.containsKey(archivePath)) {
+          throw FormatException('资源元信息指向了不存在的文件：$archivePath');
+        }
+        resourceEntries.add((
+          archivePath: archivePath,
+          logicalPath: _safeArchivePath(
+            (value['path'] ?? p.posix.basename(archivePath)) as String,
+          ),
+          documentId: value['document_id'] as String?,
+        ));
+      }
+    } else {
+      final documentArchivePaths = documentEntries
+          .map((entry) => entry.archivePath)
+          .toSet();
+      for (final path in entries.keys) {
+        if (documentArchivePaths.contains(path) || path == 'meta.json') {
+          continue;
+        }
+        resourceEntries.add((
+          archivePath: path,
+          logicalPath: path,
+          documentId: null,
+        ));
+      }
+    }
+    for (final entry in resourceEntries) {
+      final attachedDocument = entry.documentId == null
+          ? null
+          : sourceDocumentIds[entry.documentId];
+      final relativePath = attachedDocument == null
+          ? p.posix.join(folderPath, entry.logicalPath)
+          : p.posix.normalize(
+              p.posix.join(
+                p.posix.dirname(attachedDocument.relativePath),
+                entry.logicalPath,
+              ),
+            );
+      final data = entries[entry.archivePath]!;
       resources.add(
         ResourceRecord(
           id: '$folderId-res-${resources.length + 1}',
           folderId: folderId,
-          documentId: null,
-          name: p.posix.basename(entry.key),
-          mimeType: _mimeType(entry.key),
+          documentId: attachedDocument?.id,
+          name: p.posix.basename(entry.logicalPath),
+          mimeType: _mimeType(entry.logicalPath),
           relativePath: relativePath,
-          contentHash: sha256.convert(entry.value).toString(),
-          sizeBytes: entry.value.length,
+          contentHash: sha256.convert(data).toString(),
+          sizeBytes: data.length,
         ),
       );
-      files[relativePath] = entry.value;
+      files[relativePath] = data;
     }
 
     final folder = FolderRecord(
       id: folderId,
       category: category,
       name: folderName,
-      single: single || documentPaths.length <= 2,
+      single: single || documentEntries.length <= 2,
       marker: marker,
       relativePath: folderPath,
       entryCount: documents.length + resources.length,
@@ -439,13 +573,14 @@ class DocumentPackageService {
     return ReadingDocument(
       id: primary.id,
       title: primary.name,
-      content: decodeImportedText(entries[primaryPath]!),
+      content: decodeImportedText(entries[primaryEntry.archivePath]!),
       kind: kind,
       updatedAt: now,
       sourceLabel: single ? '本地文件' : '文档包',
       filePath: primary.relativePath,
       folderId: folderId,
       relativePath: primary.relativePath,
+      logicalPath: primary.logicalPath,
     );
   }
 
@@ -459,20 +594,192 @@ class DocumentPackageService {
       return importFile('$title.md', data);
     }
     final now = DateTime.now();
+    final db = await index;
+    final rows = await db.packageDocuments(existing!.folderId!);
+    final currentRows = rows.where((row) => row['id'] == existing.id);
+    final currentRow = currentRows.isEmpty ? null : currentRows.first;
     final updated = DocumentRecord(
-      id: existing!.id,
+      id: existing.id,
       folderId: existing.folderId!,
       name: title,
       kind: 'markdown',
       relativePath: existing.relativePath!,
-      isPrimary: true,
+      logicalPath: _renamedLogicalPath(existing, title, 'md'),
+      isPrimary: currentRow?['is_primary'] == 1,
       contentHash: sha256.convert(data).toString(),
-      createdAt: existing.updatedAt,
+      createdAt: currentRow == null
+          ? existing.updatedAt
+          : DateTime.fromMillisecondsSinceEpoch(
+              currentRow['created_at']! as int,
+            ),
       updatedAt: now,
     );
-    await (await index).updateDocument(updated);
+    await db.updateDocument(updated);
     await _files.writeFiles({updated.relativePath: data});
-    return existing.copyWith(title: title, content: content, updatedAt: now);
+    return existing.copyWith(
+      title: title,
+      content: content,
+      updatedAt: now,
+      logicalPath: updated.logicalPath,
+    );
+  }
+
+  /// 把单个文档移动到另一个用户文件夹。目标中的同名文档不会被覆盖，
+  /// 因为实际文件始终存放在 `.documents/<document-id>/` 下。
+  Future<ReadingDocument> moveDocument({
+    required ReadingDocument document,
+    required LibraryFolder target,
+  }) async {
+    final sourceFolderId = document.folderId;
+    final sourcePath = document.relativePath;
+    if (sourceFolderId == null || sourcePath == null) {
+      throw StateError('未索引的旧文档不能直接移动');
+    }
+    if (sourceFolderId == target.id) return document;
+    final db = await index;
+    final sourceFolder = await db.folder(sourceFolderId);
+    final targetFolder = await db.folder(target.id);
+    if (sourceFolder == null || targetFolder == null) {
+      throw StateError('源文件夹或目标文件夹不存在');
+    }
+
+    final now = DateTime.now();
+    final extension = document.kind.extension;
+    final visibleName = p.posix.basename(
+      document.logicalPath ?? '${document.title}.$extension',
+    );
+    final targetPath = p.posix.join(
+      targetFolder['relative_path']! as String,
+      '.documents',
+      document.id,
+      visibleName,
+    );
+    final targetFiles = <String, Uint8List>{
+      targetPath: await _files.readBytes(sourcePath),
+    };
+    final resources = <ResourceRecord>[];
+    for (final link in _localAssetReferences(document.content)) {
+      final sourceResource = p.posix.normalize(
+        p.posix.join(p.posix.dirname(sourcePath), link),
+      );
+      final sourceBase = sourceFolder['relative_path']! as String;
+      if (sourceResource != sourceBase &&
+          !p.posix.isWithin(sourceBase, sourceResource)) {
+        continue;
+      }
+      try {
+        final bytes = await _files.readBytes(sourceResource);
+        final targetResource = p.posix.normalize(
+          p.posix.join(p.posix.dirname(targetPath), link),
+        );
+        targetFiles[targetResource] = bytes;
+        resources.add(
+          ResourceRecord(
+            id: '${document.id}-res-${resources.length + 1}',
+            folderId: target.id,
+            documentId: document.id,
+            name: p.posix.basename(targetResource),
+            mimeType: _mimeType(targetResource),
+            relativePath: targetResource,
+            contentHash: sha256.convert(bytes).toString(),
+            sizeBytes: bytes.length,
+          ),
+        );
+      } on Object {
+        // 断裂的相对链接保留在正文中，不阻止用户移动文档。
+      }
+    }
+    final targetDocuments = await db.packageDocuments(target.id);
+    final record = DocumentRecord(
+      id: document.id,
+      folderId: target.id,
+      name: document.title,
+      kind: document.kind == DocumentKind.html ? 'html' : 'markdown',
+      relativePath: targetPath,
+      logicalPath: visibleName,
+      isPrimary: targetDocuments.isEmpty,
+      contentHash: sha256.convert(targetFiles[targetPath]!).toString(),
+      createdAt: document.updatedAt,
+      updatedAt: now,
+    );
+    await db.moveDocument(
+      document: record,
+      sourceFolderId: sourceFolderId,
+      resources: resources,
+      writeFiles: () => _files.writeFiles(targetFiles),
+    );
+
+    try {
+      final sourceDocuments = await db.packageDocuments(sourceFolderId);
+      if (sourceDocuments.isEmpty && sourceFolder['marker'] != 'user-folder') {
+        await db.deleteFolder(sourceFolderId);
+        await _files.deleteFolder(sourceFolder['relative_path']! as String);
+      } else if (_isPrivateDocumentPath(sourcePath, document.id)) {
+        await _files.deleteFolder(p.posix.dirname(sourcePath));
+      } else {
+        await _files.deleteFile(sourcePath);
+      }
+    } on Object {
+      // 目标文件及索引已经提交成功。源端清理失败只会留下可在后续审计中
+      // 回收的孤儿文件，不能把一次成功移动报告成失败并让 UI 重试。
+    }
+    return document.copyWith(
+      folderId: target.id,
+      relativePath: targetPath,
+      filePath: targetPath,
+      logicalPath: visibleName,
+      sourceLabel: '文件夹',
+      updatedAt: now,
+    );
+  }
+
+  /// 将文件夹文档拆分为首页上的独立单文件记录。
+  Future<ReadingDocument> moveDocumentToLibrary(
+    ReadingDocument document,
+  ) async {
+    if (document.folderId == null || document.relativePath == null) {
+      throw StateError('未索引的旧文档不能从文件夹移出');
+    }
+    final now = DateTime.now();
+    final category = document.kind == DocumentKind.html ? 'html' : 'markdown';
+    final digest = sha256
+        .convert(utf8.encode('${document.id}-${now.microsecondsSinceEpoch}'))
+        .toString()
+        .substring(0, 10);
+    final folderId = '${now.microsecondsSinceEpoch}-$digest';
+    final relativePath = '$category/$folderId';
+    final db = await index;
+    await db.insertPackage(
+      folder: FolderRecord(
+        id: folderId,
+        category: category,
+        name: document.title,
+        single: true,
+        marker: 'detached',
+        relativePath: relativePath,
+        entryCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      ),
+      documents: const [],
+      resources: const [],
+      writeFiles: () => _files.createFolder(relativePath),
+    );
+    try {
+      return await moveDocument(
+        document: document,
+        target: LibraryFolder(
+          id: folderId,
+          name: document.title,
+          documents: const [],
+          updatedAt: now,
+        ),
+      );
+    } on Object {
+      await db.deleteFolder(folderId);
+      await _files.deleteFolder(relativePath);
+      rethrow;
+    }
   }
 
   Future<void> deleteDocument(ReadingDocument document) async {
@@ -488,7 +795,11 @@ class DocumentPackageService {
     }
     await (await index).deleteDocument(document.id, folderId);
     if (document.relativePath case final path?) {
-      await _files.deleteFile(path);
+      if (_isPrivateDocumentPath(path, document.id)) {
+        await _files.deleteFolder(p.posix.dirname(path));
+      } else {
+        await _files.deleteFile(path);
+      }
     }
   }
 
@@ -505,51 +816,133 @@ class DocumentPackageService {
   Future<MoyueExport> exportMoyue(ReadingDocument document) async {
     final folderId = document.folderId;
     if (folderId == null) throw StateError('文档尚未进入文档包索引');
+    return exportMoyueFolder(folderId);
+  }
+
+  Future<MoyueExport> exportMoyueFolder(String folderId) async {
     final db = await index;
     final folder = await db.folder(folderId);
     if (folder == null) throw StateError('找不到文档包');
     final docs = await db.packageDocuments(folderId);
+    if (docs.isEmpty) throw StateError('空文件夹无法导出');
     final resources = await db.packageResources(folderId);
     final base = folder['relative_path']! as String;
     final archive = Archive();
-    String packagePath(String relative) =>
-        p.posix.relative(relative, from: base);
-    for (final row in [...docs, ...resources]) {
-      final relative = row['relative_path']! as String;
+    final documentMeta = <Map<String, Object?>>[];
+    final resourceMeta = <Map<String, Object?>>[];
+    final docsById = {for (final row in docs) row['id']! as String: row};
+    for (final row in docs) {
+      final id = row['id']! as String;
+      final logicalPath = _logicalPath(row, folderPath: base);
+      final archivePath = p.posix.join(
+        'payload',
+        'documents',
+        id,
+        p.posix.basename(logicalPath),
+      );
       archive.addFile(
         ArchiveFile.bytes(
-          packagePath(relative),
-          await _files.readBytes(relative),
+          archivePath,
+          await _files.readBytes(row['relative_path']! as String),
         ),
       );
+      documentMeta.add({
+        'id': id,
+        'path': logicalPath,
+        'archive_path': archivePath,
+        'kind': row['kind'],
+        'sha256': row['content_hash'],
+      });
     }
-    final primary = docs.firstWhere((row) => row['is_primary'] == 1);
+    for (final row in resources) {
+      final id = row['id']! as String;
+      final documentId = row['document_id'] as String?;
+      final relative = row['relative_path']! as String;
+      String logicalPath;
+      final attachedDocument = documentId == null ? null : docsById[documentId];
+      if (attachedDocument != null) {
+        logicalPath = p.posix.relative(
+          relative,
+          from: p.posix.dirname(attachedDocument['relative_path']! as String),
+        );
+      } else {
+        logicalPath = p.posix.relative(relative, from: base);
+      }
+      final archivePath = p.posix.join(
+        'payload',
+        'resources',
+        id,
+        p.posix.basename(logicalPath),
+      );
+      archive.addFile(
+        ArchiveFile.bytes(archivePath, await _files.readBytes(relative)),
+      );
+      resourceMeta.add({
+        'id': id,
+        'document_id': documentId,
+        'path': logicalPath,
+        'archive_path': archivePath,
+        'mime_type': row['mime_type'],
+        'sha256': row['content_hash'],
+        'size': row['size_bytes'],
+      });
+    }
+    final attachedPairs = <String>{
+      for (final row in resources)
+        if (row['document_id'] != null)
+          '${row['document_id']}|${row['relative_path']}',
+    };
+    for (final document in docs) {
+      final documentId = document['id']! as String;
+      final documentPath = document['relative_path']! as String;
+      final content = decodeImportedText(await _files.readBytes(documentPath));
+      for (final link in _localAssetReferences(content)) {
+        final relative = p.posix.normalize(
+          p.posix.join(p.posix.dirname(documentPath), link),
+        );
+        if (relative != base && !p.posix.isWithin(base, relative)) continue;
+        if (!attachedPairs.add('$documentId|$relative')) continue;
+        try {
+          final bytes = await _files.readBytes(relative);
+          final resourceId =
+              '$documentId-derived-${sha256.convert(utf8.encode(link)).toString().substring(0, 12)}';
+          final archivePath = p.posix.join(
+            'payload',
+            'resources',
+            resourceId,
+            p.posix.basename(link),
+          );
+          archive.addFile(ArchiveFile.bytes(archivePath, bytes));
+          resourceMeta.add({
+            'id': resourceId,
+            'document_id': documentId,
+            'path': link,
+            'archive_path': archivePath,
+            'mime_type': _mimeType(link),
+            'sha256': sha256.convert(bytes).toString(),
+            'size': bytes.length,
+          });
+        } on Object {
+          // 断裂链接保持在正文中，不阻止其余内容导出。
+        }
+      }
+    }
+    final primaryRows = docs.where((row) => row['is_primary'] == 1);
+    final primary = primaryRows.isEmpty ? docs.first : primaryRows.first;
+    final primaryId = primary['id']! as String;
+    final primaryMeta = documentMeta.firstWhere(
+      (item) => item['id'] == primaryId,
+    );
     final meta = {
       'format': 'moyue',
       'format_version': 1,
       'display_name': folder['name'],
       'marker': folder['marker'],
       'single': folder['single'] == 1,
-      'primary_document': packagePath(primary['relative_path']! as String),
-      'documents': docs
-          .map(
-            (row) => {
-              'path': packagePath(row['relative_path']! as String),
-              'kind': row['kind'],
-              'sha256': row['content_hash'],
-            },
-          )
-          .toList(),
-      'resources': resources
-          .map(
-            (row) => {
-              'path': packagePath(row['relative_path']! as String),
-              'mime_type': row['mime_type'],
-              'sha256': row['content_hash'],
-              'size': row['size_bytes'],
-            },
-          )
-          .toList(),
+      'primary_document_id': primaryId,
+      'primary_document': primaryMeta['archive_path'],
+      'documents': documentMeta,
+      'resources': resourceMeta,
     };
     archive.addFile(
       ArchiveFile.string(
@@ -627,6 +1020,7 @@ class DocumentPackageService {
       name: source.title,
       kind: 'rss',
       relativePath: relativePath,
+      logicalPath: 'feed.xml',
       isPrimary: true,
       contentHash: sha256.convert(data).toString(),
       createdAt: now,
@@ -708,6 +1102,51 @@ class DocumentPackageService {
 
   String _safeFileName(String value) =>
       value.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+
+  String _logicalPath(Map<String, Object?> row, {required String folderPath}) {
+    final stored = row['logical_path'] as String?;
+    if (stored != null && stored.trim().isNotEmpty) return stored;
+    return p.posix.relative(row['relative_path']! as String, from: folderPath);
+  }
+
+  String _renamedLogicalPath(
+    ReadingDocument document,
+    String title,
+    String extension,
+  ) {
+    final previous = document.logicalPath;
+    final parent = previous == null ? '.' : p.posix.dirname(previous);
+    final fileName = '${_safeFileName(title)}.$extension';
+    return parent == '.' ? fileName : p.posix.join(parent, fileName);
+  }
+
+  Set<String> _localAssetReferences(String content) {
+    final links = extractImageReferences(content);
+    final htmlAsset = RegExp(
+      r'''<(?:link|script|video|source)[^>]+(?:href|src)\s*=\s*["']([^"']+)["']''',
+      caseSensitive: false,
+    );
+    for (final match in htmlAsset.allMatches(content)) {
+      final raw = match.group(1)!;
+      final uri = Uri.tryParse(raw);
+      if (uri == null || uri.hasScheme || raw.startsWith('/')) continue;
+      links.add(raw.startsWith('./') ? raw.substring(2) : uri.path);
+    }
+    final cssAsset = RegExp(
+      r'''url\(\s*(["']?)([^"')]+)\1\s*\)''',
+      caseSensitive: false,
+    );
+    for (final match in cssAsset.allMatches(content)) {
+      final raw = match.group(2)!.trim();
+      final uri = Uri.tryParse(raw);
+      if (uri == null || uri.hasScheme || raw.startsWith('/')) continue;
+      links.add(raw.startsWith('./') ? raw.substring(2) : uri.path);
+    }
+    return links;
+  }
+
+  bool _isPrivateDocumentPath(String path, String documentId) =>
+      path.contains('/.documents/$documentId/');
 
   String _mimeType(String path) {
     return switch (_extension(path)) {

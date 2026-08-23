@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 import 'package:moyue_application/features/editor/editor_page.dart';
@@ -7,6 +11,8 @@ import 'package:moyue_application/features/reader/reader_detail_page.dart';
 import 'package:moyue_application/models/library_folder.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
+import 'package:moyue_application/services/system_share_service.dart';
+import 'package:moyue_application/widgets/moyue_action_menu.dart';
 import 'package:moyue_application/widgets/floating_document_header.dart';
 import 'package:moyue_application/widgets/floating_page_shell.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
@@ -25,10 +31,10 @@ class LibraryPage extends StatefulWidget {
   final bool loading;
 
   @override
-  State<LibraryPage> createState() => _LibraryPageState();
+  State<LibraryPage> createState() => LibraryPageState();
 }
 
-class _LibraryPageState extends State<LibraryPage> {
+class LibraryPageState extends State<LibraryPage> {
   String _query = '';
   final Set<String> _selectedIds = {};
   final Set<String> _selectedFolderIds = {};
@@ -62,17 +68,16 @@ class _LibraryPageState extends State<LibraryPage> {
       searchHint: '搜索文档',
       onSearch: (value) => setState(() => _query = value),
       showSearch: !_selecting,
-      trailing: MoyueGlassIconButton(
-        icon: Icon(
-          _selecting ? Icons.delete_rounded : Icons.add_rounded,
-          color: _selecting ? Theme.of(context).colorScheme.error : null,
-        ),
-        onPressed: _selecting ? _deleteSelected : _showAddMenu,
-        semanticLabel: _selecting ? '删除所选文档' : '新建或导入',
-        size: 44,
-        useOwnLayer: true,
-        settings: moyueGlassSettings(context),
-      ),
+      trailing: _selecting
+          ? MoyueGlassIconButton(
+              icon: const Icon(Icons.more_horiz_rounded),
+              onPressed: _showSelectionActions,
+              semanticLabel: '所选项目操作',
+              size: 44,
+              useOwnLayer: true,
+              settings: moyueGlassSettings(context),
+            )
+          : null,
       child: CustomScrollView(
         key: const PageStorageKey('library-scroll'),
         slivers: [
@@ -106,39 +111,50 @@ class _LibraryPageState extends State<LibraryPage> {
                   if (index < filteredFolders.length) {
                     final folder = filteredFolders[index];
                     final selected = _selectedFolderIds.contains(folder.id);
-                    return _FolderTile(
-                      folder: folder,
-                      selected: selected,
-                      onLongPress: () => _toggleFolderSelection(folder),
-                      onTap: () {
-                        if (_selecting) {
-                          _toggleFolderSelection(folder);
-                        } else {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => _FolderPage(folder: folder),
-                            ),
-                          );
-                        }
-                      },
+                    return DragTarget<List<ReadingDocument>>(
+                      onWillAcceptWithDetails: (details) => details.data.any(
+                        (document) => document.folderId != folder.id,
+                      ),
+                      onAcceptWithDetails: (details) =>
+                          _moveDocuments(details.data, folder),
+                      builder: (context, candidates, _) => _FolderTile(
+                        folder: folder,
+                        selected: selected,
+                        dropTarget: candidates.isNotEmpty,
+                        onLongPress: () => _toggleFolderSelection(folder),
+                        onTap: () {
+                          if (_selecting) {
+                            _toggleFolderSelection(folder);
+                          } else {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => _FolderPage(folder: folder),
+                              ),
+                            );
+                          }
+                        },
+                      ),
                     );
                   }
                   final document = filtered[index - filteredFolders.length];
                   final selected = _selectedIds.contains(document.id);
-                  return _DocumentTile(
+                  final selectedDocuments = widget.documents
+                      .where((item) => _selectedIds.contains(item.id))
+                      .toList(growable: false);
+                  return _DraggableDocumentTile(
                     document: document,
+                    dragDocuments: selectedDocuments.isEmpty
+                        ? [document]
+                        : selected
+                        ? selectedDocuments
+                        : [...selectedDocuments, document],
                     selected: selected,
-                    onLongPress: () => _toggleSelection(document),
+                    onDragStarted: () => _selectForDrag(document),
                     onTap: () {
                       if (_selecting) {
                         _toggleSelection(document);
                       } else {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                ReaderDetailPage(document: document),
-                          ),
-                        );
+                        Navigator.of(context).push(readerDetailRoute(document));
                       }
                     },
                   );
@@ -148,6 +164,13 @@ class _LibraryPageState extends State<LibraryPage> {
         ],
       ),
     );
+  }
+
+  Future<void> showAddMenu() => _showAddMenu();
+
+  void _selectForDrag(ReadingDocument document) {
+    if (_selectedIds.contains(document.id)) return;
+    setState(() => _selectedIds.add(document.id));
   }
 
   void _toggleSelection(ReadingDocument document) {
@@ -162,6 +185,130 @@ class _LibraryPageState extends State<LibraryPage> {
         _selectedFolderIds.remove(folder.id);
       }
     });
+  }
+
+  Future<void> _showSelectionActions() async {
+    final selectedDocuments = widget.documents
+        .where((document) => _selectedIds.contains(document.id))
+        .toList(growable: false);
+    final selectedFolders = widget.folders
+        .where((folder) => _selectedFolderIds.contains(folder.id))
+        .toList(growable: false);
+    final action = await showMoyueActionMenu<String>(
+      context: context,
+      title: '已选择 $_selectionCount 项',
+      actions: [
+        if (selectedDocuments.isNotEmpty && widget.folders.isNotEmpty)
+          const MoyueMenuAction(
+            value: 'move',
+            label: '移动到文件夹',
+            icon: Icons.drive_file_move_outline,
+          ),
+        if (selectedDocuments.isNotEmpty || selectedFolders.isNotEmpty)
+          MoyueMenuAction(
+            value: 'share',
+            label: selectedFolders.isEmpty
+                ? '分享所选文档'
+                : selectedDocuments.isEmpty
+                ? '分享所选文件夹 (.moyue)'
+                : '分享所选项目',
+            icon: Icons.ios_share_rounded,
+          ),
+        if (selectedDocuments.length == 1 && selectedFolders.isEmpty)
+          const MoyueMenuAction(
+            value: 'share-folder',
+            label: '分享所在文件夹 (.moyue)',
+            icon: Icons.folder_zip_outlined,
+          ),
+        const MoyueMenuAction(
+          value: 'delete',
+          label: '删除',
+          icon: Icons.delete_rounded,
+          destructive: true,
+        ),
+      ],
+    );
+    if (!mounted || action == null) return;
+    if (action == 'move') {
+      await _chooseMoveDestination(selectedDocuments);
+    } else if (action == 'share') {
+      await _shareSelectedItems(selectedDocuments, selectedFolders);
+    } else if (action == 'share-folder') {
+      await _shareDocumentFolder(selectedDocuments.single);
+    } else if (action == 'delete') {
+      await _deleteSelected();
+    }
+  }
+
+  Future<void> _chooseMoveDestination(List<ReadingDocument> documents) async {
+    if (!mounted) return;
+    final targets = widget.folders
+        .where((folder) => documents.any((doc) => doc.folderId != folder.id))
+        .toList(growable: false);
+    if (targets.isEmpty) {
+      await _showNotice(context, '无法移动', '没有可用的目标文件夹。');
+      return;
+    }
+    final target = await showMoyueActionMenu<LibraryFolder>(
+      context: context,
+      title: '移动到',
+      actions: [
+        for (final folder in targets)
+          MoyueMenuAction(
+            value: folder,
+            label: folder.name,
+            icon: Icons.folder_rounded,
+          ),
+      ],
+    );
+    if (target != null && mounted) await _moveDocuments(documents, target);
+  }
+
+  Future<void> _moveDocuments(
+    List<ReadingDocument> documents,
+    LibraryFolder target,
+  ) async {
+    try {
+      await MoyueStorageService.instance.moveDocuments(
+        documents: documents,
+        target: target,
+      );
+      if (mounted) {
+        setState(() => _selectedIds.clear());
+      }
+    } on Object catch (error) {
+      if (mounted) await _showNotice(context, '移动失败', '$error');
+    }
+  }
+
+  Future<void> _shareSelectedItems(
+    List<ReadingDocument> documents,
+    List<LibraryFolder> folders,
+  ) async {
+    try {
+      final exports = await Future.wait([
+        for (final folder in folders)
+          MoyueStorageService.instance.exportFolder(folder),
+      ]);
+      if (!mounted) return;
+      await SystemShareService.shareSelection(
+        context,
+        documents: documents,
+        folders: exports,
+      );
+    } on Object catch (error) {
+      if (mounted) await _showNotice(context, '分享失败', '$error');
+    }
+  }
+
+  Future<void> _shareDocumentFolder(ReadingDocument document) async {
+    try {
+      final export = await MoyueStorageService.instance.exportMoyue(document);
+      if (!mounted) return;
+      await SystemShareService.shareMoyue(context, export);
+    } on Object catch (error) {
+      if (mounted) await _showNotice(context, '分享失败', '$error');
+    }
   }
 
   Future<void> _deleteSelected() async {
@@ -281,21 +428,17 @@ class _LibraryPageState extends State<LibraryPage> {
 
   Future<void> _importDocument() async {
     try {
-      final result = await FilePicker.pickFiles(
+      final file = await FilePicker.pickFile(
         // Android SAF may mark .md files as unselectable when a custom MIME
         // filter is used. Select first, then validate the extension locally.
         type: FileType.any,
-        withData: true,
       );
-      if (!mounted || result == null || result.files.isEmpty) return;
-      final file = result.files.single;
-      final bytes = file.bytes;
-      if (bytes == null) throw const FormatException('无法读取文件内容');
+      if (!mounted || file == null) return;
+      final bytes = await file.readAsBytes();
       if (bytes.length > 8 * 1024 * 1024) {
         throw const FormatException('当前版本支持不超过 8 MB 的文本文档');
       }
-      final extension = (file.extension ?? file.name.split('.').last)
-          .toLowerCase();
+      final extension = file.name.split('.').last.toLowerCase();
       if (!const {'md', 'html', 'zip', 'moyue'}.contains(extension)) {
         throw const FormatException('请选择 Markdown、HTML、ZIP 或 .moyue 文件');
       }
@@ -304,11 +447,7 @@ class _LibraryPageState extends State<LibraryPage> {
         bytes: bytes,
       );
       if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => ReaderDetailPage(document: document),
-        ),
-      );
+      await Navigator.of(context).push(readerDetailRoute(document));
     } on Exception catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -324,18 +463,22 @@ class _FolderTile extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.onLongPress,
+    this.dropTarget = false,
   });
 
   final LibraryFolder folder;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final bool dropTarget;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
-      color: selected
+      color: dropTarget
+          ? theme.colorScheme.secondaryContainer
+          : selected
           ? theme.colorScheme.primaryContainer.withValues(alpha: 0.72)
           : null,
       clipBehavior: Clip.antiAlias,
@@ -398,6 +541,8 @@ class _FolderPage extends StatefulWidget {
 class _FolderPageState extends State<_FolderPage> {
   late LibraryFolder _folder;
   final Set<String> _selectedIds = {};
+  List<_MoveDestination> _dropTargets = const [_MoveDestination.library()];
+  bool _dragging = false;
 
   bool get _selecting => _selectedIds.isNotEmpty;
 
@@ -466,26 +611,43 @@ class _FolderPageState extends State<_FolderPage> {
                       final document =
                           children.docs[index - children.dirs.length];
                       final selected = _selectedIds.contains(document.id);
-                      return _DocumentTile(
+                      final selectedDocuments = _folder.documents
+                          .where((item) => _selectedIds.contains(item.id))
+                          .toList(growable: false);
+                      return _DraggableDocumentTile(
                         document: document,
+                        dragDocuments: selectedDocuments.isEmpty
+                            ? [document]
+                            : selected
+                            ? selectedDocuments
+                            : [...selectedDocuments, document],
                         selected: selected,
-                        onLongPress: () => _toggleSelection(document),
+                        onDragStarted: () => _selectForDrag(document),
+                        onDragEnd: () {
+                          if (mounted) setState(() => _dragging = false);
+                        },
                         onTap: () {
                           if (_selecting) {
                             _toggleSelection(document);
                           } else {
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) =>
-                                    ReaderDetailPage(document: document),
-                              ),
-                            );
+                            Navigator.of(context)
+                                .push(readerDetailRoute(document));
                           }
                         },
                       );
                     },
                   ),
           ),
+          if (_dragging)
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: MediaQuery.paddingOf(context).bottom + 12,
+              child: _FolderDropTray(
+                targets: _dropTargets,
+                onMove: _moveDocuments,
+              ),
+            ),
           Positioned(
             top: 0,
             left: 0,
@@ -500,13 +662,10 @@ class _FolderPageState extends State<_FolderPage> {
                       : currentName,
                   onBack: () => Navigator.pop(context),
                   actionIcon: _selecting
-                      ? Icons.delete_rounded
+                      ? Icons.more_horiz_rounded
                       : Icons.add_rounded,
-                  actionLabel: _selecting ? '删除所选文档' : '新建或导入文档',
-                  actionColor: _selecting
-                      ? Theme.of(context).colorScheme.error
-                      : null,
-                  onAction: _selecting ? _deleteSelected : _showAddMenu,
+                  actionLabel: _selecting ? '所选文档操作' : '新建或导入文档',
+                  onAction: _selecting ? _showSelectionActions : _showAddMenu,
                   // 只有包根目录支持重命名整个文件夹。
                   onTitleTap: _selecting || widget.subPath.isNotEmpty
                       ? null
@@ -521,8 +680,8 @@ class _FolderPageState extends State<_FolderPage> {
   }
 
   /// 计算当前子路径下的直系内容：子目录（含各自递归文档数）与直系文档。
-  /// 文档的 relativePath 形如 `markdown/{folderId}/{包内路径}`，
-  /// 去掉前两段即包内物理层级，据此还原嵌套结构。
+  /// 使用逻辑路径还原用户看到的目录层级；物理路径可能带有用于同名隔离的
+  /// `.documents/<id>/`，不能拿来构建界面目录。
   ({
     List<String> dirs,
     Map<String, int> dirDocCounts,
@@ -535,13 +694,13 @@ class _FolderPageState extends State<_FolderPage> {
     final dirDocCounts = <String, int>{};
     final docs = <ReadingDocument>[];
     for (final document in documents) {
-      final segments = document.relativePath?.split('/') ?? const <String>[];
-      if (segments.length < 3) {
-        // 缺少包内路径的旧数据一律视为根目录文档。
-        if (widget.subPath.isEmpty) docs.add(document);
-        continue;
-      }
-      final inner = segments.sublist(2);
+      final logicalPath = document.logicalPath;
+      final physicalSegments = document.relativePath?.split('/');
+      final inner = logicalPath != null && logicalPath.isNotEmpty
+          ? logicalPath.split('/')
+          : physicalSegments != null && physicalSegments.length >= 3
+          ? physicalSegments.sublist(2)
+          : <String>[document.title];
       if (inner.length < prefix.length) continue;
       var matched = true;
       for (var i = 0; i < prefix.length; i++) {
@@ -569,6 +728,150 @@ class _FolderPageState extends State<_FolderPage> {
         _selectedIds.remove(document.id);
       }
     });
+  }
+
+  void _selectForDrag(ReadingDocument document) {
+    setState(() {
+      _selectedIds.add(document.id);
+      _dragging = true;
+    });
+    unawaited(_loadDropTargets());
+  }
+
+  Future<void> _loadDropTargets() async {
+    try {
+      final folders = await MoyueStorageService.instance.loadFolders();
+      if (!mounted) return;
+      setState(() {
+        _dropTargets = [
+          const _MoveDestination.library(),
+          for (final folder in folders)
+            if (folder.id != _folder.id) _MoveDestination.folder(folder),
+        ];
+      });
+    } on Object {
+      // “阅读首页”目标不依赖数据库，即使其他文件夹加载失败，
+      // 文档仍然可以从当前文件夹拖回首页。
+    }
+  }
+
+  Future<void> _showSelectionActions() async {
+    final selected = _folder.documents
+        .where((document) => _selectedIds.contains(document.id))
+        .toList(growable: false);
+    final action = await showMoyueActionMenu<String>(
+      context: context,
+      title: '已选择 ${selected.length} 项',
+      actions: [
+        const MoyueMenuAction(
+          value: 'move',
+          label: '移动到…',
+          icon: Icons.drive_file_move_outline,
+        ),
+        const MoyueMenuAction(
+          value: 'share',
+          label: '分享所选文档',
+          icon: Icons.ios_share_rounded,
+        ),
+        const MoyueMenuAction(
+          value: 'share-folder',
+          label: '分享整个文件夹 (.moyue)',
+          icon: Icons.folder_zip_outlined,
+        ),
+        const MoyueMenuAction(
+          value: 'delete',
+          label: '删除',
+          icon: Icons.delete_rounded,
+          destructive: true,
+        ),
+      ],
+    );
+    if (!mounted || action == null) return;
+    if (action == 'move') {
+      await _chooseMoveDestination(selected);
+    } else if (action == 'share') {
+      await _shareDocuments(selected);
+    } else if (action == 'share-folder') {
+      await _shareCurrentFolder();
+    } else if (action == 'delete') {
+      await _deleteSelected();
+    }
+  }
+
+  Future<void> _chooseMoveDestination(List<ReadingDocument> documents) async {
+    if (!mounted) return;
+    final folders = await MoyueStorageService.instance.loadFolders();
+    final targets = [
+      const _MoveDestination.library(),
+      for (final folder in folders)
+        if (folder.id != _folder.id) _MoveDestination.folder(folder),
+    ];
+    if (!mounted) return;
+    final target = await showMoyueActionMenu<_MoveDestination>(
+      context: context,
+      title: '移动到',
+      actions: [
+        for (final target in targets)
+          MoyueMenuAction(
+            value: target,
+            label: target.label,
+            icon: target.isLibrary ? Icons.home_outlined : Icons.folder_rounded,
+          ),
+      ],
+    );
+    if (target != null && mounted) await _moveDocuments(documents, target);
+  }
+
+  Future<void> _shareDocuments(List<ReadingDocument> documents) async {
+    try {
+      await SystemShareService.shareSelection(context, documents: documents);
+    } on Object catch (error) {
+      if (mounted) await _showNotice(context, '分享失败', '$error');
+    }
+  }
+
+  Future<void> _shareCurrentFolder() async {
+    try {
+      final export = await MoyueStorageService.instance.exportFolder(_folder);
+      if (!mounted) return;
+      await SystemShareService.shareMoyue(context, export);
+    } on Object catch (error) {
+      if (mounted) await _showNotice(context, '分享失败', '$error');
+    }
+  }
+
+  Future<void> _moveDocuments(
+    List<ReadingDocument> documents,
+    _MoveDestination target,
+  ) async {
+    try {
+      if (target.isLibrary) {
+        await MoyueStorageService.instance.moveDocumentsToLibrary(documents);
+      } else {
+        await MoyueStorageService.instance.moveDocuments(
+          documents: documents,
+          target: target.folder!,
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _folder = _folder.copyWith(
+          documents: _folder.documents
+              .where((document) => !_selectedIds.contains(document.id))
+              .toList(growable: false),
+        );
+        _selectedIds.clear();
+        _dragging = false;
+      });
+      final folders = await MoyueStorageService.instance.loadFolders();
+      if (mounted && !folders.any((folder) => folder.id == _folder.id)) {
+        Navigator.pop(context);
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _dragging = false);
+      await _showNotice(context, '移动失败', '$error');
+    }
   }
 
   Future<void> _reloadFolder() async {
@@ -690,19 +993,13 @@ class _FolderPageState extends State<_FolderPage> {
 
   Future<void> _importDocument() async {
     try {
-      final result = await FilePicker.pickFiles(
-        type: FileType.any,
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty || !mounted) return;
-      final file = result.files.single;
-      final extension = (file.extension ?? file.name.split('.').last)
-          .toLowerCase();
+      final file = await FilePicker.pickFile(type: FileType.any);
+      if (file == null || !mounted) return;
+      final extension = file.name.split('.').last.toLowerCase();
       if (!const {'md', 'html'}.contains(extension)) {
         throw const FormatException('文件夹内仅支持导入 .md 或 .html 文件');
       }
-      final bytes = file.bytes;
-      if (bytes == null) throw const FormatException('无法读取文件内容');
+      final bytes = await file.readAsBytes();
       if (bytes.length > 8 * 1024 * 1024) {
         throw const FormatException('文件不能超过 8 MB');
       }
@@ -847,12 +1144,12 @@ class _DocumentTile extends StatelessWidget {
   const _DocumentTile({
     required this.document,
     required this.onTap,
-    required this.onLongPress,
+    this.onLongPress,
     required this.selected,
   });
   final ReadingDocument document;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback? onLongPress;
   final bool selected;
 
   @override
@@ -889,13 +1186,29 @@ class _DocumentTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ScrollingTitle(
-                      document.title,
-                      style: theme.textTheme.titleMedium,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ScrollingTitle(
+                            document.title,
+                            style: theme.textTheme.titleMedium,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          document.kind.label,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      document.kind.label,
+                      '修改于 ${DateFormat('yyyy-MM-dd HH:mm').format(document.updatedAt.toLocal())}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -924,6 +1237,175 @@ class _DocumentTile extends StatelessWidget {
     );
   }
 }
+
+class _DraggableDocumentTile extends StatelessWidget {
+  const _DraggableDocumentTile({
+    required this.document,
+    required this.dragDocuments,
+    required this.onTap,
+    required this.onDragStarted,
+    required this.selected,
+    this.onDragEnd,
+  });
+
+  final ReadingDocument document;
+  final List<ReadingDocument> dragDocuments;
+  final VoidCallback onTap;
+  final VoidCallback onDragStarted;
+  final VoidCallback? onDragEnd;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width - 36;
+    final tile = _DocumentTile(
+      document: document,
+      onTap: onTap,
+      // 交由 LongPressDraggable 独占长按手势，避免内层 InkWell 抢占
+      // gesture arena 导致“能选择但拖不起来”。
+      onLongPress: null,
+      selected: selected,
+    );
+    return LongPressDraggable<List<ReadingDocument>>(
+      data: dragDocuments,
+      hapticFeedbackOnStart: true,
+      onDragStarted: onDragStarted,
+      onDragEnd: (_) => onDragEnd?.call(),
+      feedback: Material(
+        color: Colors.transparent,
+        child: SizedBox(
+          width: width,
+          child: _DocumentTile(
+            document: document,
+            onTap: () {},
+            onLongPress: null,
+            selected: true,
+          ),
+        ),
+      ),
+      childWhenDragging: Opacity(opacity: 0.35, child: tile),
+      child: tile,
+    );
+  }
+}
+
+class _FolderDropTray extends StatelessWidget {
+  const _FolderDropTray({required this.targets, required this.onMove});
+
+  final List<_MoveDestination> targets;
+  final Future<void> Function(
+    List<ReadingDocument> documents,
+    _MoveDestination target,
+  )
+  onMove;
+
+  @override
+  Widget build(BuildContext context) => GlassContainer(
+    height: 76,
+    width: double.infinity,
+    useOwnLayer: true,
+    quality: GlassQuality.premium,
+    settings: moyueGlassSettings(context),
+    shape: const LiquidRoundedSuperellipse(borderRadius: 18),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    child: Row(
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.drive_file_move_outline, size: 20),
+              SizedBox(height: 2),
+              Text('移动到', style: TextStyle(fontSize: 11)),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: targets.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final target = targets[index];
+              return DragTarget<List<ReadingDocument>>(
+                onWillAcceptWithDetails: (details) =>
+                    target.isLibrary ||
+                    details.data.any(
+                      (document) => document.folderId != target.folder!.id,
+                    ),
+                onAcceptWithDetails: (details) => onMove(details.data, target),
+                builder: (context, candidates, _) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 140),
+                  constraints: const BoxConstraints(minWidth: 92),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: candidates.isEmpty
+                        ? Theme.of(context).colorScheme.surface
+                              .withValues(alpha: 0.28)
+                        : Theme.of(context).colorScheme.primary
+                              .withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: candidates.isEmpty
+                          ? Theme.of(context).colorScheme.outlineVariant
+                          : Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        target.isLibrary
+                            ? Icons.home_outlined
+                            : Icons.folder_rounded,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 7),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 120),
+                        child: Text(
+                          target.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _MoveDestination {
+  const _MoveDestination.library() : folder = null;
+  const _MoveDestination.folder(this.folder);
+
+  final LibraryFolder? folder;
+  bool get isLibrary => folder == null;
+  String get label => isLibrary ? '阅读首页' : folder!.name;
+}
+
+Future<void> _showNotice(BuildContext context, String title, String message) =>
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
 
 class _EmptyLibrary extends StatelessWidget {
   const _EmptyLibrary({

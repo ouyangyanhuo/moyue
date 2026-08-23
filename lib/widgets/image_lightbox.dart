@@ -8,18 +8,13 @@ class ImageLightbox extends StatefulWidget {
 
   final Uint8List bytes;
 
-  /// 以淡入淡出的全屏路由打开灯箱。
+  /// 使用不透明标准路由，避免 Android 预见性返回时透明路由的两份图片
+  /// 同时参与合成而闪烁。
   static Future<void> show(BuildContext context, Uint8List bytes) {
-    return Navigator.of(context, rootNavigator: true).push(
-      PageRouteBuilder<void>(
-        opaque: false,
-        barrierColor: Colors.black,
-        transitionDuration: const Duration(milliseconds: 180),
-        reverseTransitionDuration: const Duration(milliseconds: 150),
-        pageBuilder: (_, animation, _) => FadeTransition(
-          opacity: animation,
-          child: ImageLightbox(bytes: bytes),
-        ),
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        allowSnapshotting: false,
+        builder: (_) => ImageLightbox(bytes: bytes),
       ),
     );
   }
@@ -77,7 +72,13 @@ class _ImageLightboxState extends State<ImageLightbox> {
                 transformationController: _transform,
                 maxScale: _maxScale,
                 child: Center(
-                  child: Image.memory(widget.bytes, fit: BoxFit.contain),
+                  child: RepaintBoundary(
+                    child: Image.memory(
+                      widget.bytes,
+                      fit: BoxFit.contain,
+                      gaplessPlayback: true,
+                    ),
+                  ),
                 ),
               ),
             ),

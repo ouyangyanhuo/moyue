@@ -15,6 +15,7 @@ class MoyueGlassTitlePill extends StatelessWidget {
     this.width,
     this.onTap,
     this.semanticLabel,
+    this.useOwnLayer = true,
     super.key,
   });
 
@@ -26,6 +27,7 @@ class MoyueGlassTitlePill extends StatelessWidget {
   /// 点击标题的回调（如重命名文件夹）。
   final VoidCallback? onTap;
   final String? semanticLabel;
+  final bool useOwnLayer;
 
   @override
   Widget build(BuildContext context) {
@@ -36,9 +38,9 @@ class MoyueGlassTitlePill extends StatelessWidget {
     final pill = GlassContainer(
       width: width,
       height: 42,
-      useOwnLayer: true,
+      useOwnLayer: useOwnLayer,
       quality: GlassQuality.premium,
-      settings: settings,
+      settings: useOwnLayer ? settings : null,
       shape: const LiquidRoundedSuperellipse(borderRadius: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       alignment: Alignment.center,
