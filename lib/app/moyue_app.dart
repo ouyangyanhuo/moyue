@@ -259,7 +259,7 @@ class _MoyueShellState extends State<MoyueShell> {
                   onTabSelected: (index) =>
                       setState(() => _selectedIndex = index),
                   settings: dockSettings,
-                  quality: GlassQuality.standard,
+                  quality: GlassQuality.premium,
                   extraButton: GlassTabBarExtraButton(
                     icon: Icon(
                       _selectedIndex == 2

@@ -72,10 +72,13 @@ void main() {
       tester
           .getSize(find.byKey(const ValueKey('contrast-slider-touch-area')))
           .height,
-      72,
+      56,
     );
+    expect(tester.getSize(find.byType(GlassSlider)).height, 46);
     expect(find.textContaining('Liquid 透明度'), findsNothing);
     final dock = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
+    expect(dock.quality, GlassQuality.premium);
+    expect(dock.platformViewBackdrop, isFalse);
     expect(dock.settings?.glassColor.a, 0);
 
     final glassTheme = tester.widget<GlassTheme>(find.byType(GlassTheme));
@@ -697,6 +700,19 @@ void main() {
       2,
     );
     final sheet = find.byType(BottomSheet);
+    final sheetSlide = find.ancestor(
+      of: sheet,
+      matching: find.byType(SlideTransition),
+    );
+    expect(sheetSlide, findsWidgets);
+    expect(
+      tester.widget<SlideTransition>(sheetSlide.first).position.value.dy,
+      closeTo(0, 0.001),
+    );
+    expect(
+      find.ancestor(of: sheet, matching: find.byType(SizeTransition)),
+      findsNothing,
+    );
     final homeTarget = find
         .descendant(of: sheet, matching: find.text('阅读首页'))
         .first;
@@ -720,6 +736,45 @@ void main() {
     await gesture.moveBy(const Offset(0, -1));
     await tester.pump(const Duration(milliseconds: 260));
     expect(scrollable.position.pixels, greaterThan(0));
+
+    // 拖出“更多文件夹”面板后先经过短暂的边缘缓冲，再播放反向收起动画。
+    await gesture.moveTo(const Offset(24, 24));
+    await tester.pump(const Duration(milliseconds: 110));
+    expect(find.byType(BottomSheet), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 120));
+    final exitingSlide = find.ancestor(
+      of: find.byType(BottomSheet),
+      matching: find.byType(SlideTransition),
+    );
+    final exitOffset = tester
+        .widget<SlideTransition>(exitingSlide.first)
+        .position
+        .value
+        .dy;
+    expect(exitOffset, greaterThan(0));
+    expect(exitOffset, lessThan(1));
+    expect(
+      tester
+          .widget<IgnorePointer>(
+            find
+                .ancestor(
+                  of: find.byType(BottomSheet),
+                  matching: find.byType(IgnorePointer),
+                )
+                .first,
+          )
+          .ignoring,
+      isTrue,
+    );
+    await tester.pump(const Duration(milliseconds: 160));
+    expect(find.byType(BottomSheet), findsNothing);
+
+    // 拖拽仍在继续时可以再次悬停展开，不会被上一次的收起计时器干扰。
+    await gesture.moveTo(tester.getCenter(find.text('更多文件夹')));
+    await tester.pump(const Duration(milliseconds: 380));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('拖到目标文件夹'), findsOneWidget);
+    expect(find.byType(BottomSheet), findsOneWidget);
     await gesture.up();
     await tester.pump();
   });
@@ -991,19 +1046,96 @@ void main() {
     );
     expect(disabledPointer.ignoring, isTrue);
     expect(find.text('暂未开放'), findsOneWidget);
-
-    await tester.ensureVisible(find.text('HTML WebView 阅读器'));
+    final inkTitle = tester.widget<Text>(find.text('墨模式'));
+    expect(
+      inkTitle.style?.fontSize,
+      lessThan(
+        Theme.of(tester.element(find.text('墨模式')))
+            .textTheme
+            .titleMedium!
+            .fontSize!,
+      ),
+    );
+    final inkWell = find
+        .ancestor(of: find.text('墨模式'), matching: find.byType(InkWell))
+        .first;
+    final inkBounds = tester.getRect(inkWell);
+    final titleBounds = tester.getRect(find.text('墨模式'));
+    expect(titleBounds.left - inkBounds.left, greaterThanOrEqualTo(8));
+    expect(titleBounds.top - inkBounds.top, greaterThanOrEqualTo(6));
+    await tester.tap(find.text('墨模式'));
     await tester.pumpAndSettle();
-    expect(find.text('HTML WebView 阅读器'), findsOneWidget);
+    expect(find.byKey(const ValueKey('墨模式-setting-detail')), findsOneWidget);
+    expect(find.textContaining('电子墨水屏'), findsOneWidget);
+    expect(
+      tester.getSize(
+        find.byKey(const ValueKey('墨模式-detail-switch-touch-area')),
+      ),
+      const Size(104, 56),
+    );
+    Navigator.of(
+      tester.element(find.byKey(const ValueKey('墨模式-setting-detail'))),
+    ).pop();
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Web 阅读器'));
+    await tester.pumpAndSettle();
+    expect(find.text('Web 阅读器'), findsOneWidget);
     expect(display.htmlWebViewEnabled, isFalse);
-    await tester.tap(find.text('HTML WebView 阅读器'));
+
+    // 开关保持主页直控，并且不会误开详情。
+    await tester.tap(find.byKey(const ValueKey('Web 阅读器-switch-touch-area')));
     await tester.pump();
     expect(display.htmlWebViewEnabled, isTrue);
-    expect(find.textContaining('使用系统网页引擎'), findsOneWidget);
+    expect(find.byKey(const ValueKey('Web 阅读器-setting-detail')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('Web 阅读器-switch-touch-area')));
+    await tester.pump();
+    expect(display.htmlWebViewEnabled, isFalse);
+
+    // 文字区域只负责打开长说明，不会同时切换开关。
+    await tester.tap(find.text('Web 阅读器'));
+    await tester.pumpAndSettle();
+    expect(display.htmlWebViewEnabled, isFalse);
+    expect(
+      find.byKey(const ValueKey('Web 阅读器-setting-detail')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('CSS 与 JavaScript'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('Web 阅读器-detail-switch-touch-area')),
+    );
+    await tester.pump();
+    expect(display.htmlWebViewEnabled, isTrue);
 
     final slider = tester.widget<GlassSlider>(find.byType(GlassSlider));
     expect(slider.quality, GlassQuality.premium);
     expect(slider.settings, isNotNull);
+  });
+
+  testWidgets('设置页文字详情与主页滑杆使用独立触控区', (tester) async {
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: const MaterialApp(home: Scaffold(body: SettingsPage())),
+      ),
+    );
+
+    final sliderArea = find.byKey(const ValueKey('contrast-slider-touch-area'));
+    final sliderRect = tester.getRect(sliderArea);
+    await tester.tapAt(
+      Offset(sliderRect.left + sliderRect.width * 0.86, sliderRect.top + 4),
+    );
+    await tester.pump();
+    expect(display.contrast, greaterThan(0.8));
+    expect(find.byKey(const ValueKey('对比度-setting-detail')), findsNothing);
+
+    await tester.tap(find.text('对比度'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('对比度-setting-detail')), findsOneWidget);
+    expect(find.textContaining('明暗差异'), findsOneWidget);
+    expect(find.byType(GlassSlider), findsNWidgets(2));
   });
 
   testWidgets('字体大小使用 WheelView 并在应用前提示重启', (tester) async {

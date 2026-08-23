@@ -2,7 +2,7 @@ name: Build Android Release APKs
 
 # 触发方式：
 # 1. 推送 tag（如 v1.0.1、v1.0.1+3）时自动构建并发布
-# 2. 在 GitHub Actions 页面手动触发，可指定版本号
+# 2. 在 GitHub Actions 页面手动触发，可指定公开版本号和内部版本号
 on:
   push:
     tags:
@@ -13,6 +13,12 @@ on:
         description: '版本号，如 1.0.1 或 1.0.1+3；留空则使用 pubspec.yaml 中的版本'
         required: false
         default: ''
+        type: string
+      internal_version:
+        description: '关于页内部版本号/代号，如 Apple；留空依次使用仓库变量、Android 构建号'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -48,14 +54,20 @@ jobs:
       # - 手动触发时优先用输入值
       # - push tag 时去掉前缀 v（v1.0.1+3 -> 1.0.1 / build 3）
       # - 其余情况读取 pubspec.yaml
+      # - 内部版本优先使用手动输入，其次使用仓库变量，最后回退到构建号
       - name: Resolve version info
         id: version
         shell: bash
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+          INTERNAL_VERSION_INPUT: ${{ inputs.internal_version }}
+          INTERNAL_VERSION_VARIABLE: ${{ vars.MOYUE_INTERNAL_VERSION }}
         run: |
-          RAW_INPUT="${{ github.event.inputs.version }}"
-          if [ -n "$RAW_INPUT" ]; then
-            RAW="$RAW_INPUT"
-          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+          set -euo pipefail
+
+          if [ -n "$VERSION_INPUT" ]; then
+            RAW="$VERSION_INPUT"
+          elif [ "$GITHUB_EVENT_NAME" = "push" ] && [[ "$GITHUB_REF" == refs/tags/* ]]; then
             RAW="${GITHUB_REF_NAME#v}"
           else
             RAW=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
@@ -73,6 +85,35 @@ jobs:
             exit 1
           fi
 
+          for CANDIDATE in "$INTERNAL_VERSION_INPUT" "$INTERNAL_VERSION_VARIABLE"; do
+            if [[ "$CANDIDATE" == *$'\n'* ]] || [[ "$CANDIDATE" == *$'\r'* ]]; then
+              echo "::error::内部版本号不能包含换行符。"
+              exit 1
+            fi
+          done
+
+          trim_whitespace() {
+            local VALUE="$1"
+            VALUE="${VALUE#"${VALUE%%[![:space:]]*}"}"
+            VALUE="${VALUE%"${VALUE##*[![:space:]]}"}"
+            printf '%s' "$VALUE"
+          }
+          INTERNAL_VERSION_INPUT="$(trim_whitespace "$INTERNAL_VERSION_INPUT")"
+          INTERNAL_VERSION_VARIABLE="$(trim_whitespace "$INTERNAL_VERSION_VARIABLE")"
+
+          if [ -n "$INTERNAL_VERSION_INPUT" ]; then
+            INTERNAL_VERSION="$INTERNAL_VERSION_INPUT"
+          elif [ -n "$INTERNAL_VERSION_VARIABLE" ]; then
+            INTERNAL_VERSION="$INTERNAL_VERSION_VARIABLE"
+          else
+            INTERNAL_VERSION="$BUILD_NUMBER"
+          fi
+
+          if [ "${#INTERNAL_VERSION}" -gt 64 ]; then
+            echo "::error::内部版本号不能超过 64 个字符。"
+            exit 1
+          fi
+
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             RELEASE_TAG="${GITHUB_REF_NAME}"
           else
@@ -81,8 +122,18 @@ jobs:
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "internal_version=$INTERNAL_VERSION" >> "$GITHUB_OUTPUT"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          echo "解析结果: version=$VERSION build=$BUILD_NUMBER tag=$RELEASE_TAG"
+          echo "解析结果: version=$VERSION build=$BUILD_NUMBER internal=$INTERNAL_VERSION tag=$RELEASE_TAG"
+
+      - name: Verify About version binding
+        env:
+          INTERNAL_VERSION: ${{ steps.version.outputs.internal_version }}
+        run: >-
+          flutter test
+          --dart-define=MOYUE_INTERNAL_VERSION="$INTERNAL_VERSION"
+          --dart-define=MOYUE_EXPECTED_INTERNAL_VERSION="$INTERNAL_VERSION"
+          test/app_version_service_test.dart
 
       # 签名配置（可选）：
       # 若在仓库 Secrets 中配置了 KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD，
@@ -110,13 +161,15 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
-        run: flutter build apk --release --split-per-abi --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+          INTERNAL_VERSION: ${{ steps.version.outputs.internal_version }}
+        run: flutter build apk --release --split-per-abi --build-name="$VERSION" --build-number="$BUILD_NUMBER" --dart-define=MOYUE_INTERNAL_VERSION="$INTERNAL_VERSION"
 
       - name: Build universal (fat) APK
         env:
           VERSION: ${{ steps.version.outputs.version }}
           BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
-        run: flutter build apk --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+          INTERNAL_VERSION: ${{ steps.version.outputs.internal_version }}
+        run: flutter build apk --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" --dart-define=MOYUE_INTERNAL_VERSION="$INTERNAL_VERSION"
 
       - name: Collect & rename APKs
         shell: bash
@@ -141,7 +194,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.release_tag }}
           name: ${{ steps.version.outputs.release_tag }}
           body: |
-            自动构建的 Android Release APK，版本 ${{ steps.version.outputs.version }}（build ${{ steps.version.outputs.build_number }}）。
+            自动构建的 Android Release APK，公开版本 ${{ steps.version.outputs.version }}，内部版本 ${{ steps.version.outputs.internal_version }}（Android build ${{ steps.version.outputs.build_number }}）。
 
             - `armeabi-v7a`：32 位 ARM（旧机型）
             - `arm64-v8a`：64 位 ARM（主流机型）

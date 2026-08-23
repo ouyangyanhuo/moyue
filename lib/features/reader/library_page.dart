@@ -447,9 +447,14 @@ class _FolderPageState extends State<_FolderPage> {
   late LibraryFolder _folder;
   final Set<String> _selectedIds = {};
   final Set<String> _selectedDirectories = {};
+  final GlobalKey _expandedDropAreaKey = GlobalKey(
+    debugLabel: 'expanded-folder-drop-area',
+  );
   List<_MoveDestination> _dropTargets = const [];
   bool _dragging = false;
   _FolderMovePayload? _expandedDropSelection;
+  Timer? _collapseExpandedTimer;
+  Offset? _lastDragGlobalPosition;
 
   bool get _selecting =>
       _selectedIds.isNotEmpty || _selectedDirectories.isNotEmpty;
@@ -468,6 +473,7 @@ class _FolderPageState extends State<_FolderPage> {
 
   @override
   void dispose() {
+    _collapseExpandedTimer?.cancel();
     MoyueStorageService.instance.removeListener(_reloadFolder);
     super.dispose();
   }
@@ -530,6 +536,7 @@ class _FolderPageState extends State<_FolderPage> {
                           ),
                           onDragStarted: () =>
                               _selectDirectoryForDrag(childPath),
+                          onDragUpdate: _handleFolderDragUpdate,
                           onDragEnd: _finishDrag,
                           onTap: () {
                             if (_selecting) {
@@ -571,6 +578,7 @@ class _FolderPageState extends State<_FolderPage> {
                         ),
                         selected: selected,
                         onDragStarted: () => _selectForDrag(document),
+                        onDragUpdate: _handleFolderDragUpdate,
                         onDragEnd: _finishDrag,
                         onTap: () {
                           if (_selecting) {
@@ -624,34 +632,40 @@ class _FolderPageState extends State<_FolderPage> {
             right: 0,
             bottom: 0,
             height: MediaQuery.sizeOf(context).height * 0.68,
-            child: IgnorePointer(
-              ignoring: _expandedDropSelection == null,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 260),
-                reverseDuration: const Duration(milliseconds: 190),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) => ClipRect(
-                  child: SizeTransition(
-                    sizeFactor: animation,
-                    alignment: Alignment.bottomCenter,
-                    child: FadeTransition(opacity: animation, child: child),
+            child: SizedBox(
+              key: _expandedDropAreaKey,
+              child: IgnorePointer(
+                ignoring: _expandedDropSelection == null,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  reverseDuration: const Duration(milliseconds: 240),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) => ClipRect(
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 1),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      transformHitTests: true,
+                      child: child,
+                    ),
                   ),
-                ),
-                child: _expandedDropSelection == null
-                    ? const SizedBox.shrink(
-                        key: ValueKey('expanded-folder-drop-sheet-hidden'),
-                      )
-                    : BottomSheet(
-                        key: const ValueKey('expanded-folder-drop-sheet'),
-                        enableDrag: false,
-                        backgroundColor: Colors.transparent,
-                        onClosing: () {},
-                        builder: (_) => _ExpandedFolderDropSheet(
-                          targets: _dropTargets,
-                          onAccept: _acceptExpandedDestination,
+                  child: _expandedDropSelection == null
+                      ? const SizedBox.shrink(
+                          key: ValueKey('expanded-folder-drop-sheet-hidden'),
+                        )
+                      : BottomSheet(
+                          key: const ValueKey('expanded-folder-drop-sheet'),
+                          enableDrag: false,
+                          backgroundColor: Colors.transparent,
+                          onClosing: () {},
+                          builder: (_) => _ExpandedFolderDropSheet(
+                            targets: _dropTargets,
+                            onAccept: _acceptExpandedDestination,
+                          ),
                         ),
-                      ),
+                ),
               ),
             ),
           ),
@@ -754,6 +768,8 @@ class _FolderPageState extends State<_FolderPage> {
 
   void _finishDrag() {
     if (!mounted) return;
+    _cancelExpandedDropCollapse();
+    _lastDragGlobalPosition = null;
     setState(() {
       _dragging = false;
       _expandedDropSelection = null;
@@ -819,15 +835,56 @@ class _FolderPageState extends State<_FolderPage> {
   }
 
   Future<void> _showExpandedDropTargets(_FolderMovePayload selection) async {
-    if (!mounted || _expandedDropSelection != null) return;
+    if (!mounted || !_dragging || _expandedDropSelection != null) return;
+    _cancelExpandedDropCollapse();
     setState(() => _expandedDropSelection = selection);
   }
 
   Future<void> _acceptExpandedDestination(_MoveDestination target) async {
     final selection = _expandedDropSelection;
     if (selection == null) return;
+    _cancelExpandedDropCollapse();
     if (mounted) setState(() => _expandedDropSelection = null);
     await _moveItems(selection, target);
+  }
+
+  void _handleFolderDragUpdate(DragUpdateDetails details) {
+    _lastDragGlobalPosition = details.globalPosition;
+    if (_expandedDropSelection == null) {
+      _cancelExpandedDropCollapse();
+      return;
+    }
+    final bounds = _expandedDropBounds;
+    if (bounds == null) return;
+    if (bounds.inflate(8).contains(details.globalPosition)) {
+      _cancelExpandedDropCollapse();
+      return;
+    }
+    if (_collapseExpandedTimer?.isActive ?? false) return;
+    _collapseExpandedTimer = Timer(const Duration(milliseconds: 90), () {
+      _collapseExpandedTimer = null;
+      if (!mounted || !_dragging || _expandedDropSelection == null) return;
+      final position = _lastDragGlobalPosition;
+      final currentBounds = _expandedDropBounds;
+      if (position == null ||
+          currentBounds == null ||
+          currentBounds.inflate(8).contains(position)) {
+        return;
+      }
+      setState(() => _expandedDropSelection = null);
+    });
+  }
+
+  Rect? get _expandedDropBounds {
+    final renderObject = _expandedDropAreaKey.currentContext
+        ?.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return null;
+    return renderObject.localToGlobal(Offset.zero) & renderObject.size;
+  }
+
+  void _cancelExpandedDropCollapse() {
+    _collapseExpandedTimer?.cancel();
+    _collapseExpandedTimer = null;
   }
 
   Future<void> _showSelectionActions() async {
@@ -1197,6 +1254,7 @@ class _DraggableSubDirTile extends StatelessWidget {
     required this.dragData,
     required this.onTap,
     required this.onDragStarted,
+    required this.onDragUpdate,
     required this.onDragEnd,
   });
 
@@ -1206,6 +1264,7 @@ class _DraggableSubDirTile extends StatelessWidget {
   final _FolderMovePayload dragData;
   final VoidCallback onTap;
   final VoidCallback onDragStarted;
+  final ValueChanged<DragUpdateDetails> onDragUpdate;
   final VoidCallback onDragEnd;
 
   @override
@@ -1221,6 +1280,7 @@ class _DraggableSubDirTile extends StatelessWidget {
       data: dragData,
       hapticFeedbackOnStart: true,
       onDragStarted: onDragStarted,
+      onDragUpdate: onDragUpdate,
       onDragEnd: (_) => onDragEnd(),
       feedback: Material(
         color: Colors.transparent,
@@ -1404,6 +1464,7 @@ class _DraggableDocumentTile<T extends Object> extends StatelessWidget {
     required this.onTap,
     required this.onDragStarted,
     required this.selected,
+    this.onDragUpdate,
     this.onDragEnd,
   });
 
@@ -1411,6 +1472,7 @@ class _DraggableDocumentTile<T extends Object> extends StatelessWidget {
   final T dragData;
   final VoidCallback onTap;
   final VoidCallback onDragStarted;
+  final ValueChanged<DragUpdateDetails>? onDragUpdate;
   final VoidCallback? onDragEnd;
   final bool selected;
 
@@ -1429,6 +1491,7 @@ class _DraggableDocumentTile<T extends Object> extends StatelessWidget {
       data: dragData,
       hapticFeedbackOnStart: true,
       onDragStarted: onDragStarted,
+      onDragUpdate: onDragUpdate,
       onDragEnd: (_) => onDragEnd?.call(),
       feedback: Material(
         color: Colors.transparent,

@@ -4,18 +4,21 @@ import 'package:package_info_plus/package_info_plus.dart';
 class AppVersionService {
   const AppVersionService._();
 
-  /// 内部版本代号可在构建时覆盖，例如：
+  /// 内部版本号/代号由构建参数提供，例如：
   /// `--dart-define=MOYUE_INTERNAL_VERSION=Banana`。
+  /// 未提供时，[displayVersion] 会使用安装包自身的构建号。
   static const internalVersion = String.fromEnvironment(
     'MOYUE_INTERNAL_VERSION',
-    defaultValue: 'Apple',
+    defaultValue: '',
   );
 
   static Future<String> displayVersion() async {
     final package = await PackageInfo.fromPlatform();
     return formatVersion(
       version: package.version,
-      internalVersion: internalVersion,
+      internalVersion: internalVersion.trim().isEmpty
+          ? package.buildNumber
+          : internalVersion,
     );
   }
 
