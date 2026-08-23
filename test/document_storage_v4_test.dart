@@ -301,6 +301,227 @@ void main() {
     expect(folder.subfolderPaths, ['第一卷', '第一卷/插图']);
   });
 
+  test('删除子文件夹会递归删除文档和显式后代并保留同级目录', () async {
+    final root = await Directory.systemTemp.createTemp('moyue-delete-subdir-');
+    final store = _IndexedMemoryStore(root);
+    final service = DocumentPackageService(store: store);
+    addTearDown(() async {
+      await service.close();
+      await root.delete(recursive: true);
+    });
+
+    await service.createFolder('书库');
+    var folder = (await service.loadFolders()).single;
+    await service.createSubfolder(
+      rootFolder: folder,
+      parentPath: '',
+      name: '待删除',
+    );
+    await service.createSubfolder(
+      rootFolder: folder,
+      parentPath: '待删除',
+      name: '下级',
+    );
+    await service.createSubfolder(
+      rootFolder: folder,
+      parentPath: '',
+      name: '保留',
+    );
+    folder = (await service.loadFolders()).single;
+    await service.importIntoFolder(
+      folder: folder,
+      fileName: '第一篇.md',
+      bytes: Uint8List.fromList(utf8.encode('# 第一篇')),
+      logicalDirectory: '待删除',
+    );
+    await service.importIntoFolder(
+      folder: folder,
+      fileName: '第二篇.md',
+      bytes: Uint8List.fromList(utf8.encode('# 第二篇')),
+      logicalDirectory: '待删除/下级',
+    );
+    await service.importIntoFolder(
+      folder: folder,
+      fileName: '保留.md',
+      bytes: Uint8List.fromList(utf8.encode('# 保留')),
+      logicalDirectory: '保留',
+    );
+    folder = (await service.loadFolders()).single;
+
+    await service.deleteSubfolder(rootFolder: folder, logicalPath: '待删除');
+
+    folder = (await service.loadFolders()).single;
+    expect(folder.subfolderPaths, ['保留']);
+    expect(folder.documents.map((document) => document.logicalPath), [
+      '保留/保留.md',
+    ]);
+    expect(store.files.keys.where((path) => path.contains('第一篇.md')), isEmpty);
+    expect(store.files.keys.where((path) => path.contains('第二篇.md')), isEmpty);
+  });
+
+  test('同一根文件夹内移动整棵子目录会更新逻辑路径并拒绝移入后代', () async {
+    final root = await Directory.systemTemp.createTemp('moyue-move-subdir-');
+    final store = _IndexedMemoryStore(root);
+    final service = DocumentPackageService(store: store);
+    addTearDown(() async {
+      await service.close();
+      await root.delete(recursive: true);
+    });
+
+    await service.createFolder('书库');
+    var folder = (await service.loadFolders()).single;
+    await service.createSubfolder(
+      rootFolder: folder,
+      parentPath: '',
+      name: '甲',
+    );
+    await service.createSubfolder(
+      rootFolder: folder,
+      parentPath: '甲',
+      name: '下级',
+    );
+    await service.createSubfolder(
+      rootFolder: folder,
+      parentPath: '',
+      name: '乙',
+    );
+    folder = (await service.loadFolders()).single;
+    var document = await service.importIntoFolder(
+      folder: folder,
+      fileName: '正文.md',
+      bytes: Uint8List.fromList(utf8.encode('# 正文')),
+      logicalDirectory: '甲/下级',
+    );
+    final originalPhysicalPath = document.relativePath;
+    final imageLink = await service.saveImageResource(
+      document: document,
+      fileName: '图.png',
+      bytes: Uint8List.fromList([2, 4, 6, 8]),
+    );
+    document = await service.saveMarkdown(
+      title: document.title,
+      content: '# 正文\n\n![]($imageLink)',
+      existing: document,
+    );
+    folder = (await service.loadFolders()).single;
+
+    await expectLater(
+      service.moveSubfolder(
+        sourceRoot: folder,
+        logicalPath: '甲',
+        targetRoot: folder,
+        targetParentPath: '甲/下级',
+      ),
+      throwsA(isA<FormatException>()),
+    );
+
+    final movedPath = await service.moveSubfolder(
+      sourceRoot: folder,
+      logicalPath: '甲',
+      targetRoot: folder,
+      targetParentPath: '乙',
+    );
+    expect(movedPath, '乙/甲');
+    folder = (await service.loadFolders()).single;
+    expect(folder.subfolderPaths, ['乙', '乙/甲', '乙/甲/下级']);
+    final moved = folder.documents.single;
+    expect(moved.logicalPath, '乙/甲/下级/正文.md');
+    expect(moved.relativePath, originalPhysicalPath);
+    expect(
+      await service.readLinkedResource(moved, imageLink!),
+      Uint8List.fromList([2, 4, 6, 8]),
+    );
+  });
+
+  test('跨根移动子目录会保留空目录和图片资源并为同名目标自动改名', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'moyue-move-subdir-cross-root-',
+    );
+    final store = _IndexedMemoryStore(root);
+    final service = DocumentPackageService(store: store);
+    addTearDown(() async {
+      await service.close();
+      await root.delete(recursive: true);
+    });
+
+    await service.createFolder('来源');
+    await service.createFolder('目标');
+    var folders = await service.loadFolders();
+    var source = folders.singleWhere((folder) => folder.name == '来源');
+    var target = folders.singleWhere((folder) => folder.name == '目标');
+    await service.createSubfolder(
+      rootFolder: source,
+      parentPath: '',
+      name: '章节',
+    );
+    await service.createSubfolder(
+      rootFolder: source,
+      parentPath: '章节',
+      name: '空目录',
+    );
+    await service.createSubfolder(
+      rootFolder: target,
+      parentPath: '',
+      name: '章节',
+    );
+    folders = await service.loadFolders();
+    source = folders.singleWhere((folder) => folder.id == source.id);
+    target = folders.singleWhere((folder) => folder.id == target.id);
+    var document = await service.importIntoFolder(
+      folder: source,
+      fileName: '正文.md',
+      bytes: Uint8List.fromList(utf8.encode('# 正文')),
+      logicalDirectory: '章节',
+    );
+    final imageLink = await service.saveImageResource(
+      document: document,
+      fileName: '封面.png',
+      bytes: Uint8List.fromList([1, 2, 3, 4]),
+    );
+    document = await service.saveMarkdown(
+      title: document.title,
+      content: '# 正文\n\n![]($imageLink)',
+      existing: document,
+    );
+
+    final movedPath = await service.moveSubfolder(
+      sourceRoot: source,
+      logicalPath: '章节',
+      targetRoot: target,
+    );
+    expect(movedPath, '章节 (2)');
+    folders = await service.loadFolders();
+    source = folders.singleWhere((folder) => folder.id == source.id);
+    target = folders.singleWhere((folder) => folder.id == target.id);
+    expect(source.documents, isEmpty);
+    expect(source.subfolderPaths, isEmpty);
+    expect(target.subfolderPaths, ['章节', '章节 (2)', '章节 (2)/空目录']);
+    final moved = target.documents.single;
+    expect(moved.folderId, target.id);
+    expect(moved.logicalPath, '章节 (2)/正文.md');
+    expect(moved.relativePath, startsWith('markdown/${target.id}/'));
+    final movedResources = await (await service.index).packageResources(
+      target.id,
+    );
+    expect(movedResources, isNotEmpty);
+    expect(
+      movedResources,
+      everyElement(
+        predicate<Map<String, Object?>>(
+          (row) =>
+              row['folder_id'] == target.id &&
+              (row['relative_path']! as String).startsWith(
+                'markdown/${target.id}/',
+              ),
+        ),
+      ),
+    );
+    expect(
+      await service.readLinkedResource(moved, imageLink!),
+      Uint8List.fromList([1, 2, 3, 4]),
+    );
+  });
+
   test('ZIP 文档包可导入现有文件夹并保留包内目录与资源', () async {
     final root = await Directory.systemTemp.createTemp('moyue-folder-zip-');
     final store = _IndexedMemoryStore(root);

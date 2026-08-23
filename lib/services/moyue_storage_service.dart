@@ -47,6 +47,17 @@ class MoyueStorageService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> deleteSubfolder({
+    required LibraryFolder rootFolder,
+    required String logicalPath,
+  }) async {
+    await _packages.deleteSubfolder(
+      rootFolder: rootFolder,
+      logicalPath: logicalPath,
+    );
+    notifyListeners();
+  }
+
   Future<void> renameFolder(LibraryFolder folder, String name) async {
     await _packages.renameFolder(folder.id, name);
     notifyListeners();
@@ -156,16 +167,104 @@ class MoyueStorageService extends ChangeNotifier {
   Future<List<ReadingDocument>> moveDocuments({
     required List<ReadingDocument> documents,
     required LibraryFolder target,
+    String? targetDirectory,
   }) async {
     final moved = <ReadingDocument>[];
     for (final document in documents) {
-      if (document.folderId == target.id) continue;
+      final visibleName = document.logicalPath == null
+          ? '${document.title}.${document.kind.extension}'
+          : document.logicalPath!.split('/').last;
+      final targetLogicalPath = targetDirectory == null
+          ? null
+          : targetDirectory.isEmpty
+          ? visibleName
+          : '$targetDirectory/$visibleName';
       moved.add(
-        await _packages.moveDocument(document: document, target: target),
+        await _packages.moveDocument(
+          document: document,
+          target: target,
+          targetLogicalPath: targetLogicalPath,
+        ),
       );
     }
     if (moved.isNotEmpty) notifyListeners();
     return moved;
+  }
+
+  Future<String> moveSubfolder({
+    required LibraryFolder sourceRoot,
+    required String logicalPath,
+    required LibraryFolder targetRoot,
+    String targetParentPath = '',
+  }) async {
+    final movedPath = await _packages.moveSubfolder(
+      sourceRoot: sourceRoot,
+      logicalPath: logicalPath,
+      targetRoot: targetRoot,
+      targetParentPath: targetParentPath,
+    );
+    notifyListeners();
+    return movedPath;
+  }
+
+  /// 文件夹页的一次移动手势只触发一次刷新，避免目录和文档分批移动时
+  /// 页面监听器在中间态反复重建。
+  Future<void> moveFolderItems({
+    required LibraryFolder sourceRoot,
+    required List<ReadingDocument> documents,
+    required List<String> subfolderPaths,
+    required LibraryFolder? targetRoot,
+    String targetParentPath = '',
+  }) async {
+    if (targetRoot == null && subfolderPaths.isNotEmpty) {
+      throw const FormatException('子文件夹不能拆成首页单文档');
+    }
+    final topLevelPaths = subfolderPaths
+        .where((path) {
+          return !subfolderPaths.any(
+            (other) =>
+                other != path && (path == other || path.startsWith('$other/')),
+          );
+        })
+        .toList(growable: false);
+    for (final path in topLevelPaths) {
+      await _packages.moveSubfolder(
+        sourceRoot: sourceRoot,
+        logicalPath: path,
+        targetRoot: targetRoot!,
+        targetParentPath: targetParentPath,
+      );
+    }
+    final movedDirectorySet = topLevelPaths.toSet();
+    final standaloneDocuments = documents.where((document) {
+      final logicalPath = document.logicalPath;
+      if (logicalPath == null) return true;
+      return !movedDirectorySet.any(
+        (directory) => logicalPath.startsWith('$directory/'),
+      );
+    });
+    if (targetRoot == null) {
+      for (final document in standaloneDocuments) {
+        await _packages.moveDocumentToLibrary(document);
+      }
+    } else {
+      for (final document in standaloneDocuments) {
+        final visibleName = document.logicalPath == null
+            ? '${document.title}.${document.kind.extension}'
+            : document.logicalPath!.split('/').last;
+        final targetLogicalPath = targetParentPath.isEmpty
+            ? visibleName
+            : '$targetParentPath/$visibleName';
+        await _packages.moveDocument(
+          document: document,
+          target: targetRoot,
+          targetLogicalPath: targetLogicalPath,
+        );
+      }
+    }
+    if (topLevelPaths.isNotEmpty || standaloneDocuments.isNotEmpty) {
+      notifyListeners();
+    }
   }
 
   /// 把文件夹内文档拆成首页上的独立文档。

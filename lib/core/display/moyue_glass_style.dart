@@ -39,5 +39,9 @@ LiquidGlassSettings moyueGlassSettings(BuildContext context) {
     edgeAbsorption: 0.06,
     shadow: moyueGlassShadow(opacity),
     glassColor: Colors.white.withValues(alpha: opacity),
+    // Premium captures can briefly contain transparent pixels while an
+    // external texture is attaching. Use the page surface for only those
+    // missing samples instead of letting the refraction shader expose black.
+    platformViewFallbackColor: Theme.of(context).colorScheme.surface,
   );
 }

@@ -16,7 +16,6 @@ class MoyueGlassTitlePill extends StatelessWidget {
     this.onTap,
     this.semanticLabel,
     this.useOwnLayer = true,
-    this.platformViewBackdrop = false,
     super.key,
   });
 
@@ -29,7 +28,6 @@ class MoyueGlassTitlePill extends StatelessWidget {
   final VoidCallback? onTap;
   final String? semanticLabel;
   final bool useOwnLayer;
-  final bool platformViewBackdrop;
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +40,7 @@ class MoyueGlassTitlePill extends StatelessWidget {
       height: 42,
       useOwnLayer: useOwnLayer,
       quality: GlassQuality.premium,
-      platformViewBackdrop: platformViewBackdrop,
+      platformViewBackdrop: false,
       settings: useOwnLayer ? settings : null,
       shape: const LiquidRoundedSuperellipse(borderRadius: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16),

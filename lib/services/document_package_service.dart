@@ -306,48 +306,11 @@ class DocumentPackageService {
         p.posix.isAbsolute(parentLogicalPath)) {
       throw const FormatException('父文件夹路径不安全');
     }
-    var parentId = rootFolder.id;
-    var accumulatedPath = '';
-    for (final segment
-        in parentLogicalPath.split('/').where((part) => part.isNotEmpty)) {
-      accumulatedPath = accumulatedPath.isEmpty
-          ? segment
-          : p.posix.join(accumulatedPath, segment);
-      final existing = await db.nestedFolder(rootFolder.id, accumulatedPath);
-      if (existing != null) {
-        parentId = existing['id']! as String;
-        continue;
-      }
-      // ZIP/.moyue 导入形成的目录过去只存在于 documents.logical_path。
-      // 用户第一次在其中新建内容时，把这段隐式路径补成显式 folders 行。
-      final materializedAt = DateTime.now();
-      final materializedId =
-          '${materializedAt.microsecondsSinceEpoch}-${sha256.convert(utf8.encode(accumulatedPath)).toString().substring(0, 8)}-subfolder';
-      final materializedRelativePath = p.posix.join(
-        rootRow['relative_path']! as String,
-        '.folders',
-        materializedId,
-      );
-      await db.insertPackage(
-        folder: FolderRecord(
-          id: materializedId,
-          category: rootRow['category']! as String,
-          name: segment,
-          single: false,
-          marker: 'nested-folder',
-          relativePath: materializedRelativePath,
-          entryCount: 0,
-          createdAt: materializedAt,
-          updatedAt: materializedAt,
-          parentId: parentId,
-          logicalPath: accumulatedPath,
-        ),
-        documents: const [],
-        resources: const [],
-        writeFiles: () => _files.createFolder(materializedRelativePath),
-      );
-      parentId = materializedId;
-    }
+    final parentId = await _ensureNestedFolderPath(
+      db: db,
+      rootRow: rootRow,
+      logicalPath: parentLogicalPath,
+    );
     if (await db.siblingFolderExists(parentId, safeName)) {
       throw const FormatException('同一目录下已存在同名文件夹');
     }
@@ -835,13 +798,13 @@ class DocumentPackageService {
     required ReadingDocument document,
     required LibraryFolder target,
     String? targetLogicalPath,
+    bool preserveSourceFolder = false,
   }) async {
     final sourceFolderId = document.folderId;
     final sourcePath = document.relativePath;
     if (sourceFolderId == null || sourcePath == null) {
       throw StateError('未索引的旧文档不能直接移动');
     }
-    if (sourceFolderId == target.id) return document;
     final db = await index;
     final sourceFolder = await db.folder(sourceFolderId);
     final targetFolder = await db.folder(target.id);
@@ -856,6 +819,37 @@ class DocumentPackageService {
           document.logicalPath ??
           '${document.title}.$extension',
     );
+    final sourceRows = await db.packageDocuments(sourceFolderId);
+    final currentRows = sourceRows.where((row) => row['id'] == document.id);
+    if (currentRows.isEmpty) throw StateError('源文档索引不存在');
+    final currentRow = currentRows.first;
+    if (sourceFolderId == target.id) {
+      final previousLogicalPath = _logicalPath(
+        currentRow,
+        folderPath: sourceFolder['relative_path']! as String,
+      );
+      if (previousLogicalPath == requestedLogicalPath) return document;
+      final record = DocumentRecord(
+        id: document.id,
+        folderId: sourceFolderId,
+        name: document.title,
+        kind: document.kind == DocumentKind.html ? 'html' : 'markdown',
+        relativePath: sourcePath,
+        logicalPath: requestedLogicalPath,
+        isPrimary: currentRow['is_primary'] == 1,
+        contentHash: currentRow['content_hash']! as String,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(
+          currentRow['created_at']! as int,
+        ),
+        updatedAt: now,
+        sourceUrl: currentRow['source_url'] as String?,
+      );
+      await db.updateDocument(record);
+      return document.copyWith(
+        logicalPath: requestedLogicalPath,
+        updatedAt: now,
+      );
+    }
     final visibleName = p.posix.basename(requestedLogicalPath);
     final targetPath = p.posix.join(
       targetFolder['relative_path']! as String,
@@ -867,6 +861,42 @@ class DocumentPackageService {
       targetPath: await _files.readBytes(sourcePath),
     };
     final resources = <ResourceRecord>[];
+    final indexedResources = await db.packageResources(sourceFolderId);
+    for (final row in indexedResources.where(
+      (row) => row['document_id'] == document.id,
+    )) {
+      final sourceResource = row['relative_path']! as String;
+      final relativeLink = p.posix.relative(
+        sourceResource,
+        from: p.posix.dirname(sourcePath),
+      );
+      final targetResource = p.posix.normalize(
+        p.posix.join(p.posix.dirname(targetPath), relativeLink),
+      );
+      final targetBase = targetFolder['relative_path']! as String;
+      if (targetResource != targetBase &&
+          !p.posix.isWithin(targetBase, targetResource)) {
+        continue;
+      }
+      try {
+        final bytes = await _files.readBytes(sourceResource);
+        targetFiles[targetResource] = bytes;
+        resources.add(
+          ResourceRecord(
+            id: row['id']! as String,
+            folderId: target.id,
+            documentId: document.id,
+            name: row['name']! as String,
+            mimeType: row['mime_type']! as String,
+            relativePath: targetResource,
+            contentHash: row['content_hash']! as String,
+            sizeBytes: row['size_bytes']! as int,
+          ),
+        );
+      } on Object {
+        // 缺失的资源保持为正文中的断裂链接，不阻断文档本身移动。
+      }
+    }
     for (final link in _localAssetReferences(document.content)) {
       final sourceResource = p.posix.normalize(
         p.posix.join(p.posix.dirname(sourcePath), link),
@@ -881,10 +911,20 @@ class DocumentPackageService {
         final targetResource = p.posix.normalize(
           p.posix.join(p.posix.dirname(targetPath), link),
         );
+        final targetBase = targetFolder['relative_path']! as String;
+        if (targetResource != targetBase &&
+            !p.posix.isWithin(targetBase, targetResource)) {
+          continue;
+        }
+        if (targetFiles.containsKey(targetResource)) continue;
         targetFiles[targetResource] = bytes;
+        final resourceKey = sha256
+            .convert(utf8.encode(targetResource))
+            .toString()
+            .substring(0, 12);
         resources.add(
           ResourceRecord(
-            id: '${document.id}-res-${resources.length + 1}',
+            id: '${document.id}-res-$resourceKey',
             folderId: target.id,
             documentId: document.id,
             name: p.posix.basename(targetResource),
@@ -908,8 +948,11 @@ class DocumentPackageService {
       logicalPath: requestedLogicalPath,
       isPrimary: targetDocuments.isEmpty,
       contentHash: sha256.convert(targetFiles[targetPath]!).toString(),
-      createdAt: document.updatedAt,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+        currentRow['created_at']! as int,
+      ),
       updatedAt: now,
+      sourceUrl: currentRow['source_url'] as String?,
     );
     await db.moveDocument(
       document: record,
@@ -920,7 +963,9 @@ class DocumentPackageService {
 
     try {
       final sourceDocuments = await db.packageDocuments(sourceFolderId);
-      if (sourceDocuments.isEmpty && sourceFolder['marker'] != 'user-folder') {
+      if (!preserveSourceFolder &&
+          sourceDocuments.isEmpty &&
+          sourceFolder['marker'] != 'user-folder') {
         await db.deleteFolder(sourceFolderId);
         await _files.deleteFolder(sourceFolder['relative_path']! as String);
       } else if (_isPrivateDocumentPath(sourcePath, document.id)) {
@@ -991,6 +1036,281 @@ class DocumentPackageService {
     }
   }
 
+  /// 把一个逻辑子目录（包含全部后代文档、资源和显式空目录）移动到另一个
+  /// 根文件夹的指定目录。目标目录重名时采用“名称 (2)”形式保留两者，
+  /// 同一根文件夹内禁止移入自身或后代。
+  Future<String> moveSubfolder({
+    required LibraryFolder sourceRoot,
+    required String logicalPath,
+    required LibraryFolder targetRoot,
+    String targetParentPath = '',
+  }) async {
+    final sourcePath = _safeArchivePath(logicalPath.trim());
+    final targetParent = _normalizeLogicalDirectory(targetParentPath);
+    final db = await index;
+    final sourceRootRow = await db.folder(sourceRoot.id);
+    final targetRootRow = await db.folder(targetRoot.id);
+    if (sourceRootRow == null || sourceRootRow['parent_id'] != null) {
+      throw StateError('源根文件夹不存在');
+    }
+    if (targetRootRow == null || targetRootRow['parent_id'] != null) {
+      throw StateError('目标根文件夹不存在');
+    }
+
+    final sameRoot = sourceRoot.id == targetRoot.id;
+    if (sameRoot &&
+        (targetParent == sourcePath ||
+            p.posix.isWithin(sourcePath, targetParent))) {
+      throw const FormatException('不能把文件夹移入自身或其子文件夹');
+    }
+    final previousParent = p.posix.dirname(sourcePath) == '.'
+        ? ''
+        : p.posix.dirname(sourcePath);
+    if (sameRoot && previousParent == targetParent) return sourcePath;
+
+    final sourceDocumentRows = await db.packageDocuments(sourceRoot.id);
+    final sourceNestedRows = await db.nestedFolders(sourceRoot.id);
+    final sourceDirectories = _logicalDirectories(
+      documentRows: sourceDocumentRows,
+      nestedRows: sourceNestedRows,
+      rootPath: sourceRootRow['relative_path']! as String,
+    );
+    if (!sourceDirectories.contains(sourcePath)) {
+      throw StateError('要移动的文件夹不存在');
+    }
+
+    final targetDocumentRows = sameRoot
+        ? sourceDocumentRows
+        : await db.packageDocuments(targetRoot.id);
+    final targetNestedRows = sameRoot
+        ? sourceNestedRows
+        : await db.nestedFolders(targetRoot.id);
+    final targetDirectories = _logicalDirectories(
+      documentRows: targetDocumentRows,
+      nestedRows: targetNestedRows,
+      rootPath: targetRootRow['relative_path']! as String,
+    );
+    if (targetParent.isNotEmpty && !targetDirectories.contains(targetParent)) {
+      throw StateError('目标子文件夹不存在');
+    }
+
+    final occupied = <String>{
+      for (final path in targetDirectories)
+        if (!sameRoot || !_pathContains(sourcePath, path)) path.toLowerCase(),
+    };
+    final sourceName = p.posix.basename(sourcePath);
+    var movedName = sourceName;
+    var movedPath = targetParent.isEmpty
+        ? movedName
+        : p.posix.join(targetParent, movedName);
+    for (var suffix = 2; occupied.contains(movedPath.toLowerCase()); suffix++) {
+      movedName = '$sourceName ($suffix)';
+      movedPath = targetParent.isEmpty
+          ? movedName
+          : p.posix.join(targetParent, movedName);
+    }
+
+    final targetParentId = await _ensureNestedFolderPath(
+      db: db,
+      rootRow: targetRootRow,
+      logicalPath: targetParent,
+    );
+    final descendantRows = sourceDocumentRows
+        .where((row) {
+          final path = _logicalPath(
+            row,
+            folderPath: sourceRootRow['relative_path']! as String,
+          );
+          return p.posix.isWithin(sourcePath, path);
+        })
+        .toList(growable: false);
+
+    final detachedResources =
+        <({Map<String, Object?> row, String targetPath, Uint8List bytes})>[];
+    if (!sameRoot) {
+      final sourceBase = sourceRootRow['relative_path']! as String;
+      final targetBase = targetRootRow['relative_path']! as String;
+      for (final row in await db.packageResources(sourceRoot.id)) {
+        if (row['document_id'] != null) continue;
+        final relativePath = row['relative_path']! as String;
+        final logicalResourcePath = p.posix.relative(
+          relativePath,
+          from: sourceBase,
+        );
+        if (!_pathContains(sourcePath, logicalResourcePath)) continue;
+        final movedLogicalPath = _replacePathPrefix(
+          logicalResourcePath,
+          sourcePath,
+          movedPath,
+        );
+        detachedResources.add((
+          row: row,
+          targetPath: p.posix.join(targetBase, movedLogicalPath),
+          bytes: await _files.readBytes(relativePath),
+        ));
+      }
+    }
+
+    for (final row in descendantRows) {
+      final relativePath = row['relative_path']! as String;
+      final oldLogicalPath = _logicalPath(
+        row,
+        folderPath: sourceRootRow['relative_path']! as String,
+      );
+      await moveDocument(
+        document: ReadingDocument(
+          id: row['id']! as String,
+          title: row['name']! as String,
+          content: decodeImportedText(await _files.readBytes(relativePath)),
+          kind: row['kind'] == 'html'
+              ? DocumentKind.html
+              : DocumentKind.markdown,
+          updatedAt: DateTime.fromMillisecondsSinceEpoch(
+            row['updated_at']! as int,
+          ),
+          sourceLabel: '文件夹',
+          filePath: relativePath,
+          folderId: sourceRoot.id,
+          relativePath: relativePath,
+          logicalPath: oldLogicalPath,
+        ),
+        target: targetRoot,
+        targetLogicalPath: _replacePathPrefix(
+          oldLogicalPath,
+          sourcePath,
+          movedPath,
+        ),
+        preserveSourceFolder: true,
+      );
+    }
+
+    for (final resource in detachedResources) {
+      final row = resource.row;
+      final oldPath = row['relative_path']! as String;
+      await db.moveResource(
+        resource: ResourceRecord(
+          id: row['id']! as String,
+          folderId: targetRoot.id,
+          documentId: null,
+          name: row['name']! as String,
+          mimeType: row['mime_type']! as String,
+          relativePath: resource.targetPath,
+          contentHash: row['content_hash']! as String,
+          sizeBytes: row['size_bytes']! as int,
+        ),
+        sourceFolderId: sourceRoot.id,
+        writeFile: () =>
+            _files.writeFiles({resource.targetPath: resource.bytes}),
+      );
+      try {
+        await _files.deleteFile(oldPath);
+      } on Object {
+        // 新资源与索引已经提交；旧资源由后续存储审计回收。
+      }
+    }
+
+    final explicitDescendants = sourceNestedRows
+        .where(
+          (row) => _pathContains(sourcePath, row['logical_path']! as String),
+        )
+        .toList(growable: false);
+    final explicitTopRows = explicitDescendants.where(
+      (row) => row['logical_path'] == sourcePath,
+    );
+    final now = DateTime.now();
+    final folderRecords = <FolderRecord>[];
+    if (explicitTopRows.isEmpty) {
+      final id =
+          '${now.microsecondsSinceEpoch}-${sha256.convert(utf8.encode('$sourcePath->$movedPath')).toString().substring(0, 8)}-subfolder';
+      folderRecords.add(
+        FolderRecord(
+          id: id,
+          category: targetRootRow['category']! as String,
+          name: movedName,
+          single: false,
+          marker: 'nested-folder',
+          relativePath: p.posix.join(
+            targetRootRow['relative_path']! as String,
+            '.folders',
+            id,
+          ),
+          entryCount: 0,
+          createdAt: now,
+          updatedAt: now,
+          parentId: targetParentId,
+          logicalPath: movedPath,
+        ),
+      );
+    }
+    for (final row in explicitDescendants) {
+      final oldLogicalPath = row['logical_path']! as String;
+      final newLogicalPath = _replacePathPrefix(
+        oldLogicalPath,
+        sourcePath,
+        movedPath,
+      );
+      final id = row['id']! as String;
+      folderRecords.add(
+        FolderRecord(
+          id: id,
+          category: targetRootRow['category']! as String,
+          name: p.posix.basename(newLogicalPath),
+          single: false,
+          marker: row['marker']! as String,
+          relativePath: sameRoot
+              ? row['relative_path']! as String
+              : p.posix.join(
+                  targetRootRow['relative_path']! as String,
+                  '.folders',
+                  id,
+                ),
+          entryCount: row['entry_count']! as int,
+          createdAt: DateTime.fromMillisecondsSinceEpoch(
+            row['created_at']! as int,
+          ),
+          updatedAt: now,
+          parentId: oldLogicalPath == sourcePath
+              ? targetParentId
+              : row['parent_id'] as String?,
+          logicalPath: newLogicalPath,
+        ),
+      );
+    }
+    folderRecords.sort(
+      (a, b) => a.logicalPath
+          .split('/')
+          .length
+          .compareTo(b.logicalPath.split('/').length),
+    );
+    await db.upsertNestedFolders(
+      folders: folderRecords,
+      writeFolders: () async {
+        for (final folder in folderRecords) {
+          await _files.createFolder(folder.relativePath);
+        }
+      },
+    );
+
+    if (!sameRoot) {
+      for (final row in explicitDescendants) {
+        try {
+          await _files.deleteFolder(row['relative_path']! as String);
+        } on Object {
+          // 新占位目录已落盘，旧空目录可由后续审计回收。
+        }
+      }
+      final remainingDocuments = await db.packageDocuments(sourceRoot.id);
+      final remainingDirectories = await db.nestedFolders(sourceRoot.id);
+      if (remainingDocuments.isEmpty &&
+          remainingDirectories.isEmpty &&
+          sourceRootRow['marker'] != 'user-folder') {
+        await db.deleteFolder(sourceRoot.id);
+        await _files.deleteFolder(sourceRootRow['relative_path']! as String);
+      }
+    }
+    return movedPath;
+  }
+
   Future<void> deleteDocument(ReadingDocument document) async {
     final folderId = document.folderId;
     if (folderId == null) return;
@@ -1020,6 +1340,72 @@ class DocumentPackageService {
     if (folder == null) return;
     await (await index).deleteFolder(folderId);
     await _files.deleteFolder(folder['relative_path']! as String);
+  }
+
+  /// 删除根文件夹内指定逻辑子目录，以及该目录下的全部文档和显式子目录。
+  ///
+  /// 文档的物理文件可能位于 `.documents/<id>/`，不能按逻辑目录直接删盘；
+  /// 因此先根据 `documents.logical_path` 找出后代并走标准文档删除流程，再
+  /// 清理 folders 表中的显式目录记录及其独立物理占位目录。
+  Future<void> deleteSubfolder({
+    required LibraryFolder rootFolder,
+    required String logicalPath,
+  }) async {
+    final normalized = _safeArchivePath(logicalPath.trim());
+    if (normalized == '.') {
+      throw const FormatException('不能通过子文件夹操作删除根文件夹');
+    }
+    final db = await index;
+    final rootRow = await db.folder(rootFolder.id);
+    if (rootRow == null) return;
+    final rootPath = rootRow['relative_path']! as String;
+    final rows = await db.packageDocuments(rootFolder.id);
+    final descendants = rows
+        .where((row) {
+          final path = _logicalPath(row, folderPath: rootPath);
+          return p.posix.isWithin(normalized, path);
+        })
+        .toList(growable: false);
+    for (final row in descendants) {
+      final relativePath = row['relative_path']! as String;
+      await deleteDocument(
+        ReadingDocument(
+          id: row['id']! as String,
+          title: row['name']! as String,
+          content: '',
+          kind: row['kind'] == 'html'
+              ? DocumentKind.html
+              : DocumentKind.markdown,
+          updatedAt: DateTime.fromMillisecondsSinceEpoch(
+            row['updated_at']! as int,
+          ),
+          filePath: relativePath,
+          folderId: rootFolder.id,
+          relativePath: relativePath,
+          logicalPath: _logicalPath(row, folderPath: rootPath),
+        ),
+      );
+    }
+
+    // 最后一个文档可能已经让非用户文档包整体被回收。
+    if (await db.folder(rootFolder.id) == null) return;
+    final nestedRows = await db.nestedFolders(rootFolder.id);
+    final nestedDescendants = nestedRows
+        .where((row) {
+          final path = row['logical_path']! as String;
+          return path == normalized || p.posix.isWithin(normalized, path);
+        })
+        .toList(growable: false);
+    final targetRows = nestedDescendants.where(
+      (row) => row['logical_path'] == normalized,
+    );
+    if (targetRows.isNotEmpty) {
+      // 外键级联删除所有显式后代；物理占位目录互不嵌套，需要逐个清理。
+      await db.deleteFolder(targetRows.first['id']! as String);
+    }
+    for (final row in nestedDescendants) {
+      await _files.deleteFolder(row['relative_path']! as String);
+    }
   }
 
   Future<MoyueExport> exportMoyue(ReadingDocument document) async {
@@ -1259,6 +1645,106 @@ class DocumentPackageService {
     if (folder == null) return;
     await (await index).deleteFolder(source.id);
     await _files.deleteFolder(folder['relative_path']! as String);
+  }
+
+  Future<String> _ensureNestedFolderPath({
+    required MoyueIndexDatabase db,
+    required Map<String, Object?> rootRow,
+    required String logicalPath,
+  }) async {
+    if (logicalPath.isEmpty) return rootRow['id']! as String;
+    var parentId = rootRow['id']! as String;
+    var accumulatedPath = '';
+    for (final segment
+        in logicalPath.split('/').where((part) => part.isNotEmpty)) {
+      accumulatedPath = accumulatedPath.isEmpty
+          ? segment
+          : p.posix.join(accumulatedPath, segment);
+      final existing = await db.nestedFolder(
+        rootRow['id']! as String,
+        accumulatedPath,
+      );
+      if (existing != null) {
+        parentId = existing['id']! as String;
+        continue;
+      }
+      // ZIP/.moyue 导入形成的目录可能只存在于 documents.logical_path。
+      // 在目录成为移动目标时补出显式 folders 行，空目录语义才能持久化。
+      final materializedAt = DateTime.now();
+      final materializedId =
+          '${materializedAt.microsecondsSinceEpoch}-${sha256.convert(utf8.encode(accumulatedPath)).toString().substring(0, 8)}-subfolder';
+      final materializedRelativePath = p.posix.join(
+        rootRow['relative_path']! as String,
+        '.folders',
+        materializedId,
+      );
+      await db.insertPackage(
+        folder: FolderRecord(
+          id: materializedId,
+          category: rootRow['category']! as String,
+          name: segment,
+          single: false,
+          marker: 'nested-folder',
+          relativePath: materializedRelativePath,
+          entryCount: 0,
+          createdAt: materializedAt,
+          updatedAt: materializedAt,
+          parentId: parentId,
+          logicalPath: accumulatedPath,
+        ),
+        documents: const [],
+        resources: const [],
+        writeFiles: () => _files.createFolder(materializedRelativePath),
+      );
+      parentId = materializedId;
+    }
+    return parentId;
+  }
+
+  String _normalizeLogicalDirectory(String value) {
+    final normalized = p.posix.normalize(value.trim().replaceAll('\\', '/'));
+    if (normalized == '.') return '';
+    if (normalized.startsWith('../') || p.posix.isAbsolute(normalized)) {
+      throw const FormatException('目标文件夹路径不安全');
+    }
+    return normalized;
+  }
+
+  bool _pathContains(String parent, String candidate) =>
+      candidate == parent || p.posix.isWithin(parent, candidate);
+
+  String _replacePathPrefix(
+    String path,
+    String previousPrefix,
+    String nextPrefix,
+  ) {
+    if (path == previousPrefix) return nextPrefix;
+    final suffix = p.posix.relative(path, from: previousPrefix);
+    return p.posix.join(nextPrefix, suffix);
+  }
+
+  Set<String> _logicalDirectories({
+    required List<Map<String, Object?>> documentRows,
+    required List<Map<String, Object?>> nestedRows,
+    required String rootPath,
+  }) {
+    final directories = <String>{};
+    void addWithParents(String value) {
+      var current = value;
+      while (current.isNotEmpty && current != '.') {
+        directories.add(current);
+        final parent = p.posix.dirname(current);
+        current = parent == '.' ? '' : parent;
+      }
+    }
+
+    for (final row in nestedRows) {
+      addWithParents(row['logical_path']! as String);
+    }
+    for (final row in documentRows) {
+      addWithParents(p.posix.dirname(_logicalPath(row, folderPath: rootPath)));
+    }
+    return directories;
   }
 
   List<int> bytesForId(

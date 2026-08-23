@@ -3,6 +3,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/services/app_restart_service.dart';
+import 'package:moyue_application/services/app_version_service.dart';
 import 'package:moyue_application/services/debug_service.dart';
 import 'package:moyue_application/widgets/floating_page_shell.dart';
 import 'package:moyue_application/widgets/expandable_glass_search.dart';
@@ -22,91 +23,27 @@ class SettingsPageState extends State<SettingsPage> {
 
   void openSearch() => _searchKey.currentState?.open();
 
-  Future<void> showAbout() => showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    useSafeArea: true,
-    builder: (sheetContext) => const Padding(
-      padding: EdgeInsets.fromLTRB(24, 4, 24, 28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '墨阅',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
-          ),
-          SizedBox(height: 6),
-          Text('朴素、护眼的 Markdown、HTML 与 RSS 阅读器'),
-          SizedBox(height: 22),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.person_outline_rounded),
-            title: Text('作者'),
-            subtitle: Text('Magneto'),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.info_outline_rounded),
-            title: Text('版本'),
-            subtitle: Text('1.0.1'),
-          ),
-        ],
-      ),
-    ),
-  );
+  Future<void> showAbout() {
+    final version = AppVersionService.displayVersion();
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (sheetContext) => _AboutSheet(version: version),
+    );
+  }
 
   Future<void> _chooseFontSize(DisplayModeController display) async {
     final initialIndex = _nearestFontScaleIndex(display.appFontScale);
-    final controller = FixedExtentScrollController(initialItem: initialIndex);
-    var selectedIndex = initialIndex;
     final selected = await showModalBottomSheet<double>(
       context: context,
       showDragHandle: true,
       useSafeArea: true,
-      builder: (sheetContext) => SizedBox(
-        height: 330,
-        child: Column(
-          children: [
-            Text('软件字体大小', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListWheelScrollView.useDelegate(
-                key: const ValueKey('app-font-size-wheel'),
-                controller: controller,
-                itemExtent: 54,
-                physics: const FixedExtentScrollPhysics(),
-                diameterRatio: 1.5,
-                useMagnifier: true,
-                magnification: 1.12,
-                onSelectedItemChanged: (value) => selectedIndex = value,
-                childDelegate: ListWheelChildBuilderDelegate(
-                  childCount: _fontScales.length,
-                  builder: (context, index) => Center(
-                    child: Text(
-                      '${(_fontScales[index] * 100).round()}%',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () =>
-                      Navigator.pop(sheetContext, _fontScales[selectedIndex]),
-                  child: const Text('应用'),
-                ),
-              ),
-            ),
-          ],
-        ),
+      builder: (sheetContext) => _FontScalePickerSheet(
+        scales: _fontScales,
+        initialIndex: initialIndex,
       ),
     );
-    controller.dispose();
     if (selected == null || selected == display.appFontScale || !mounted) {
       return;
     }
@@ -292,6 +229,177 @@ class SettingsPageState extends State<SettingsPage> {
             const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AboutSheet extends StatelessWidget {
+  const _AboutSheet({required this.version});
+
+  final Future<String> version;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '墨阅',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 6),
+        const Text('朴素、护眼的 Markdown、HTML 与 RSS 阅读器'),
+        const SizedBox(height: 22),
+        const ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.person_outline_rounded),
+          title: Text('作者'),
+          subtitle: Text('Magneto'),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.info_outline_rounded),
+          title: const Text('版本'),
+          subtitle: FutureBuilder<String>(
+            future: version,
+            builder: (context, snapshot) {
+              if (snapshot.hasData) return Text(snapshot.data!);
+              if (snapshot.hasError) return const Text('无法读取版本信息');
+              return const Text('正在读取版本信息…');
+            },
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _FontScalePickerSheet extends StatefulWidget {
+  const _FontScalePickerSheet({
+    required this.scales,
+    required this.initialIndex,
+  });
+
+  final List<double> scales;
+  final int initialIndex;
+
+  @override
+  State<_FontScalePickerSheet> createState() => _FontScalePickerSheetState();
+}
+
+class _FontScalePickerSheetState extends State<_FontScalePickerSheet> {
+  late final FixedExtentScrollController _controller;
+  late int _selectedIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = widget.initialIndex;
+    _controller = FixedExtentScrollController(initialItem: _selectedIndex);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return SizedBox(
+      height: 330,
+      child: Column(
+        children: [
+          Text('软件字体大小', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListWheelScrollView.useDelegate(
+              key: const ValueKey('app-font-size-wheel'),
+              controller: _controller,
+              itemExtent: 54,
+              physics: const FixedExtentScrollPhysics(),
+              diameterRatio: 1.5,
+              overAndUnderCenterOpacity: 0.48,
+              onSelectedItemChanged: (value) {
+                if (_selectedIndex == value) return;
+                setState(() => _selectedIndex = value);
+              },
+              childDelegate: ListWheelChildBuilderDelegate(
+                childCount: widget.scales.length,
+                builder: (context, index) {
+                  final selected = index == _selectedIndex;
+                  final label = '${(widget.scales[index] * 100).round()}%';
+                  return Center(
+                    child: Semantics(
+                      selected: selected,
+                      label: label,
+                      child: Material(
+                        key: selected
+                            ? const ValueKey('app-font-size-selected-option')
+                            : ValueKey('app-font-size-option-$index'),
+                        color: selected
+                            ? colors.secondaryContainer
+                            : Colors.transparent,
+                        surfaceTintColor: Colors.transparent,
+                        elevation: selected ? 1 : 0,
+                        shadowColor: colors.shadow.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(18),
+                        child: AnimatedSize(
+                          duration: const Duration(milliseconds: 160),
+                          curve: Curves.easeOutCubic,
+                          child: SizedBox(
+                            width: selected ? 156 : 112,
+                            height: 44,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  label,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    color: selected
+                                        ? colors.onSecondaryContainer
+                                        : colors.onSurfaceVariant,
+                                    fontWeight: selected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                  ),
+                                ),
+                                if (selected) ...[
+                                  const SizedBox(width: 8),
+                                  Icon(
+                                    Icons.check_rounded,
+                                    size: 18,
+                                    color: colors.onSecondaryContainer,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () =>
+                    Navigator.pop(context, widget.scales[_selectedIndex]),
+                child: const Text('应用'),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

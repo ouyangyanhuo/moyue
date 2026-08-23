@@ -5,6 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:moyue_application/services/webview_document_builder.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
+
+/// Android must remain on Texture Layer Hybrid Composition so WebView pixels
+/// participate in the same Flutter/Impeller scene sampled by premium glass.
+@visibleForTesting
+const bool moyueWebViewDisplayWithHybridComposition = false;
 
 class WebViewHtmlView extends StatefulWidget {
   const WebViewHtmlView({
@@ -147,13 +153,29 @@ class WebViewHtmlViewState extends State<WebViewHtmlView> {
     }
   }
 
+  Widget _buildWebView(WebViewController controller) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return WebViewWidget.fromPlatformCreationParams(
+        params: AndroidWebViewWidgetCreationParams(
+          controller: controller.platform,
+          // Keep WebView pixels inside Flutter's texture composition. Enabling
+          // legacy Hybrid Composition (or the app-wide HCPP opt-in) moves them
+          // to a separate native surface that premium glass cannot sample.
+          displayWithHybridComposition:
+              moyueWebViewDisplayWithHybridComposition,
+        ),
+      );
+    }
+    return WebViewWidget(controller: controller);
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (controller != null) WebViewWidget(controller: controller),
+        if (controller != null) _buildWebView(controller),
         if (_error case final error?)
           ColoredBox(
             color: Theme.of(context).colorScheme.surface,

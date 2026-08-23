@@ -473,7 +473,104 @@ void main() {
     await tester.pumpAndSettle();
     await tester.longPress(find.text('内部文档'));
     await tester.pump();
-    expect(find.bySemanticsLabel('所选文档操作'), findsOneWidget);
+    expect(find.bySemanticsLabel('所选项目操作'), findsOneWidget);
+  });
+
+  testWidgets('文件夹内的子文件夹可长按选择并显示删除操作', (tester) async {
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    final folder = LibraryFolder(
+      id: 'nested-delete-root',
+      name: '书库',
+      documents: const [],
+      updatedAt: DateTime(2026),
+      subfolderPaths: const ['待删除'],
+    );
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: MaterialApp(
+          home: LibraryPage(
+            documents: const [],
+            folders: [folder],
+            loading: false,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('书库'));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('待删除'));
+    await tester.pump();
+    expect(find.text('已选择 1 项'), findsOneWidget);
+    expect(find.bySemanticsLabel('所选项目操作'), findsOneWidget);
+
+    await tester.tap(find.bySemanticsLabel('所选项目操作'));
+    await tester.pumpAndSettle();
+    expect(find.text('删除'), findsOneWidget);
+    expect(find.text('移动到…'), findsOneWidget);
+    expect(find.text('分享所选文档'), findsNothing);
+  });
+
+  testWidgets('子文件夹使用长按拖拽且载荷可同时保留文档与目录多选', (tester) async {
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    final document = ReadingDocument(
+      id: 'mixed-drag-document',
+      title: '一起移动的文档',
+      content: '# 正文',
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026),
+      folderId: 'mixed-drag-root',
+      relativePath:
+          'markdown/mixed-drag-root/.documents/mixed-drag-document/文档.md',
+      logicalPath: '文档.md',
+    );
+    final source = LibraryFolder(
+      id: 'mixed-drag-root',
+      name: '混合移动',
+      documents: [document],
+      updatedAt: DateTime(2026),
+      subfolderPaths: const ['待移动目录'],
+    );
+    final target = LibraryFolder(
+      id: 'mixed-drag-target',
+      name: '移动目标',
+      documents: const [],
+      updatedAt: DateTime(2026),
+    );
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: MaterialApp(
+          home: LibraryPage(
+            documents: const [],
+            folders: [source, target],
+            loading: false,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('混合移动'));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('一起移动的文档'));
+    await tester.pump();
+    await tester.tap(find.text('待移动目录'));
+    await tester.pump();
+
+    final draggableFinder = find.ancestor(
+      of: find.text('待移动目录'),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is LongPressDraggable,
+      ),
+    );
+    expect(draggableFinder, findsOneWidget);
+    final dynamic draggable = tester.widget(draggableFinder);
+    final dynamic payload = draggable.data;
+    expect((payload.documents as List).map((item) => item.id), [document.id]);
+    expect(payload.directories, ['待移动目录']);
   });
 
   testWidgets('文件夹文档开始拖动时始终提供阅读首页目标', (tester) async {
@@ -711,7 +808,11 @@ void main() {
     expect(glassButtons, isNotEmpty);
     expect(
       glassButtons.map((button) => button.platformViewBackdrop),
-      everyElement(isTrue),
+      everyElement(isFalse),
+    );
+    expect(
+      glassButtons.map((button) => button.quality),
+      everyElement(GlassQuality.premium),
     );
     final titleGlass = tester.widgetList<GlassContainer>(
       find.descendant(
@@ -719,7 +820,8 @@ void main() {
         matching: find.byType(GlassContainer),
       ),
     );
-    expect(titleGlass.map((glass) => glass.platformViewBackdrop), [isTrue]);
+    expect(titleGlass.map((glass) => glass.platformViewBackdrop), [isFalse]);
+    expect(titleGlass.map((glass) => glass.quality), [GlassQuality.premium]);
   });
 
   testWidgets('首页长文件名仅在 hover 或按住时滚动', (tester) async {

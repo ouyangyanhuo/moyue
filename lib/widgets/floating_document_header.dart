@@ -13,7 +13,6 @@ class FloatingDocumentHeader extends StatelessWidget {
     this.actionColor,
     this.onTitleTap,
     this.useOwnLayer = true,
-    this.platformViewBackdrop = false,
     super.key,
   });
 
@@ -25,7 +24,6 @@ class FloatingDocumentHeader extends StatelessWidget {
   final Color? actionColor;
   final VoidCallback? onTitleTap;
   final bool useOwnLayer;
-  final bool platformViewBackdrop;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -36,7 +34,6 @@ class FloatingDocumentHeader extends StatelessWidget {
         semanticLabel: '返回',
         size: 44,
         useOwnLayer: useOwnLayer,
-        platformViewBackdrop: platformViewBackdrop,
         settings: moyueGlassSettings(context),
       ),
       const SizedBox(width: 8),
@@ -46,7 +43,6 @@ class FloatingDocumentHeader extends StatelessWidget {
           onTap: onTitleTap,
           semanticLabel: '修改文件夹名称',
           useOwnLayer: useOwnLayer,
-          platformViewBackdrop: platformViewBackdrop,
         ),
       ),
       const SizedBox(width: 8),
@@ -55,7 +51,6 @@ class FloatingDocumentHeader extends StatelessWidget {
         semanticLabel: actionLabel,
         onPressed: onAction,
         useOwnLayer: useOwnLayer,
-        platformViewBackdrop: platformViewBackdrop,
         settings: moyueGlassSettings(context),
         size: 44,
       ),

@@ -166,7 +166,7 @@ class LibraryPageState extends State<LibraryPage> {
                       .toList(growable: false);
                   return _DraggableDocumentTile(
                     document: document,
-                    dragDocuments: selectedDocuments.isEmpty
+                    dragData: selectedDocuments.isEmpty
                         ? [document]
                         : selected
                         ? selectedDocuments
@@ -446,21 +446,23 @@ class _FolderPage extends StatefulWidget {
 class _FolderPageState extends State<_FolderPage> {
   late LibraryFolder _folder;
   final Set<String> _selectedIds = {};
-  List<_MoveDestination> _dropTargets = const [_MoveDestination.library()];
+  final Set<String> _selectedDirectories = {};
+  List<_MoveDestination> _dropTargets = const [];
   bool _dragging = false;
-  List<ReadingDocument>? _expandedDropDocuments;
+  _FolderMovePayload? _expandedDropSelection;
 
-  bool get _selecting => _selectedIds.isNotEmpty;
+  bool get _selecting =>
+      _selectedIds.isNotEmpty || _selectedDirectories.isNotEmpty;
+  int get _selectionCount => _selectedIds.length + _selectedDirectories.length;
 
   @override
   void initState() {
     super.initState();
     _folder = widget.folder;
-    _dropTargets = [
-      const _MoveDestination.library(),
-      for (final folder in widget.initialDestinations)
-        if (folder.id != _folder.id) _MoveDestination.folder(folder),
-    ];
+    _dropTargets = _buildMoveDestinations([
+      _folder,
+      ...widget.initialDestinations.where((folder) => folder.id != _folder.id),
+    ]);
     MoyueStorageService.instance.addListener(_reloadFolder);
   }
 
@@ -506,19 +508,46 @@ class _FolderPageState extends State<_FolderPage> {
                         final childPath = widget.subPath.isEmpty
                             ? name
                             : '${widget.subPath}/$name';
-                        return _SubDirTile(
+                        final selected = _selectedDirectories.contains(
+                          childPath,
+                        );
+                        final selectedDirectories = _selectedDirectories.toList(
+                          growable: false,
+                        );
+                        final selectedDocuments = _folder.documents
+                            .where((item) => _selectedIds.contains(item.id))
+                            .toList(growable: false);
+                        return _DraggableSubDirTile(
                           name: name,
                           docCount: children.dirDocCounts[name] ?? 0,
-                          onTap: () => Navigator.of(context).push(
-                            moyuePageRoute<void>(
-                              context: context,
-                              builder: (_) => _FolderPage(
-                                folder: _folder,
-                                subPath: childPath,
-                                initialDestinations: widget.initialDestinations,
-                              ),
-                            ),
+                          selected: selected,
+                          dragData: _FolderMovePayload(
+                            sourceRoot: _folder,
+                            documents: selectedDocuments,
+                            directories: selected
+                                ? selectedDirectories
+                                : [...selectedDirectories, childPath],
                           ),
+                          onDragStarted: () =>
+                              _selectDirectoryForDrag(childPath),
+                          onDragEnd: _finishDrag,
+                          onTap: () {
+                            if (_selecting) {
+                              _toggleDirectorySelection(childPath);
+                            } else {
+                              Navigator.of(context).push(
+                                moyuePageRoute<void>(
+                                  context: context,
+                                  builder: (_) => _FolderPage(
+                                    folder: _folder,
+                                    subPath: childPath,
+                                    initialDestinations:
+                                        widget.initialDestinations,
+                                  ),
+                                ),
+                              );
+                            }
+                          },
                         );
                       }
                       final document =
@@ -529,21 +558,20 @@ class _FolderPageState extends State<_FolderPage> {
                           .toList(growable: false);
                       return _DraggableDocumentTile(
                         document: document,
-                        dragDocuments: selectedDocuments.isEmpty
-                            ? [document]
-                            : selected
-                            ? selectedDocuments
-                            : [...selectedDocuments, document],
+                        dragData: _FolderMovePayload(
+                          sourceRoot: _folder,
+                          documents: selectedDocuments.isEmpty
+                              ? [document]
+                              : selected
+                              ? selectedDocuments
+                              : [...selectedDocuments, document],
+                          directories: _selectedDirectories.toList(
+                            growable: false,
+                          ),
+                        ),
                         selected: selected,
                         onDragStarted: () => _selectForDrag(document),
-                        onDragEnd: () {
-                          if (mounted) {
-                            setState(() {
-                              _dragging = false;
-                              _expandedDropDocuments = null;
-                            });
-                          }
-                        },
+                        onDragEnd: _finishDrag,
                         onTap: () {
                           if (_selecting) {
                             _toggleSelection(document);
@@ -563,7 +591,7 @@ class _FolderPageState extends State<_FolderPage> {
               bottom: MediaQuery.paddingOf(context).bottom + 12,
               child: _FolderDropTray(
                 targets: _dropTargets,
-                onMove: _moveDocuments,
+                onMove: _moveItems,
                 onExpand: _showExpandedDropTargets,
               ),
             ),
@@ -576,14 +604,12 @@ class _FolderPageState extends State<_FolderPage> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                 child: FloatingDocumentHeader(
-                  title: _selecting
-                      ? '已选择 ${_selectedIds.length} 项'
-                      : currentName,
+                  title: _selecting ? '已选择 $_selectionCount 项' : currentName,
                   onBack: () => Navigator.pop(context),
                   actionIcon: _selecting
                       ? Icons.more_horiz_rounded
                       : Icons.add_rounded,
-                  actionLabel: _selecting ? '所选文档操作' : '新建或导入文档',
+                  actionLabel: _selecting ? '所选项目操作' : '新建或导入文档',
                   onAction: _selecting ? _showSelectionActions : _showAddMenu,
                   // 只有包根目录支持重命名整个文件夹。
                   onTitleTap: _selecting || widget.subPath.isNotEmpty
@@ -599,7 +625,7 @@ class _FolderPageState extends State<_FolderPage> {
             bottom: 0,
             height: MediaQuery.sizeOf(context).height * 0.68,
             child: IgnorePointer(
-              ignoring: _expandedDropDocuments == null,
+              ignoring: _expandedDropSelection == null,
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 260),
                 reverseDuration: const Duration(milliseconds: 190),
@@ -612,7 +638,7 @@ class _FolderPageState extends State<_FolderPage> {
                     child: FadeTransition(opacity: animation, child: child),
                   ),
                 ),
-                child: _expandedDropDocuments == null
+                child: _expandedDropSelection == null
                     ? const SizedBox.shrink(
                         key: ValueKey('expanded-folder-drop-sheet-hidden'),
                       )
@@ -702,12 +728,36 @@ class _FolderPageState extends State<_FolderPage> {
     });
   }
 
+  void _toggleDirectorySelection(String logicalPath) {
+    setState(() {
+      if (!_selectedDirectories.add(logicalPath)) {
+        _selectedDirectories.remove(logicalPath);
+      }
+    });
+  }
+
   void _selectForDrag(ReadingDocument document) {
     setState(() {
       _selectedIds.add(document.id);
       _dragging = true;
     });
     unawaited(_loadDropTargets());
+  }
+
+  void _selectDirectoryForDrag(String logicalPath) {
+    setState(() {
+      _selectedDirectories.add(logicalPath);
+      _dragging = true;
+    });
+    unawaited(_loadDropTargets());
+  }
+
+  void _finishDrag() {
+    if (!mounted) return;
+    setState(() {
+      _dragging = false;
+      _expandedDropSelection = null;
+    });
   }
 
   Future<void> _loadDropTargets() async {
@@ -717,54 +767,99 @@ class _FolderPageState extends State<_FolderPage> {
       final destinations = folders.isEmpty
           ? widget.initialDestinations
           : folders;
-      setState(() {
-        _dropTargets = [
-          const _MoveDestination.library(),
-          for (final folder in destinations)
-            if (folder.id != _folder.id) _MoveDestination.folder(folder),
-        ];
-      });
+      final currentMatches = destinations.where(
+        (folder) => folder.id == _folder.id,
+      );
+      if (currentMatches.isNotEmpty) _folder = currentMatches.first;
+      setState(
+        () => _dropTargets = _buildMoveDestinations([
+          _folder,
+          ...destinations.where((folder) => folder.id != _folder.id),
+        ]),
+      );
     } on Object {
       // “阅读首页”目标不依赖数据库，即使其他文件夹加载失败，
       // 文档仍然可以从当前文件夹拖回首页。
     }
   }
 
-  Future<void> _showExpandedDropTargets(List<ReadingDocument> documents) async {
-    if (!mounted || _expandedDropDocuments != null) return;
-    setState(() => _expandedDropDocuments = List.unmodifiable(documents));
+  List<_MoveDestination> _buildMoveDestinations(List<LibraryFolder> folders) {
+    final uniqueFolders = <String, LibraryFolder>{
+      for (final folder in folders) folder.id: folder,
+    }.values.toList(growable: false);
+    return [
+      const _MoveDestination.library(),
+      for (final folder in uniqueFolders.skip(1))
+        _MoveDestination.folder(folder),
+      if (uniqueFolders.isNotEmpty)
+        _MoveDestination.folder(uniqueFolders.first),
+      for (final folder in uniqueFolders)
+        for (final path in _logicalDirectoryPaths(folder))
+          _MoveDestination.folder(folder, logicalPath: path),
+    ];
+  }
+
+  List<String> _logicalDirectoryPaths(LibraryFolder folder) {
+    final paths = <String>{...folder.subfolderPaths};
+    void addParents(String value) {
+      var current = value;
+      while (current.isNotEmpty && current != '.') {
+        paths.add(current);
+        final slash = current.lastIndexOf('/');
+        current = slash < 0 ? '' : current.substring(0, slash);
+      }
+    }
+
+    for (final document in folder.documents) {
+      final logicalPath = document.logicalPath;
+      if (logicalPath == null || !logicalPath.contains('/')) continue;
+      addParents(logicalPath.substring(0, logicalPath.lastIndexOf('/')));
+    }
+    return paths.toList()..sort();
+  }
+
+  Future<void> _showExpandedDropTargets(_FolderMovePayload selection) async {
+    if (!mounted || _expandedDropSelection != null) return;
+    setState(() => _expandedDropSelection = selection);
   }
 
   Future<void> _acceptExpandedDestination(_MoveDestination target) async {
-    final documents = _expandedDropDocuments;
-    if (documents == null) return;
-    if (mounted) setState(() => _expandedDropDocuments = null);
-    await _moveDocuments(documents, target);
+    final selection = _expandedDropSelection;
+    if (selection == null) return;
+    if (mounted) setState(() => _expandedDropSelection = null);
+    await _moveItems(selection, target);
   }
 
   Future<void> _showSelectionActions() async {
     final selected = _folder.documents
         .where((document) => _selectedIds.contains(document.id))
         .toList(growable: false);
+    final selection = _FolderMovePayload(
+      sourceRoot: _folder,
+      documents: selected,
+      directories: _selectedDirectories.toList(growable: false),
+    );
     final action = await showMoyueActionMenu<String>(
       context: context,
-      title: '已选择 ${selected.length} 项',
+      title: '已选择 $_selectionCount 项',
       actions: [
         const MoyueMenuAction(
           value: 'move',
           label: '移动到…',
           icon: Icons.drive_file_move_outline,
         ),
-        const MoyueMenuAction(
-          value: 'share',
-          label: '分享所选文档',
-          icon: Icons.ios_share_rounded,
-        ),
-        const MoyueMenuAction(
-          value: 'share-folder',
-          label: '分享整个文件夹 (.moyue)',
-          icon: Icons.folder_zip_outlined,
-        ),
+        if (_selectedDirectories.isEmpty && selected.isNotEmpty) ...[
+          const MoyueMenuAction(
+            value: 'share',
+            label: '分享所选文档',
+            icon: Icons.ios_share_rounded,
+          ),
+          const MoyueMenuAction(
+            value: 'share-folder',
+            label: '分享整个文件夹 (.moyue)',
+            icon: Icons.folder_zip_outlined,
+          ),
+        ],
         const MoyueMenuAction(
           value: 'delete',
           label: '删除',
@@ -775,7 +870,7 @@ class _FolderPageState extends State<_FolderPage> {
     );
     if (!mounted || action == null) return;
     if (action == 'move') {
-      await _chooseMoveDestination(selected);
+      await _chooseMoveDestination(selection);
     } else if (action == 'share') {
       await _shareDocuments(selected);
     } else if (action == 'share-folder') {
@@ -785,15 +880,20 @@ class _FolderPageState extends State<_FolderPage> {
     }
   }
 
-  Future<void> _chooseMoveDestination(List<ReadingDocument> documents) async {
+  Future<void> _chooseMoveDestination(_FolderMovePayload selection) async {
     if (!mounted) return;
     final folders = await MoyueStorageService.instance.loadFolders();
-    final targets = [
-      const _MoveDestination.library(),
-      for (final folder in folders)
-        if (folder.id != _folder.id) _MoveDestination.folder(folder),
-    ];
+    final currentMatches = folders.where((folder) => folder.id == _folder.id);
+    if (currentMatches.isNotEmpty) _folder = currentMatches.first;
+    final targets = _buildMoveDestinations([
+      _folder,
+      ...folders.where((folder) => folder.id != _folder.id),
+    ]).where(selection.canMoveTo).toList(growable: false);
     if (!mounted) return;
+    if (targets.isEmpty) {
+      await _showNotice(context, '没有可用位置', '请先创建另一个文件夹，或选择当前目录之外的位置。');
+      return;
+    }
     final target = await showMoyueActionMenu<_MoveDestination>(
       context: context,
       title: '移动到',
@@ -806,7 +906,7 @@ class _FolderPageState extends State<_FolderPage> {
           ),
       ],
     );
-    if (target != null && mounted) await _moveDocuments(documents, target);
+    if (target != null && mounted) await _moveItems(selection, target);
   }
 
   Future<void> _shareDocuments(List<ReadingDocument> documents) async {
@@ -827,32 +927,32 @@ class _FolderPageState extends State<_FolderPage> {
     }
   }
 
-  Future<void> _moveDocuments(
-    List<ReadingDocument> documents,
+  Future<void> _moveItems(
+    _FolderMovePayload selection,
     _MoveDestination target,
   ) async {
     try {
-      if (target.isLibrary) {
-        await MoyueStorageService.instance.moveDocumentsToLibrary(documents);
-      } else {
-        await MoyueStorageService.instance.moveDocuments(
-          documents: documents,
-          target: target.folder!,
-        );
-      }
+      await MoyueStorageService.instance.moveFolderItems(
+        sourceRoot: selection.sourceRoot,
+        documents: selection.documents,
+        subfolderPaths: selection.directories,
+        targetRoot: target.folder,
+        targetParentPath: target.logicalPath,
+      );
       if (!mounted) return;
       setState(() {
-        _folder = _folder.copyWith(
-          documents: _folder.documents
-              .where((document) => !_selectedIds.contains(document.id))
-              .toList(growable: false),
-        );
         _selectedIds.clear();
+        _selectedDirectories.clear();
         _dragging = false;
+        _expandedDropSelection = null;
       });
       final folders = await MoyueStorageService.instance.loadFolders();
-      if (mounted && !folders.any((folder) => folder.id == _folder.id)) {
+      if (!mounted) return;
+      final current = folders.where((folder) => folder.id == _folder.id);
+      if (current.isEmpty) {
         Navigator.pop(context);
+      } else {
+        setState(() => _folder = current.first);
       }
     } on Object catch (error) {
       if (!mounted) return;
@@ -870,11 +970,17 @@ class _FolderPageState extends State<_FolderPage> {
   }
 
   Future<void> _deleteSelected() async {
+    final count = _selectionCount;
+    final includesFolders = _selectedDirectories.isNotEmpty;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('删除 ${_selectedIds.length} 个文档？'),
-        content: const Text('只会删除所选文档，文件夹中的其他内容会保留。'),
+        title: Text('删除 $count 个项目？'),
+        content: Text(
+          includesFolders
+              ? '所选文件夹及其中的全部文档和子文件夹都会被删除，此操作无法撤销。'
+              : '只会删除所选文档，文件夹中的其他内容会保留。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -894,20 +1000,25 @@ class _FolderPageState extends State<_FolderPage> {
     for (final document in selected) {
       await MoyueStorageService.instance.deleteDocument(document);
     }
-    if (!mounted) return;
-    final remaining = _folder.documents
-        .where((document) => !_selectedIds.contains(document.id))
-        .toList(growable: false);
-    setState(() {
-      _folder = _folder.copyWith(documents: remaining);
-      _selectedIds.clear();
-    });
-    // 用户创建的空文件夹与显式子目录都应继续存在；若这是导入包且服务层
-    // 已删除整个包，监听器会在重新加载后统一退出页面。
-    final folders = await MoyueStorageService.instance.loadFolders();
-    if (mounted && !folders.any((folder) => folder.id == _folder.id)) {
-      Navigator.pop(context);
+    for (final logicalPath in _selectedDirectories.toList(growable: false)) {
+      await MoyueStorageService.instance.deleteSubfolder(
+        rootFolder: _folder,
+        logicalPath: logicalPath,
+      );
     }
+    if (!mounted) return;
+    final folders = await MoyueStorageService.instance.loadFolders();
+    if (!mounted) return;
+    final matches = folders.where((folder) => folder.id == _folder.id);
+    if (matches.isEmpty) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() {
+      _folder = matches.first;
+      _selectedIds.clear();
+      _selectedDirectories.clear();
+    });
   }
 
   Future<void> _renameFolder() async {
@@ -1021,17 +1132,22 @@ class _SubDirTile extends StatelessWidget {
   const _SubDirTile({
     required this.name,
     required this.docCount,
+    required this.selected,
     required this.onTap,
   });
 
   final String name;
   final int docCount;
+  final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
+      color: selected
+          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.72)
+          : null,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -1069,6 +1185,57 @@ class _SubDirTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DraggableSubDirTile extends StatelessWidget {
+  const _DraggableSubDirTile({
+    required this.name,
+    required this.docCount,
+    required this.selected,
+    required this.dragData,
+    required this.onTap,
+    required this.onDragStarted,
+    required this.onDragEnd,
+  });
+
+  final String name;
+  final int docCount;
+  final bool selected;
+  final _FolderMovePayload dragData;
+  final VoidCallback onTap;
+  final VoidCallback onDragStarted;
+  final VoidCallback onDragEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width - 36;
+    final tile = _SubDirTile(
+      name: name,
+      docCount: docCount,
+      selected: selected,
+      onTap: onTap,
+    );
+    return LongPressDraggable<_FolderMovePayload>(
+      data: dragData,
+      hapticFeedbackOnStart: true,
+      onDragStarted: onDragStarted,
+      onDragEnd: (_) => onDragEnd(),
+      feedback: Material(
+        color: Colors.transparent,
+        child: SizedBox(
+          width: width,
+          child: _SubDirTile(
+            name: name,
+            docCount: docCount,
+            selected: true,
+            onTap: () {},
+          ),
+        ),
+      ),
+      childWhenDragging: Opacity(opacity: 0.35, child: tile),
+      child: tile,
     );
   }
 }
@@ -1230,10 +1397,10 @@ class _DocumentTile extends StatelessWidget {
   }
 }
 
-class _DraggableDocumentTile extends StatelessWidget {
+class _DraggableDocumentTile<T extends Object> extends StatelessWidget {
   const _DraggableDocumentTile({
     required this.document,
-    required this.dragDocuments,
+    required this.dragData,
     required this.onTap,
     required this.onDragStarted,
     required this.selected,
@@ -1241,7 +1408,7 @@ class _DraggableDocumentTile extends StatelessWidget {
   });
 
   final ReadingDocument document;
-  final List<ReadingDocument> dragDocuments;
+  final T dragData;
   final VoidCallback onTap;
   final VoidCallback onDragStarted;
   final VoidCallback? onDragEnd;
@@ -1258,8 +1425,8 @@ class _DraggableDocumentTile extends StatelessWidget {
       onLongPress: null,
       selected: selected,
     );
-    return LongPressDraggable<List<ReadingDocument>>(
-      data: dragDocuments,
+    return LongPressDraggable<T>(
+      data: dragData,
       hapticFeedbackOnStart: true,
       onDragStarted: onDragStarted,
       onDragEnd: (_) => onDragEnd?.call(),
@@ -1290,11 +1457,11 @@ class _FolderDropTray extends StatefulWidget {
 
   final List<_MoveDestination> targets;
   final Future<void> Function(
-    List<ReadingDocument> documents,
+    _FolderMovePayload selection,
     _MoveDestination target,
   )
   onMove;
-  final Future<void> Function(List<ReadingDocument> documents) onExpand;
+  final Future<void> Function(_FolderMovePayload selection) onExpand;
 
   @override
   State<_FolderDropTray> createState() => _FolderDropTrayState();
@@ -1309,11 +1476,11 @@ class _FolderDropTrayState extends State<_FolderDropTray> {
     super.dispose();
   }
 
-  void _scheduleExpand(List<ReadingDocument> documents) {
+  void _scheduleExpand(_FolderMovePayload selection) {
     if (_expandTimer?.isActive ?? false) return;
     _expandTimer = Timer(
       const Duration(milliseconds: 320),
-      () => unawaited(widget.onExpand(documents)),
+      () => unawaited(widget.onExpand(selection)),
     );
   }
 
@@ -1371,8 +1538,9 @@ class _FolderDropTrayState extends State<_FolderDropTray> {
                   ],
                   if (overflow)
                     Expanded(
-                      child: DragTarget<List<ReadingDocument>>(
-                        onWillAcceptWithDetails: (_) => true,
+                      child: DragTarget<_FolderMovePayload>(
+                        onWillAcceptWithDetails: (details) =>
+                            widget.targets.any(details.data.canMoveTo),
                         onMove: (details) => _scheduleExpand(details.data),
                         onLeave: (_) => _cancelExpand(),
                         onAcceptWithDetails: (details) {
@@ -1401,16 +1569,14 @@ class _MoveTargetChip extends StatelessWidget {
 
   final _MoveDestination target;
   final Future<void> Function(
-    List<ReadingDocument> documents,
+    _FolderMovePayload selection,
     _MoveDestination target,
   )
   onAccept;
 
   @override
-  Widget build(BuildContext context) => DragTarget<List<ReadingDocument>>(
-    onWillAcceptWithDetails: (details) =>
-        target.isLibrary ||
-        details.data.any((document) => document.folderId != target.folder!.id),
+  Widget build(BuildContext context) => DragTarget<_FolderMovePayload>(
+    onWillAcceptWithDetails: (details) => details.data.canMoveTo(target),
     onAcceptWithDetails: (details) => onAccept(details.data, target),
     builder: (context, candidates, _) => _MoveTargetSurface(
       icon: target.isLibrary ? Icons.home_outlined : Icons.folder_rounded,
@@ -1486,7 +1652,7 @@ class _ExpandedFolderDropSheetState extends State<_ExpandedFolderDropSheet> {
     super.dispose();
   }
 
-  void _handleDragMove(DragTargetDetails<List<ReadingDocument>> details) {
+  void _handleDragMove(DragTargetDetails<_FolderMovePayload> details) {
     final screenHeight = MediaQuery.sizeOf(context).height;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final nearBottom = details.offset.dy > screenHeight - bottomInset - 92;
@@ -1548,12 +1714,9 @@ class _ExpandedFolderDropSheetState extends State<_ExpandedFolderDropSheet> {
               itemCount: widget.targets.length,
               itemBuilder: (context, index) {
                 final target = widget.targets[index];
-                return DragTarget<List<ReadingDocument>>(
+                return DragTarget<_FolderMovePayload>(
                   onWillAcceptWithDetails: (details) =>
-                      target.isLibrary ||
-                      details.data.any(
-                        (document) => document.folderId != target.folder!.id,
-                      ),
+                      details.data.canMoveTo(target),
                   onMove: _handleDragMove,
                   onAcceptWithDetails: (_) =>
                       unawaited(widget.onAccept(target)),
@@ -1572,7 +1735,7 @@ class _ExpandedFolderDropSheetState extends State<_ExpandedFolderDropSheet> {
           SizedBox(
             height: 56,
             width: double.infinity,
-            child: DragTarget<List<ReadingDocument>>(
+            child: DragTarget<_FolderMovePayload>(
               key: const ValueKey('expanded-folder-auto-scroll-target'),
               onWillAcceptWithDetails: (_) {
                 _startAutoScroll();
@@ -1587,9 +1750,8 @@ class _ExpandedFolderDropSheetState extends State<_ExpandedFolderDropSheet> {
                 decoration: BoxDecoration(
                   color: candidates.isEmpty
                       ? Colors.transparent
-                      : Theme.of(
-                          context,
-                        ).colorScheme.primary.withValues(alpha: 0.08),
+                      : Theme.of(context).colorScheme.primary
+                            .withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Text('拖到面板底部可自动向下滚动'),
@@ -1603,12 +1765,60 @@ class _ExpandedFolderDropSheetState extends State<_ExpandedFolderDropSheet> {
 }
 
 class _MoveDestination {
-  const _MoveDestination.library() : folder = null;
-  const _MoveDestination.folder(this.folder);
+  const _MoveDestination.library() : folder = null, logicalPath = '';
+  const _MoveDestination.folder(this.folder, {this.logicalPath = ''});
 
   final LibraryFolder? folder;
+  final String logicalPath;
   bool get isLibrary => folder == null;
-  String get label => isLibrary ? '阅读首页' : folder!.name;
+  String get label {
+    if (isLibrary) return '阅读首页';
+    if (logicalPath.isEmpty) return folder!.name;
+    return '${folder!.name} / ${logicalPath.replaceAll('/', ' / ')}';
+  }
+}
+
+class _FolderMovePayload {
+  const _FolderMovePayload({
+    required this.sourceRoot,
+    this.documents = const [],
+    this.directories = const [],
+  });
+
+  final LibraryFolder sourceRoot;
+  final List<ReadingDocument> documents;
+  final List<String> directories;
+
+  bool canMoveTo(_MoveDestination target) {
+    if (target.isLibrary) {
+      // 子目录不能被拆散成首页单文档；若未来支持“提升为根文件夹”，
+      // 应在存储层增加独立事务后再开放此目标。
+      return directories.isEmpty && documents.isNotEmpty;
+    }
+    final targetFolder = target.folder!;
+    if (targetFolder.id != sourceRoot.id) {
+      return documents.isNotEmpty || directories.isNotEmpty;
+    }
+    for (final directory in directories) {
+      if (target.logicalPath == directory ||
+          target.logicalPath.startsWith('$directory/')) {
+        return false;
+      }
+    }
+    final hasMovableDirectory = directories.any((directory) {
+      final slash = directory.lastIndexOf('/');
+      final parent = slash < 0 ? '' : directory.substring(0, slash);
+      return parent != target.logicalPath;
+    });
+    final hasMovableDocument = documents.any((document) {
+      final logicalPath = document.logicalPath ?? '';
+      final slash = logicalPath.lastIndexOf('/');
+      final parent = slash < 0 ? '' : logicalPath.substring(0, slash);
+      return document.folderId != targetFolder.id ||
+          parent != target.logicalPath;
+    });
+    return hasMovableDirectory || hasMovableDocument;
+  }
 }
 
 Future<void> _showNotice(BuildContext context, String title, String message) =>

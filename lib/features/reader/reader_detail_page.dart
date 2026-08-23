@@ -136,7 +136,6 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                     onAction: _document.kind == DocumentKind.markdown
                         ? _editDocument
                         : null,
-                    platformViewBackdrop: useWebView,
                   ),
                 ),
               ),
@@ -148,7 +147,6 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
               height: 64,
               child: _ReaderToolbar(
                 showTextControls: !useWebView,
-                platformViewBackdrop: useWebView,
                 onTableOfContents: _showTableOfContents,
                 onDecreaseText: () => setState(
                   () => _textScale = (_textScale - 0.1).clamp(0.8, 1.4),
@@ -333,7 +331,6 @@ class _ReaderToolbar extends StatelessWidget {
     required this.onDecreaseText,
     required this.onIncreaseText,
     required this.onShare,
-    this.platformViewBackdrop = false,
   });
 
   final bool showTextControls;
@@ -341,7 +338,6 @@ class _ReaderToolbar extends StatelessWidget {
   final VoidCallback onDecreaseText;
   final VoidCallback onIncreaseText;
   final VoidCallback onShare;
-  final bool platformViewBackdrop;
 
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
@@ -393,7 +389,6 @@ class _ReaderToolbar extends StatelessWidget {
     semanticLabel: label,
     size: 48,
     useOwnLayer: true,
-    platformViewBackdrop: platformViewBackdrop,
     settings: moyueGlassSettings(context),
   );
 }

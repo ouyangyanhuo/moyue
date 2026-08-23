@@ -240,6 +240,30 @@ class MoyueIndexDatabase {
     return rows.isNotEmpty;
   }
 
+  /// 批量写入或更新嵌套目录记录。[writeFolders] 与 SQL 变更处于同一
+  /// 事务边界内，创建目标物理目录失败时不会留下半套层级索引。
+  Future<void> upsertNestedFolders({
+    required List<FolderRecord> folders,
+    required Future<void> Function() writeFolders,
+  }) async {
+    final db = await _db;
+    await db.transaction((transaction) async {
+      for (final folder in folders) {
+        final values = folder.toMap()..remove('id');
+        final changed = await transaction.update(
+          'folders',
+          values,
+          where: 'id = ?',
+          whereArgs: [folder.id],
+        );
+        if (changed == 0) {
+          await transaction.insert('folders', folder.toMap());
+        }
+      }
+      await writeFolders();
+    });
+  }
+
   Future<List<Map<String, Object?>>> packageDocuments(String folderId) async {
     final db = await _db;
     return db.query('documents', where: 'folder_id = ?', whereArgs: [folderId]);
@@ -370,6 +394,43 @@ class MoyueIndexDatabase {
         ],
       );
       await writeFiles();
+    });
+  }
+
+  /// 将一个未绑定文档的包资源切换到另一个根文件夹，并同步两侧计数。
+  Future<void> moveResource({
+    required ResourceRecord resource,
+    required String sourceFolderId,
+    required Future<void> Function() writeFile,
+  }) async {
+    final db = await _db;
+    await db.transaction((transaction) async {
+      await transaction.update(
+        'resources',
+        resource.toMap(),
+        where: 'id = ?',
+        whereArgs: [resource.id],
+      );
+      if (sourceFolderId != resource.folderId) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        await transaction.rawUpdate(
+          '''
+          UPDATE folders
+          SET entry_count = MAX(0, entry_count - 1), updated_at = ?
+          WHERE id = ?
+          ''',
+          [now, sourceFolderId],
+        );
+        await transaction.rawUpdate(
+          '''
+          UPDATE folders
+          SET entry_count = entry_count + 1, updated_at = ?
+          WHERE id = ?
+          ''',
+          [now, resource.folderId],
+        );
+      }
+      await writeFile();
     });
   }
 
