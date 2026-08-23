@@ -6,6 +6,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/features/editor/editor_page.dart';
 import 'package:moyue_application/features/reader/native_html_view.dart';
 import 'package:moyue_application/features/reader/webview_html_view.dart';
@@ -28,8 +29,9 @@ class ReaderDetailPage extends StatefulWidget {
 
 /// 禁用路由快照，让 Android 预见性返回始终移动包含 premium 玻璃层的
 /// 实时阅读器子树，避免独立折射层与旧页面快照叠帧。
-Route<void> readerDetailRoute(ReadingDocument document) =>
-    MaterialPageRoute<void>(
+Route<void> readerDetailRoute(BuildContext context, ReadingDocument document) =>
+    moyuePageRoute<void>(
+      context: context,
       allowSnapshotting: false,
       builder: (_) => ReaderDetailPage(document: document),
     );
@@ -110,6 +112,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                         child: NativeHtmlView(
                           key: _htmlKey,
                           data: _document.content,
+                          resourceCacheKey: _document.id,
                           resourceLoader: (source) => MoyueStorageService
                               .instance
                               .readLinkedResource(_document, source),
@@ -133,6 +136,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                     onAction: _document.kind == DocumentKind.markdown
                         ? _editDocument
                         : null,
+                    platformViewBackdrop: useWebView,
                   ),
                 ),
               ),
@@ -143,6 +147,8 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
               bottom: MediaQuery.paddingOf(context).bottom + 12,
               height: 64,
               child: _ReaderToolbar(
+                showTextControls: !useWebView,
+                platformViewBackdrop: useWebView,
                 onTableOfContents: _showTableOfContents,
                 onDecreaseText: () => setState(
                   () => _textScale = (_textScale - 0.1).clamp(0.8, 1.4),
@@ -322,16 +328,20 @@ class _ReaderHeading {
 
 class _ReaderToolbar extends StatelessWidget {
   const _ReaderToolbar({
+    required this.showTextControls,
     required this.onTableOfContents,
     required this.onDecreaseText,
     required this.onIncreaseText,
     required this.onShare,
+    this.platformViewBackdrop = false,
   });
 
+  final bool showTextControls;
   final VoidCallback onTableOfContents;
   final VoidCallback onDecreaseText;
   final VoidCallback onIncreaseText;
   final VoidCallback onShare;
+  final bool platformViewBackdrop;
 
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
@@ -345,20 +355,22 @@ class _ReaderToolbar extends StatelessWidget {
           label: '目录',
           onPressed: onTableOfContents,
         ),
-        const SizedBox(width: 8),
-        _button(
-          context,
-          icon: Icons.text_decrease_rounded,
-          label: '缩小字体',
-          onPressed: onDecreaseText,
-        ),
-        const SizedBox(width: 8),
-        _button(
-          context,
-          icon: Icons.text_increase_rounded,
-          label: '放大字体',
-          onPressed: onIncreaseText,
-        ),
+        if (showTextControls) ...[
+          const SizedBox(width: 8),
+          _button(
+            context,
+            icon: Icons.text_decrease_rounded,
+            label: '缩小字体',
+            onPressed: onDecreaseText,
+          ),
+          const SizedBox(width: 8),
+          _button(
+            context,
+            icon: Icons.text_increase_rounded,
+            label: '放大字体',
+            onPressed: onIncreaseText,
+          ),
+        ],
         const SizedBox(width: 8),
         _button(
           context,
@@ -381,6 +393,7 @@ class _ReaderToolbar extends StatelessWidget {
     semanticLabel: label,
     size: 48,
     useOwnLayer: true,
+    platformViewBackdrop: platformViewBackdrop,
     settings: moyueGlassSettings(context),
   );
 }

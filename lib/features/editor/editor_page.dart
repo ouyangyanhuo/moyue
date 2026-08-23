@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 import 'package:moyue_application/widgets/moyue_glass_title_pill.dart';
 import 'package:moyue_application/models/reading_document.dart';
@@ -32,7 +33,8 @@ Route<ReadingDocument?> markdownEditorRoute(
           relativePath: value['relativePath'] as String?,
           logicalPath: value['logicalPath'] as String?,
         );
-  return MaterialPageRoute(
+  return moyuePageRoute<ReadingDocument?>(
+    context: context,
     builder: (_) => MarkdownEditorPage(document: document),
   );
 }

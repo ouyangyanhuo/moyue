@@ -63,53 +63,57 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           restorationScopeId: 'moyue_app',
-          builder: (context, child) => GlassTheme(
-            data: GlassThemeData(
-              light: GlassThemeVariant.light.copyWith(
-                settings: GlassThemeVariant.light.settings?.copyWith(
-                  glassColor: Colors.white.withValues(
-                    alpha: _display.glassOpacity,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(_display.appFontScale)),
+            child: GlassTheme(
+              data: GlassThemeData(
+                light: GlassThemeVariant.light.copyWith(
+                  settings: GlassThemeVariant.light.settings?.copyWith(
+                    glassColor: Colors.white.withValues(
+                      alpha: _display.glassOpacity,
+                    ),
+                    lightIntensity: 0.28,
+                    ambientStrength: 0,
+                    fresnelStrength: 0,
+                    edgeAbsorption: 0.06,
                   ),
-                  lightIntensity: 0.28,
-                  ambientStrength: 0,
-                  fresnelStrength: 0,
-                  edgeAbsorption: 0.06,
                 ),
-              ),
-              dark: GlassThemeVariant.dark.copyWith(
-                settings: GlassThemeVariant.dark.settings?.copyWith(
-                  glassColor: Colors.white.withValues(
-                    alpha: _display.glassOpacity,
+                dark: GlassThemeVariant.dark.copyWith(
+                  settings: GlassThemeVariant.dark.settings?.copyWith(
+                    glassColor: Colors.white.withValues(
+                      alpha: _display.glassOpacity,
+                    ),
+                    lightIntensity: 0.22,
+                    ambientStrength: 0,
+                    fresnelStrength: 0,
+                    edgeAbsorption: 0.09,
                   ),
-                  lightIntensity: 0.22,
-                  ambientStrength: 0,
-                  fresnelStrength: 0,
-                  edgeAbsorption: 0.09,
                 ),
+                interaction: const GlassInteractionSettings(stretch: 0.18),
               ),
-              interaction: const GlassInteractionSettings(stretch: 0.18),
-            ),
-            // 全局调试浮层挂在 Navigator 之上的最外层，
-            // 这样阅读页、文件夹页、编辑页等被推入的完整路由也能覆盖到。
-            child: Stack(
-              children: [
-                ?child,
-                ListenableBuilder(
-                  listenable: DebugService.instance,
-                  builder: (context, _) {
-                    final debug = DebugService.instance;
-                    if (!debug.enabled || !debug.fpsBadgeVisible) {
-                      return const SizedBox.shrink();
-                    }
-                    // 右上角、页面操作按钮行之下，避免遮挡玻璃控件。
-                    return Positioned(
-                      top: MediaQuery.paddingOf(context).top + 58,
-                      right: 12,
-                      child: const IgnorePointer(child: DebugFpsOverlay()),
-                    );
-                  },
-                ),
-              ],
+              // 全局调试浮层挂在 Navigator 之上的最外层，
+              // 这样阅读页、文件夹页、编辑页等被推入的完整路由也能覆盖到。
+              child: Stack(
+                children: [
+                  ?child,
+                  ListenableBuilder(
+                    listenable: DebugService.instance,
+                    builder: (context, _) {
+                      final debug = DebugService.instance;
+                      if (!debug.enabled || !debug.fpsBadgeVisible) {
+                        return const SizedBox.shrink();
+                      }
+                      // 右上角、页面操作按钮行之下，避免遮挡玻璃控件。
+                      return Positioned(
+                        top: MediaQuery.paddingOf(context).top + 58,
+                        right: 12,
+                        child: const IgnorePointer(child: DebugFpsOverlay()),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
           home: const MoyueShell(),

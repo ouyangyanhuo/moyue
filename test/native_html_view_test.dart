@@ -30,7 +30,7 @@ void main() {
 
     expect(find.text('原生 HTML', findRichText: true), findsOneWidget);
     expect(find.textContaining('支持', findRichText: true), findsOneWidget);
-    expect(find.byType(HtmlWidget), findsOneWidget);
+    expect(find.byType(HtmlWidget), findsAtLeastNWidgets(1));
   });
 
   testWidgets('HTML 会读取包内相对 CSS 并内联到原生渲染树', (tester) async {

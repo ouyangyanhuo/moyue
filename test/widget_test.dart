@@ -14,6 +14,7 @@ import 'package:moyue_application/features/editor/editor_page.dart';
 import 'package:moyue_application/features/rss/rss_page.dart';
 import 'package:moyue_application/features/settings/settings_page.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
+import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/models/library_folder.dart';
 import 'package:moyue_application/models/reading_document.dart';
@@ -60,7 +61,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('设置'), findsWidgets);
     expect(find.byType(GlassSlider), findsOneWidget);
-    expect(find.byType(GlassSwitch), findsNWidgets(3));
+    expect(find.byType(GlassSwitch), findsNWidgets(4));
     expect(find.byType(Slider), findsNothing);
     expect(find.byType(Switch), findsNothing);
 
@@ -195,7 +196,7 @@ void main() {
     expect(find.text('不会因系统回收而丢失的正文'), findsOneWidget);
   });
 
-  testWidgets('长按文档进入多选删除模式并隐藏搜索与新增', (tester) async {
+  testWidgets('首页长按文档后直接显示分享与删除并隐藏搜索新增', (tester) async {
     final documents = [
       ReadingDocument(
         id: 'one',
@@ -223,17 +224,16 @@ void main() {
     expect(find.text('已选择 1 项'), findsOneWidget);
     expect(find.byKey(const ValueKey('round-search-button')), findsNothing);
     expect(find.bySemanticsLabel('新建或导入'), findsNothing);
-    expect(find.bySemanticsLabel('所选项目操作'), findsOneWidget);
+    expect(find.bySemanticsLabel('分享所选项目'), findsOneWidget);
+    expect(find.bySemanticsLabel('删除所选项目'), findsOneWidget);
+    expect(find.byIcon(Icons.more_horiz_rounded), findsNothing);
 
     await tester.tap(find.text('第二篇'));
     await tester.pump();
     expect(find.text('已选择 2 项'), findsOneWidget);
 
-    await tester.tap(find.bySemanticsLabel('所选项目操作'));
-    await tester.pump(const Duration(milliseconds: 250));
-    expect(find.byType(BottomSheet), findsOneWidget);
-    expect(find.text('分享所选文档'), findsOneWidget);
-    expect(find.text('删除'), findsOneWidget);
+    expect(find.bySemanticsLabel('分享所选项目'), findsOneWidget);
+    expect(find.bySemanticsLabel('删除所选项目'), findsOneWidget);
   });
 
   testWidgets('点击新增 RSS 可稳定打开订阅表单', (tester) async {
@@ -327,7 +327,13 @@ void main() {
     key.currentState!.showAddMenu();
     await tester.pumpAndSettle();
 
-    expect(find.text('新建 markdown'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text('新建 Markdown'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('新建文件夹'), findsOneWidget);
     expect(find.text('导入文件或文档包'), findsOneWidget);
 
@@ -378,6 +384,7 @@ void main() {
         doc('root-doc', '根文档', 'markdown/folder-1/root.md'),
         doc('deep-doc', '深层文档', 'markdown/folder-1/二级文件夹/deep.md'),
       ],
+      subfolderPaths: const ['空目录'],
     );
     await tester.pumpWidget(
       DisplayPreferencesScope(
@@ -399,6 +406,7 @@ void main() {
     // 包根目录：直系文档可见，深层文档收在子目录内。
     expect(find.text('根文档'), findsOneWidget);
     expect(find.text('二级文件夹'), findsOneWidget);
+    expect(find.text('空目录'), findsOneWidget);
     expect(find.text('深层文档'), findsNothing);
 
     await tester.tap(find.text('二级文件夹'));
@@ -450,7 +458,9 @@ void main() {
     await tester.tap(find.bySemanticsLabel('新建或导入文档'));
     await tester.pumpAndSettle();
     expect(find.text('新建 Markdown'), findsOneWidget);
-    expect(find.text('导入 Markdown 或 HTML'), findsOneWidget);
+    expect(find.text('新建文件夹'), findsOneWidget);
+    expect(find.text('导入文件或文档包'), findsOneWidget);
+    expect(find.byTooltip('支持的文件格式'), findsOneWidget);
     await tester.tap(find.text('新建 Markdown'));
     await tester.pumpAndSettle();
     expect(find.text('新建 Markdown'), findsOneWidget);
@@ -510,6 +520,109 @@ void main() {
     await tester.pump();
 
     expect(find.text('阅读首页'), findsOneWidget);
+    await gesture.up();
+    await tester.pump();
+  });
+
+  testWidgets('文件夹目标过多时拖到更多会展开两列 Material 目标面板', (tester) async {
+    tester.view.physicalSize = const Size(430, 932);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    final source = LibraryFolder(
+      id: 'overflow-source',
+      name: '来源',
+      updatedAt: DateTime(2026),
+      documents: [
+        ReadingDocument(
+          id: 'overflow-doc',
+          title: '待移动文档',
+          content: '# 正文',
+          kind: DocumentKind.markdown,
+          updatedAt: DateTime(2026),
+          folderId: 'overflow-source',
+          relativePath: 'markdown/overflow-source/doc.md',
+        ),
+      ],
+    );
+    final folders = [
+      source,
+      for (var index = 0; index < 20; index++)
+        LibraryFolder(
+          id: 'destination-$index',
+          name: '目标文件夹 $index',
+          documents: const [],
+          updatedAt: DateTime(2026),
+        ),
+    ];
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: MaterialApp(
+          home: LibraryPage(
+            documents: const [],
+            folders: folders,
+            loading: false,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('来源'));
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('待移动文档')),
+    );
+    await tester.pump(const Duration(milliseconds: 650));
+    await gesture.moveTo(tester.getCenter(find.text('更多文件夹')));
+    await tester.pump(const Duration(milliseconds: 380));
+    // 上一帧触发延时展开；再推进一段时间让从底部展开的动画完成。
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('拖到目标文件夹'), findsOneWidget);
+    expect(find.text('目标文件夹 0'), findsWidgets);
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.byType(GlassContainer),
+      ),
+      findsNothing,
+    );
+    final targetList = find.byKey(
+      const ValueKey('expanded-folder-target-grid'),
+    );
+    final grid = tester.widget<GridView>(targetList);
+    expect(
+      (grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount)
+          .crossAxisCount,
+      2,
+    );
+    final sheet = find.byType(BottomSheet);
+    final homeTarget = find
+        .descendant(of: sheet, matching: find.text('阅读首页'))
+        .first;
+    final firstFolderTarget = find
+        .descendant(of: sheet, matching: find.text('目标文件夹 0'))
+        .first;
+    expect(
+      tester.getCenter(homeTarget).dy,
+      closeTo(tester.getCenter(firstFolderTarget).dy, 1),
+    );
+    final scrollable = tester.state<ScrollableState>(
+      find.descendant(of: targetList, matching: find.byType(Scrollable)).first,
+    );
+    expect(scrollable.position.pixels, 0);
+    expect(scrollable.position.maxScrollExtent, greaterThan(0));
+    await gesture.moveTo(
+      tester.getCenter(
+        find.byKey(const ValueKey('expanded-folder-auto-scroll-target')),
+      ),
+    );
+    await gesture.moveBy(const Offset(0, -1));
+    await tester.pump(const Duration(milliseconds: 260));
+    expect(scrollable.position.pixels, greaterThan(0));
     await gesture.up();
     await tester.pump();
   });
@@ -590,6 +703,23 @@ void main() {
 
     expect(find.byType(WebViewHtmlView), findsOneWidget);
     expect(find.byType(NativeHtmlView), findsNothing);
+    expect(find.byIcon(Icons.text_decrease_rounded), findsNothing);
+    expect(find.byIcon(Icons.text_increase_rounded), findsNothing);
+    final glassButtons = tester.widgetList<GlassButton>(
+      find.byType(GlassButton),
+    );
+    expect(glassButtons, isNotEmpty);
+    expect(
+      glassButtons.map((button) => button.platformViewBackdrop),
+      everyElement(isTrue),
+    );
+    final titleGlass = tester.widgetList<GlassContainer>(
+      find.descendant(
+        of: find.byType(FloatingDocumentHeader),
+        matching: find.byType(GlassContainer),
+      ),
+    );
+    expect(titleGlass.map((glass) => glass.platformViewBackdrop), [isTrue]);
   });
 
   testWidgets('首页长文件名仅在 hover 或按住时滚动', (tester) async {
@@ -737,6 +867,8 @@ void main() {
     expect(inkSwitch.value, isFalse);
     expect(inkSwitch.width, 58);
     expect(inkSwitch.height, 26);
+    expect(inkSwitch.quality, GlassQuality.premium);
+    expect(inkSwitch.settings, isNotNull);
     expect(
       tester.getSize(find.byKey(const ValueKey('墨模式-switch-touch-area'))),
       const Size(104, 56),
@@ -758,12 +890,78 @@ void main() {
     expect(disabledPointer.ignoring, isTrue);
     expect(find.text('暂未开放'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('HTML WebView 阅读器'));
+    await tester.pumpAndSettle();
     expect(find.text('HTML WebView 阅读器'), findsOneWidget);
     expect(display.htmlWebViewEnabled, isFalse);
     await tester.tap(find.text('HTML WebView 阅读器'));
     await tester.pump();
     expect(display.htmlWebViewEnabled, isTrue);
     expect(find.textContaining('使用系统网页引擎'), findsOneWidget);
+
+    final slider = tester.widget<GlassSlider>(find.byType(GlassSlider));
+    expect(slider.quality, GlassQuality.premium);
+    expect(slider.settings, isNotNull);
+  });
+
+  testWidgets('字体大小使用 WheelView 并在应用前提示重启', (tester) async {
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: const MaterialApp(home: Scaffold(body: SettingsPage())),
+      ),
+    );
+    await tester.ensureVisible(find.text('软件字体大小'));
+    await tester.tap(find.text('软件字体大小'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('app-font-size-wheel')), findsOneWidget);
+    await tester.drag(
+      find.byKey(const ValueKey('app-font-size-wheel')),
+      const Offset(0, -70),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('需要重启墨阅'), findsOneWidget);
+    expect(find.text('应用并重启'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('预见性返回开关会写入新建路由', (tester) async {
+    final display = MoyueDisplayPreferences()..setPredictiveBackEnabled(false);
+    addTearDown(display.dispose);
+    late Route<void> route;
+    final document = ReadingDocument(
+      id: 'route-document',
+      title: '返回测试',
+      content: '# 正文',
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026),
+    );
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) {
+              route = readerDetailRoute(context, document);
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
+    );
+
+    expect(route, isA<MoyueMaterialPageRoute<void>>());
+    expect(
+      (route as MoyueMaterialPageRoute<void>).predictiveBackEnabled,
+      isFalse,
+    );
   });
 }
 

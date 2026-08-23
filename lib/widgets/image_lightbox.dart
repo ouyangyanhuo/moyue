@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 
 /// 全屏图片灯箱：双指/双击缩放、拖拽平移，点按空白或关闭按钮退出。
 class ImageLightbox extends StatefulWidget {
@@ -12,7 +13,8 @@ class ImageLightbox extends StatefulWidget {
   /// 同时参与合成而闪烁。
   static Future<void> show(BuildContext context, Uint8List bytes) {
     return Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      moyuePageRoute<void>(
+        context: context,
         allowSnapshotting: false,
         builder: (_) => ImageLightbox(bytes: bytes),
       ),

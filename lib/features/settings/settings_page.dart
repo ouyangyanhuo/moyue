@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
+import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/services/app_restart_service.dart';
 import 'package:moyue_application/services/debug_service.dart';
 import 'package:moyue_application/widgets/floating_page_shell.dart';
 import 'package:moyue_application/widgets/expandable_glass_search.dart';
@@ -14,6 +16,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class SettingsPageState extends State<SettingsPage> {
+  static const _fontScales = <double>[0.85, 0.95, 1.0, 1.1, 1.2, 1.3, 1.4];
   String _query = '';
   final _searchKey = GlobalKey<ExpandableGlassSearchState>();
 
@@ -53,14 +56,107 @@ class SettingsPageState extends State<SettingsPage> {
     ),
   );
 
+  Future<void> _chooseFontSize(DisplayModeController display) async {
+    final initialIndex = _nearestFontScaleIndex(display.appFontScale);
+    final controller = FixedExtentScrollController(initialItem: initialIndex);
+    var selectedIndex = initialIndex;
+    final selected = await showModalBottomSheet<double>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (sheetContext) => SizedBox(
+        height: 330,
+        child: Column(
+          children: [
+            Text('软件字体大小', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListWheelScrollView.useDelegate(
+                key: const ValueKey('app-font-size-wheel'),
+                controller: controller,
+                itemExtent: 54,
+                physics: const FixedExtentScrollPhysics(),
+                diameterRatio: 1.5,
+                useMagnifier: true,
+                magnification: 1.12,
+                onSelectedItemChanged: (value) => selectedIndex = value,
+                childDelegate: ListWheelChildBuilderDelegate(
+                  childCount: _fontScales.length,
+                  builder: (context, index) => Center(
+                    child: Text(
+                      '${(_fontScales[index] * 100).round()}%',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () =>
+                      Navigator.pop(sheetContext, _fontScales[selectedIndex]),
+                  child: const Text('应用'),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (selected == null || selected == display.appFontScale || !mounted) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('需要重启墨阅'),
+        content: const Text('应用新的软件字体大小后，墨阅会立即重启，以确保所有页面同步生效。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('应用并重启'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await display.setAppFontScale(selected);
+    final restarted = await AppRestartService.restart();
+    if (!restarted && mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('字号已保存，请手动重新打开墨阅以完全生效')));
+    }
+  }
+
+  int _nearestFontScaleIndex(double value) {
+    var result = 0;
+    var distance = double.infinity;
+    for (var index = 0; index < _fontScales.length; index++) {
+      final next = (_fontScales[index] - value).abs();
+      if (next < distance) {
+        result = index;
+        distance = next;
+      }
+    }
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
     final display = DisplayPreferencesScope.of(context);
     final debug = DebugService.instance;
     final query = _query.trim();
-    final showDisplay = query.isEmpty || '显示墨模式对比度护眼'.contains(query);
+    final showDisplay = query.isEmpty || '显示墨模式对比度护眼字体字号大小'.contains(query);
     final showReading =
-        query.isEmpty || '阅读动画翻页动效HTML WebView网页原生'.contains(query);
+        query.isEmpty || '阅读动画翻页动效HTML WebView网页原生预见性返回手势'.contains(query);
     final showDebug = query.isEmpty || '调试帧率实时显示'.contains(query);
     final debugVisible = debug.enabled && showDebug;
 
@@ -115,6 +211,16 @@ class SettingsPageState extends State<SettingsPage> {
                         ],
                       ),
                     ),
+                    const Divider(indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.text_fields_rounded),
+                      title: const Text('软件字体大小'),
+                      subtitle: Text(
+                        '${(display.appFontScale * 100).round()}% · 更改后自动重启',
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _chooseFontSize(display),
+                    ),
                   ],
                 ),
               ),
@@ -130,6 +236,16 @@ class SettingsPageState extends State<SettingsPage> {
                       icon: Icons.motion_photos_off_outlined,
                       title: '减少动态效果',
                       subtitle: '让页面切换更稳定，适合墨水屏设备',
+                    ),
+                    const Divider(indent: 56),
+                    _GlassSwitchTile(
+                      value: display.predictiveBackEnabled,
+                      onChanged: display.setPredictiveBackEnabled,
+                      icon: Icons.swipe_left_alt_rounded,
+                      title: '预见性返回',
+                      subtitle: display.predictiveBackEnabled
+                          ? '已开启：返回时预览上一页（目前存在少量兼容问题）'
+                          : '已关闭：使用普通返回行为',
                     ),
                     const Divider(indent: 56),
                     _GlassSwitchTile(
@@ -230,7 +346,8 @@ class _GlassSwitchTile extends StatelessWidget {
                     value: value,
                     onChanged: onChanged ?? (_) {},
                     useOwnLayer: true,
-                    quality: GlassQuality.standard,
+                    quality: GlassQuality.premium,
+                    settings: moyueGlassSettings(context),
                     activeColor: Theme.of(context).colorScheme.primary,
                     semanticLabel: title,
                   ),
@@ -280,7 +397,8 @@ class _ExpandedGlassSlider extends StatelessWidget {
               value: value,
               onChanged: onChanged,
               useOwnLayer: true,
-              quality: GlassQuality.standard,
+              quality: GlassQuality.premium,
+              settings: moyueGlassSettings(context),
             ),
           ),
         ],

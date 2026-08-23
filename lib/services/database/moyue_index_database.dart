@@ -10,7 +10,7 @@ class MoyueIndexDatabase {
   Future<Database> get _db async => _database ??= await openIndexDatabase(
     databasePath,
     OpenDatabaseOptions(
-      version: 4,
+      version: 5,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _create,
       onUpgrade: _upgrade,
@@ -28,7 +28,9 @@ class MoyueIndexDatabase {
         relative_path TEXT NOT NULL UNIQUE,
         entry_count INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE,
+        logical_path TEXT NOT NULL DEFAULT ''
       )
     ''');
     await db.execute('''
@@ -65,6 +67,7 @@ class MoyueIndexDatabase {
       'CREATE INDEX idx_resources_folder ON resources(folder_id)',
     );
     await db.execute('CREATE INDEX idx_folders_category ON folders(category)');
+    await db.execute('CREATE INDEX idx_folders_parent ON folders(parent_id)');
   }
 
   static Future<void> _upgrade(
@@ -101,6 +104,20 @@ class MoyueIndexDatabase {
             ELSE name || '.xml'
           END)
       ''');
+    }
+    if (oldVersion < 5) {
+      final columns = await db.rawQuery('PRAGMA table_info(folders)');
+      if (!columns.any((column) => column['name'] == 'parent_id')) {
+        await db.execute('ALTER TABLE folders ADD COLUMN parent_id TEXT');
+      }
+      if (!columns.any((column) => column['name'] == 'logical_path')) {
+        await db.execute(
+          "ALTER TABLE folders ADD COLUMN logical_path TEXT NOT NULL DEFAULT ''",
+        );
+      }
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id)',
+      );
     }
   }
 
@@ -168,10 +185,59 @@ class MoyueIndexDatabase {
       LEFT JOIN documents d
         ON d.folder_id = f.id AND d.kind IN ('markdown','html')
       WHERE f.category IN ('markdown','html')
+        AND f.parent_id IS NULL
       GROUP BY f.id
       HAVING f.marker = 'user-folder' OR COUNT(d.id) > 2
       ORDER BY f.updated_at DESC
     ''');
+  }
+
+  /// 返回根文件夹下所有显式创建的子目录。文档包原有的隐式目录仍由
+  /// documents.logical_path 推导，两者会在界面层合并。
+  Future<List<Map<String, Object?>>> nestedFolders(String rootId) async {
+    final db = await _db;
+    return db.rawQuery(
+      '''
+      WITH RECURSIVE descendants AS (
+        SELECT * FROM folders WHERE parent_id = ?
+        UNION ALL
+        SELECT child.*
+        FROM folders child
+        JOIN descendants parent ON child.parent_id = parent.id
+      )
+      SELECT * FROM descendants ORDER BY logical_path COLLATE NOCASE
+      ''',
+      [rootId],
+    );
+  }
+
+  Future<Map<String, Object?>?> nestedFolder(
+    String rootId,
+    String logicalPath,
+  ) async {
+    final rows = await nestedFolders(rootId);
+    final matches = rows.where((row) => row['logical_path'] == logicalPath);
+    return matches.isEmpty ? null : matches.first;
+  }
+
+  Future<bool> siblingFolderExists(String? parentId, String name) async {
+    final db = await _db;
+    final rows = parentId == null
+        ? await db.query(
+            'folders',
+            columns: const ['id'],
+            where: 'parent_id IS NULL AND name = ? COLLATE NOCASE',
+            whereArgs: [name],
+            limit: 1,
+          )
+        : await db.query(
+            'folders',
+            columns: const ['id'],
+            where: 'parent_id = ? AND name = ? COLLATE NOCASE',
+            whereArgs: [parentId, name],
+            limit: 1,
+          );
+    return rows.isNotEmpty;
   }
 
   Future<List<Map<String, Object?>>> packageDocuments(String folderId) async {

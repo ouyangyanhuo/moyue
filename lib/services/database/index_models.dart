@@ -9,6 +9,8 @@ class FolderRecord {
     required this.entryCount,
     required this.createdAt,
     required this.updatedAt,
+    this.parentId,
+    this.logicalPath = '',
   });
 
   final String id;
@@ -21,6 +23,12 @@ class FolderRecord {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  /// 空值表示首页中的根文件夹；非空值表示另一个 folders 行的子目录。
+  final String? parentId;
+
+  /// 相对根文件夹的可见目录路径，只使用 `/` 分隔。
+  final String logicalPath;
+
   Map<String, Object?> toMap() => {
     'id': id,
     'category': category,
@@ -31,6 +39,8 @@ class FolderRecord {
     'entry_count': entryCount,
     'created_at': createdAt.millisecondsSinceEpoch,
     'updated_at': updatedAt.millisecondsSinceEpoch,
+    'parent_id': parentId,
+    'logical_path': logicalPath,
   };
 }
 

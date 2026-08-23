@@ -29,6 +29,19 @@ class MoyueStorageService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> createSubfolder({
+    required LibraryFolder rootFolder,
+    required String parentPath,
+    required String name,
+  }) async {
+    await _packages.createSubfolder(
+      rootFolder: rootFolder,
+      parentPath: parentPath,
+      name: name,
+    );
+    notifyListeners();
+  }
+
   Future<void> deleteFolder(LibraryFolder folder) async {
     await _packages.deleteFolderById(folder.id);
     notifyListeners();
@@ -43,11 +56,13 @@ class MoyueStorageService extends ChangeNotifier {
     required LibraryFolder folder,
     required String fileName,
     required Uint8List bytes,
+    String logicalDirectory = '',
   }) async {
     final document = await _packages.importIntoFolder(
       folder: folder,
       fileName: fileName,
       bytes: bytes,
+      logicalDirectory: logicalDirectory,
     );
     notifyListeners();
     return document;
@@ -56,6 +71,7 @@ class MoyueStorageService extends ChangeNotifier {
   Future<ReadingDocument> createMarkdownInFolder({
     required LibraryFolder folder,
     required String title,
+    String logicalDirectory = '',
   }) {
     final trimmed = title.trim();
     final fileName = trimmed.toLowerCase().endsWith('.md')
@@ -65,6 +81,7 @@ class MoyueStorageService extends ChangeNotifier {
       folder: folder,
       fileName: fileName,
       bytes: Uint8List(0),
+      logicalDirectory: logicalDirectory,
     );
   }
 
@@ -98,6 +115,22 @@ class MoyueStorageService extends ChangeNotifier {
     final document = await _packages.importFile(fileName, bytes);
     notifyListeners();
     return document;
+  }
+
+  Future<List<ReadingDocument>> importDocumentPackageIntoFolder({
+    required LibraryFolder folder,
+    required String fileName,
+    required Uint8List bytes,
+    String logicalDirectory = '',
+  }) async {
+    final documents = await _packages.importPackageIntoFolder(
+      folder: folder,
+      fileName: fileName,
+      bytes: bytes,
+      logicalDirectory: logicalDirectory,
+    );
+    notifyListeners();
+    return documents;
   }
 
   Future<MoyueExport> exportMoyue(ReadingDocument document) =>

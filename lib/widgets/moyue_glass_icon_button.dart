@@ -20,6 +20,7 @@ class MoyueGlassIconButton extends StatelessWidget {
     required this.semanticLabel,
     this.size = 44,
     this.useOwnLayer = true,
+    this.platformViewBackdrop = false,
     this.settings,
     super.key,
   });
@@ -29,6 +30,10 @@ class MoyueGlassIconButton extends StatelessWidget {
   final String semanticLabel;
   final double size;
   final bool useOwnLayer;
+
+  /// PlatformView（例如 Android WebView）后方纹理无法被 premium 捕获时，
+  /// 改走库提供的实时 BackdropFilter 兼容路径，避免玻璃变黑。
+  final bool platformViewBackdrop;
   final LiquidGlassSettings? settings;
 
   @override
@@ -56,6 +61,7 @@ class MoyueGlassIconButton extends StatelessWidget {
       settings: interactiveSettings,
       useOwnLayer: useOwnLayer,
       quality: GlassQuality.premium,
+      platformViewBackdrop: platformViewBackdrop,
       interactionScale: 1.03,
       stretch: 0.46,
       resistance: 0.02,

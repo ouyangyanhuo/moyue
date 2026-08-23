@@ -211,6 +211,7 @@ class DocumentPackageService {
     for (final folderRow in folderRows) {
       final folderId = folderRow['id']! as String;
       final rows = await (await index).packageDocuments(folderId);
+      final nestedRows = await (await index).nestedFolders(folderId);
       final documents = <ReadingDocument>[];
       for (final row in rows) {
         if (row['kind'] == 'rss') continue;
@@ -249,6 +250,10 @@ class DocumentPackageService {
           updatedAt: DateTime.fromMillisecondsSinceEpoch(
             folderRow['updated_at']! as int,
           ),
+          subfolderPaths: nestedRows
+              .map((row) => row['logical_path']! as String)
+              .where((path) => path.isNotEmpty)
+              .toList(growable: false),
         ),
       );
     }
@@ -277,10 +282,119 @@ class DocumentPackageService {
     );
   }
 
+  /// 在一个首页根文件夹内创建可独立存在的空子目录。
+  Future<String> createSubfolder({
+    required LibraryFolder rootFolder,
+    required String parentPath,
+    required String name,
+  }) async {
+    final safeName = name.trim();
+    if (safeName.isEmpty || safeName == '.' || safeName == '..') {
+      throw const FormatException('文件夹名称不能为空');
+    }
+    if (safeName.contains('/') || safeName.contains('\\')) {
+      throw const FormatException('文件夹名称不能包含路径分隔符');
+    }
+    final db = await index;
+    final rootRow = await db.folder(rootFolder.id);
+    if (rootRow == null || rootRow['parent_id'] != null) {
+      throw StateError('根文件夹不存在');
+    }
+    final normalizedParent = p.posix.normalize(parentPath.trim());
+    final parentLogicalPath = normalizedParent == '.' ? '' : normalizedParent;
+    if (parentLogicalPath.startsWith('../') ||
+        p.posix.isAbsolute(parentLogicalPath)) {
+      throw const FormatException('父文件夹路径不安全');
+    }
+    var parentId = rootFolder.id;
+    var accumulatedPath = '';
+    for (final segment
+        in parentLogicalPath.split('/').where((part) => part.isNotEmpty)) {
+      accumulatedPath = accumulatedPath.isEmpty
+          ? segment
+          : p.posix.join(accumulatedPath, segment);
+      final existing = await db.nestedFolder(rootFolder.id, accumulatedPath);
+      if (existing != null) {
+        parentId = existing['id']! as String;
+        continue;
+      }
+      // ZIP/.moyue 导入形成的目录过去只存在于 documents.logical_path。
+      // 用户第一次在其中新建内容时，把这段隐式路径补成显式 folders 行。
+      final materializedAt = DateTime.now();
+      final materializedId =
+          '${materializedAt.microsecondsSinceEpoch}-${sha256.convert(utf8.encode(accumulatedPath)).toString().substring(0, 8)}-subfolder';
+      final materializedRelativePath = p.posix.join(
+        rootRow['relative_path']! as String,
+        '.folders',
+        materializedId,
+      );
+      await db.insertPackage(
+        folder: FolderRecord(
+          id: materializedId,
+          category: rootRow['category']! as String,
+          name: segment,
+          single: false,
+          marker: 'nested-folder',
+          relativePath: materializedRelativePath,
+          entryCount: 0,
+          createdAt: materializedAt,
+          updatedAt: materializedAt,
+          parentId: parentId,
+          logicalPath: accumulatedPath,
+        ),
+        documents: const [],
+        resources: const [],
+        writeFiles: () => _files.createFolder(materializedRelativePath),
+      );
+      parentId = materializedId;
+    }
+    if (await db.siblingFolderExists(parentId, safeName)) {
+      throw const FormatException('同一目录下已存在同名文件夹');
+    }
+
+    final now = DateTime.now();
+    final id = '${now.microsecondsSinceEpoch}-subfolder';
+    final logicalPath = parentLogicalPath.isEmpty
+        ? safeName
+        : p.posix.join(parentLogicalPath, safeName);
+    final impliedByDocument = rootFolder.documents.any((document) {
+      final path = document.logicalPath;
+      return path != null && p.posix.isWithin(logicalPath, path);
+    });
+    if (impliedByDocument) {
+      throw const FormatException('同一目录下已存在同名文件夹');
+    }
+    final relativePath = p.posix.join(
+      rootRow['relative_path']! as String,
+      '.folders',
+      id,
+    );
+    await db.insertPackage(
+      folder: FolderRecord(
+        id: id,
+        category: rootRow['category']! as String,
+        name: safeName,
+        single: false,
+        marker: 'nested-folder',
+        relativePath: relativePath,
+        entryCount: 0,
+        createdAt: now,
+        updatedAt: now,
+        parentId: parentId,
+        logicalPath: logicalPath,
+      ),
+      documents: const [],
+      resources: const [],
+      writeFiles: () => _files.createFolder(relativePath),
+    );
+    return logicalPath;
+  }
+
   Future<ReadingDocument> importIntoFolder({
     required LibraryFolder folder,
     required String fileName,
     required Uint8List bytes,
+    String logicalDirectory = '',
   }) async {
     final extension = _extension(fileName);
     if (extension != 'md' && extension != 'html') {
@@ -298,13 +412,21 @@ class DocumentPackageService {
       documentId,
       safeName,
     );
+    final normalizedDirectory = p.posix.normalize(logicalDirectory.trim());
+    if (normalizedDirectory.startsWith('../') ||
+        p.posix.isAbsolute(normalizedDirectory)) {
+      throw const FormatException('目标文件夹路径不安全');
+    }
+    final logicalPath = normalizedDirectory == '.'
+        ? safeName
+        : p.posix.join(normalizedDirectory, safeName);
     final record = DocumentRecord(
       id: documentId,
       folderId: folder.id,
       name: p.posix.basenameWithoutExtension(safeName),
       kind: extension == 'html' ? 'html' : 'markdown',
       relativePath: relativePath,
-      logicalPath: safeName,
+      logicalPath: logicalPath,
       isPrimary: existing.isEmpty,
       contentHash: sha256.convert(bytes).toString(),
       createdAt: now,
@@ -324,7 +446,7 @@ class DocumentPackageService {
       filePath: relativePath,
       folderId: folder.id,
       relativePath: relativePath,
-      logicalPath: safeName,
+      logicalPath: logicalPath,
     );
   }
 
@@ -360,6 +482,89 @@ class DocumentPackageService {
       single: false,
       requireMoyueMeta: extension == 'moyue',
     );
+  }
+
+  /// 将单文件或文档包导入已有文件夹。文档包先按常规导入规则完成校验与
+  /// 索引，再把其中的每份文档移动进目标文件夹，从而复用同一套资源搬运
+  /// 与事务逻辑，并保留压缩包内的相对目录结构。
+  Future<List<ReadingDocument>> importPackageIntoFolder({
+    required LibraryFolder folder,
+    required String fileName,
+    required Uint8List bytes,
+    String logicalDirectory = '',
+  }) async {
+    final extension = _extension(fileName);
+    if (extension == 'md' || extension == 'html') {
+      return [
+        await importIntoFolder(
+          folder: folder,
+          fileName: fileName,
+          bytes: bytes,
+          logicalDirectory: logicalDirectory,
+        ),
+      ];
+    }
+    if (extension != 'zip' && extension != 'moyue') {
+      throw const FormatException('仅支持 Markdown、HTML、ZIP 或 .moyue 文件');
+    }
+
+    final importedPrimary = await importFile(fileName, bytes);
+    final sourceFolderId = importedPrimary.folderId;
+    if (sourceFolderId == null) {
+      throw StateError('文档包已导入，但无法读取它的文件夹索引');
+    }
+    final db = await index;
+    final sourceFolderRow = await db.folder(sourceFolderId);
+    if (sourceFolderRow == null) {
+      throw StateError('文档包已导入，但无法读取它的文件夹索引');
+    }
+    final sourceDocuments = <ReadingDocument>[];
+    for (final row in await db.packageDocuments(sourceFolderId)) {
+      final relativePath = row['relative_path']! as String;
+      sourceDocuments.add(
+        ReadingDocument(
+          id: row['id']! as String,
+          title: row['name']! as String,
+          content: decodeImportedText(await _files.readBytes(relativePath)),
+          kind: row['kind'] == 'html'
+              ? DocumentKind.html
+              : DocumentKind.markdown,
+          updatedAt: DateTime.fromMillisecondsSinceEpoch(
+            row['updated_at']! as int,
+          ),
+          sourceLabel: '文档包',
+          filePath: relativePath,
+          folderId: sourceFolderId,
+          relativePath: relativePath,
+          logicalPath: _logicalPath(
+            row,
+            folderPath: sourceFolderRow['relative_path']! as String,
+          ),
+        ),
+      );
+    }
+    final normalizedDirectory = p.posix.normalize(logicalDirectory.trim());
+    if (normalizedDirectory.startsWith('../') ||
+        p.posix.isAbsolute(normalizedDirectory)) {
+      throw const FormatException('目标文件夹路径不安全');
+    }
+    final moved = <ReadingDocument>[];
+    for (final document in sourceDocuments) {
+      final sourceLogicalPath =
+          document.logicalPath ??
+          '${document.title}.${document.kind.extension}';
+      final targetLogicalPath = normalizedDirectory == '.'
+          ? sourceLogicalPath
+          : p.posix.join(normalizedDirectory, sourceLogicalPath);
+      moved.add(
+        await moveDocument(
+          document: document,
+          target: folder,
+          targetLogicalPath: targetLogicalPath,
+        ),
+      );
+    }
+    return moved;
   }
 
   Future<ReadingDocument> _importEntries({
@@ -629,6 +834,7 @@ class DocumentPackageService {
   Future<ReadingDocument> moveDocument({
     required ReadingDocument document,
     required LibraryFolder target,
+    String? targetLogicalPath,
   }) async {
     final sourceFolderId = document.folderId;
     final sourcePath = document.relativePath;
@@ -645,9 +851,12 @@ class DocumentPackageService {
 
     final now = DateTime.now();
     final extension = document.kind.extension;
-    final visibleName = p.posix.basename(
-      document.logicalPath ?? '${document.title}.$extension',
+    final requestedLogicalPath = _safeArchivePath(
+      targetLogicalPath ??
+          document.logicalPath ??
+          '${document.title}.$extension',
     );
+    final visibleName = p.posix.basename(requestedLogicalPath);
     final targetPath = p.posix.join(
       targetFolder['relative_path']! as String,
       '.documents',
@@ -696,7 +905,7 @@ class DocumentPackageService {
       name: document.title,
       kind: document.kind == DocumentKind.html ? 'html' : 'markdown',
       relativePath: targetPath,
-      logicalPath: visibleName,
+      logicalPath: requestedLogicalPath,
       isPrimary: targetDocuments.isEmpty,
       contentHash: sha256.convert(targetFiles[targetPath]!).toString(),
       createdAt: document.updatedAt,
@@ -727,7 +936,7 @@ class DocumentPackageService {
       folderId: target.id,
       relativePath: targetPath,
       filePath: targetPath,
-      logicalPath: visibleName,
+      logicalPath: requestedLogicalPath,
       sourceLabel: '文件夹',
       updatedAt: now,
     );
@@ -788,7 +997,7 @@ class DocumentPackageService {
     final folder = await (await index).folder(folderId);
     if (folder == null) return;
     final documents = await (await index).packageDocuments(folderId);
-    if (documents.length <= 1) {
+    if (documents.length <= 1 && folder['marker'] != 'user-folder') {
       await (await index).deleteFolder(folderId);
       await _files.deleteFolder(folder['relative_path']! as String);
       return;
@@ -965,7 +1174,7 @@ class DocumentPackageService {
     if (documentPath == null || folderId == null) return null;
     final uri = Uri.tryParse(link);
     if (uri == null || uri.hasScheme || uri.path.isEmpty) return null;
-    var relative = uri.path;
+    var relative = Uri.decodeComponent(uri.path);
     if (relative.startsWith('./')) relative = relative.substring(2);
     final folder = await (await index).folder(folderId);
     if (folder == null) return null;

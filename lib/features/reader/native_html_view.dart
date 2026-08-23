@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:html/dom.dart' as dom;
+import 'package:html/parser.dart' as html_parser;
 import 'package:moyue_application/services/native_html_preprocessor.dart';
 import 'package:moyue_application/widgets/image_lightbox.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -13,19 +14,28 @@ import 'package:url_launcher/url_launcher.dart';
 /// 样式表会先由 [NativeHtmlPreprocessor] 做级联和响应式展开；CSS Grid、
 /// 本地背景图以及 ahtml.zip 中的交互图表由这里的原生控件补齐。
 class NativeHtmlView extends StatefulWidget {
-  const NativeHtmlView({required this.data, this.resourceLoader, super.key});
+  const NativeHtmlView({
+    required this.data,
+    this.resourceLoader,
+    this.resourceCacheKey,
+    super.key,
+  });
 
   final String data;
   final Future<Uint8List?> Function(String source)? resourceLoader;
+  final Object? resourceCacheKey;
 
   @override
   State<NativeHtmlView> createState() => NativeHtmlViewState();
 }
 
 class NativeHtmlViewState extends State<NativeHtmlView> {
-  final GlobalKey<HtmlWidgetState> _htmlKey = GlobalKey<HtmlWidgetState>();
+  List<GlobalKey<HtmlWidgetState>> _htmlKeys = const [];
+  final Map<String, Future<Uint8List?>> _resourceFutures = {};
   Future<String>? _preparedData;
   Object? _preparedSignature;
+  String? _fragmentSource;
+  List<String> _fragments = const [];
   int _period = 365;
   String _weightSet = 'spread';
   int _authorIndex = 2;
@@ -34,8 +44,10 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
   void didUpdateWidget(covariant NativeHtmlView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.data != widget.data ||
-        oldWidget.resourceLoader != widget.resourceLoader) {
+        oldWidget.resourceCacheKey != widget.resourceCacheKey) {
       _preparedSignature = null;
+      _fragmentSource = null;
+      _resourceFutures.clear();
       _period = 365;
       _weightSet = 'spread';
       _authorIndex = 2;
@@ -44,9 +56,12 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
 
   Future<bool> scrollToHeading(int index) async {
     for (var attempt = 0; attempt < 3; attempt++) {
-      final state = _htmlKey.currentState;
-      if (state != null && await state.scrollToAnchor('moyue-heading-$index')) {
-        return true;
+      for (final key in _htmlKeys) {
+        final state = key.currentState;
+        if (state != null &&
+            await state.scrollToAnchor('moyue-heading-$index')) {
+          return true;
+        }
       }
       await Future<void>.delayed(const Duration(milliseconds: 80));
     }
@@ -58,7 +73,7 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
     final width = MediaQuery.sizeOf(context).width;
     final signature = Object.hash(
       widget.data,
-      identityHashCode(widget.resourceLoader),
+      widget.resourceCacheKey,
       width.round(),
     );
     if (_preparedSignature != signature) {
@@ -79,9 +94,96 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
             child: Center(child: CircularProgressIndicator.adaptive()),
           );
         }
-        return SelectionArea(child: _htmlWidget(context, data, key: _htmlKey));
+        final fragments = _fragmentsFor(data);
+        return SelectionArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < fragments.length; index++)
+                RepaintBoundary(
+                  child: _htmlWidget(
+                    context,
+                    fragments[index],
+                    key: _htmlKeys[index],
+                  ),
+                ),
+            ],
+          ),
+        );
       },
     );
+  }
+
+  /// 将较长页面按顶层章节拆成独立重绘边界。预处理已经把 CSS 级联为
+  /// 行内样式，所以拆分不会重新计算样式，却能避免滚动时整篇文档重绘。
+  List<String> _fragmentsFor(String data) {
+    if (_fragmentSource == data) return _fragments;
+    final document = html_parser.parse(data);
+    final body = document.body;
+    final canSplit =
+        body?.children.any(
+          (child) =>
+              (child.localName == 'main' || child.localName == 'article') &&
+              child.children.length >= 3,
+        ) ??
+        false;
+    if (!canSplit) {
+      _fragmentSource = data;
+      _fragments = [data];
+      _htmlKeys = [GlobalKey<HtmlWidgetState>()];
+      return _fragments;
+    }
+    final rawFragments = <String>[];
+    if (body != null) {
+      for (final child in body.children) {
+        final splitContainer =
+            (child.localName == 'main' || child.localName == 'article') &&
+            child.children.length >= 3;
+        if (!splitContainer) {
+          rawFragments.add(child.outerHtml);
+          continue;
+        }
+        final attributes = child.attributes.entries
+            .map((entry) => '${entry.key}="${_escapeAttribute(entry.value)}"')
+            .join(' ');
+        final start = attributes.isEmpty
+            ? '<${child.localName}>'
+            : '<${child.localName} $attributes>';
+        for (final section in child.children) {
+          rawFragments.add('$start${section.outerHtml}</${child.localName}>');
+        }
+      }
+    }
+    if (rawFragments.length <= 1) {
+      _fragments = [data];
+    } else {
+      final bodyAttributes = body!.attributes.entries
+          .map((entry) => '${entry.key}="${_escapeAttribute(entry.value)}"')
+          .join(' ');
+      final bodyStart = bodyAttributes.isEmpty
+          ? '<body>'
+          : '<body $bodyAttributes>';
+      _fragments = [
+        for (final fragment in rawFragments)
+          '<html>$bodyStart$fragment</body></html>',
+      ];
+    }
+    _fragmentSource = data;
+    _htmlKeys = List.generate(
+      _fragments.length,
+      (_) => GlobalKey<HtmlWidgetState>(),
+      growable: false,
+    );
+    return _fragments;
+  }
+
+  String _escapeAttribute(String value) =>
+      value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+
+  Future<Uint8List?> _loadResource(String source) {
+    final loader = widget.resourceLoader;
+    if (loader == null) return Future<Uint8List?>.value();
+    return _resourceFutures.putIfAbsent(source, () => loader(source));
   }
 
   HtmlWidget _htmlWidget(BuildContext context, String data, {Key? key}) {
@@ -95,7 +197,7 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
       textStyle: theme.textTheme.bodyLarge?.copyWith(height: 1.65),
       rebuildTriggers: [
         data,
-        widget.resourceLoader,
+        widget.resourceCacheKey,
         theme.brightness,
         _period,
         _weightSet,
@@ -449,7 +551,7 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
         ? (MediaQuery.sizeOf(context).width <= 820 ? 76.0 : 112.0)
         : 120.0;
     return FutureBuilder<Uint8List?>(
-      future: loader(source),
+      future: _loadResource(source),
       builder: (context, snapshot) {
         final bytes = snapshot.data;
         if (bytes == null) return SizedBox(height: height);
@@ -473,7 +575,7 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
     final uri = Uri.tryParse(source);
     if (uri != null && uri.hasScheme) return null;
     return FutureBuilder<Uint8List?>(
-      future: widget.resourceLoader!(source),
+      future: _loadResource(source),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Padding(

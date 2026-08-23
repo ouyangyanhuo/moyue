@@ -7,6 +7,9 @@
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true"
         android:roundIcon="@mipmap/ic_launcher_round">
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableHcpp"
+            android:value="true" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

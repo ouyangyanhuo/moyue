@@ -18,4 +18,21 @@ void main() {
     first.dispose();
     restored.dispose();
   });
+
+  test('字体大小与预见性返回开关会持久化', () async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    final first = MoyueDisplayPreferences();
+    await first.setAppFontScale(1.2);
+    first.setPredictiveBackEnabled(false);
+    await Future<void>.delayed(Duration.zero);
+
+    final restored = MoyueDisplayPreferences();
+    await restored.load();
+
+    expect(restored.appFontScale, 1.2);
+    expect(restored.predictiveBackEnabled, isFalse);
+    first.dispose();
+    restored.dispose();
+  });
 }

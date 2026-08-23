@@ -256,4 +256,95 @@ void main() {
     final rows = await index.packageDocuments('legacy-folder');
     expect(rows.single['logical_path'], '旧文档.md');
   });
+
+  test('空的嵌套文件夹会持久化，内部文档保留逻辑目录', () async {
+    final root = await Directory.systemTemp.createTemp('moyue-storage-v5-');
+    final store = _IndexedMemoryStore(root);
+    var service = DocumentPackageService(store: store);
+    addTearDown(() async {
+      await service.close();
+      await root.delete(recursive: true);
+    });
+
+    await service.createFolder('书库');
+    var folder = (await service.loadFolders()).single;
+    await service.createSubfolder(
+      rootFolder: folder,
+      parentPath: '',
+      name: '第一卷',
+    );
+    await service.createSubfolder(
+      rootFolder: folder,
+      parentPath: '第一卷',
+      name: '插图',
+    );
+    folder = (await service.loadFolders()).single;
+    expect(folder.subfolderPaths, ['第一卷', '第一卷/插图']);
+
+    final document = await service.importIntoFolder(
+      folder: folder,
+      fileName: '序章.md',
+      bytes: Uint8List.fromList(utf8.encode('# 序章')),
+      logicalDirectory: '第一卷',
+    );
+    expect(document.logicalPath, '第一卷/序章.md');
+
+    await service.close();
+    service = DocumentPackageService(store: store);
+    folder = (await service.loadFolders()).single;
+    expect(folder.subfolderPaths, ['第一卷', '第一卷/插图']);
+    expect(folder.documents.single.logicalPath, '第一卷/序章.md');
+
+    await service.deleteDocument(folder.documents.single);
+    folder = (await service.loadFolders()).single;
+    expect(folder.documents, isEmpty);
+    expect(folder.subfolderPaths, ['第一卷', '第一卷/插图']);
+  });
+
+  test('ZIP 文档包可导入现有文件夹并保留包内目录与资源', () async {
+    final root = await Directory.systemTemp.createTemp('moyue-folder-zip-');
+    final store = _IndexedMemoryStore(root);
+    final service = DocumentPackageService(store: store);
+    addTearDown(() async {
+      await service.close();
+      await root.delete(recursive: true);
+    });
+
+    await service.createFolder('目标');
+    final target = (await service.loadFolders()).single;
+    final archive = Archive()
+      ..addFile(ArchiveFile.string('开篇.md', '# 开篇'))
+      ..addFile(
+        ArchiveFile.string('章节/正文.html', '<h1>正文</h1><img src="插图.png">'),
+      )
+      ..addFile(ArchiveFile('章节/插图.png', 4, [1, 2, 3, 4]));
+
+    final moved = await service.importPackageIntoFolder(
+      folder: target,
+      fileName: '文档包.zip',
+      bytes: Uint8List.fromList(ZipEncoder().encodeBytes(archive)),
+      logicalDirectory: '已导入',
+    );
+
+    expect(moved, hasLength(2));
+    expect(moved.map((document) => document.logicalPath).toSet(), {
+      '已导入/开篇.md',
+      '已导入/章节/正文.html',
+    });
+    final html = moved.singleWhere(
+      (document) => document.kind == DocumentKind.html,
+    );
+    final movedImagePath = p.posix.join(
+      p.posix.dirname(html.relativePath!),
+      '插图.png',
+    );
+    expect(store.files.keys, contains(movedImagePath));
+    expect(
+      await service.readLinkedResource(html, '插图.png'),
+      Uint8List.fromList([1, 2, 3, 4]),
+    );
+    final folders = await service.loadFolders();
+    expect(folders, hasLength(1));
+    expect(folders.single.documents, hasLength(2));
+  });
 }
