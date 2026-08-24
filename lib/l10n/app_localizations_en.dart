@@ -668,6 +668,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get imageImportSucceeded => 'Image imported';
+
+  @override
+  String get imageImportFailed => 'Could not import image';
+
+  @override
   String insertImageFailed(String error) {
     return 'Could not insert image: $error';
   }

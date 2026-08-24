@@ -14,6 +14,7 @@ import 'package:moyue_application/widgets/moyue_glass_title_pill.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
+import 'package:moyue_application/widgets/moyue_transient_message.dart';
 
 Route<ReadingDocument?> markdownEditorRoute(
   BuildContext context,
@@ -78,6 +79,8 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   final ValueNotifier<double> _settledKeyboardInset = ValueNotifier(0);
   ReadingDocument? _currentDocument;
   bool _importingImage = false;
+  String? _editorMessage;
+  Timer? _editorMessageTimer;
 
   @override
   String? get restorationId =>
@@ -131,6 +134,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _autosaveTimer?.cancel();
+    _editorMessageTimer?.cancel();
     _titleFocus.dispose();
     _bodyFocus.dispose();
     _bodyScrollController.dispose();
@@ -311,12 +315,24 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
             ),
             _SettledKeyboardDock(
               enabled: _mode.value == 0,
-              titleFocus: _titleFocus,
               bodyFocus: _bodyFocus,
               keyboardInset: _settledKeyboardInset,
               child: _FormatBar(
                 onFormat: _applyFormat,
                 onInsertImage: _insertImage,
+                importingImage: _importingImage,
+              ),
+            ),
+            ValueListenableBuilder<double>(
+              valueListenable: _settledKeyboardInset,
+              builder: (context, keyboardInset, _) => Positioned.fill(
+                child: MoyueTransientMessageOverlay(
+                  message: _editorMessage,
+                  bottomInset: keyboardInset > 0
+                      ? keyboardInset + 76
+                      : MediaQuery.paddingOf(context).bottom + 20,
+                  onDismiss: _dismissMessage,
+                ),
               ),
             ),
           ],
@@ -356,35 +372,36 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
 
   Future<void> _insertImage() async {
     if (_importingImage) return;
-    var document = _currentDocument;
-    if (document == null ||
-        document.relativePath == null ||
-        document.folderId == null) {
-      // 旧版根目录文档（无 folderId）不支持资源写入：
-      // 先强制落盘迁移到索引存储，再基于迁移后的文档插入。
-      await _persist(popAfter: false);
-      document = _currentDocument;
+    final insertionSelection = _normalizedBodySelection();
+    setState(() => _importingImage = true);
+    try {
+      var document = _currentDocument;
       if (document == null ||
           document.relativePath == null ||
           document.folderId == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.l10n.insertImageNeedsTitle)),
-          );
-        }
+        // 旧版根目录文档（无 folderId）也要进入新索引存储。
+        // 即使正文没有改动，插图操作也会强制完成这次迁移。
+        await _persist(popAfter: false, force: true);
+        if (!mounted) return;
+        document = _currentDocument;
+      }
+      if (document == null ||
+          document.relativePath == null ||
+          document.folderId == null) {
+        _message(
+          _title.value.text.trim().isEmpty
+              ? context.l10n.insertImageNeedsTitle
+              : context.l10n.imageImportFailed,
+        );
         return;
       }
-    }
-    setState(() => _importingImage = true);
-    try {
       final file = await FilePicker.pickFile(type: FileType.image);
       if (!mounted) return;
       if (file == null) return;
       final bytes = await file.readAsBytes();
       if (!mounted) return;
       if (bytes.length > 8 * 1024 * 1024) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(context.l10n.imageLimit)));
+        _message(context.l10n.imageImportFailed);
         return;
       }
       final link = await MoyueStorageService.instance.saveDocumentImage(
@@ -394,41 +411,78 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
       );
       if (!mounted) return;
       if (link == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.supportedImageTypes)),
-        );
+        _message(context.l10n.imageImportFailed);
         return;
       }
       final controller = _body.value;
       final text = controller.text;
-      final caret = controller.selection.isValid
-          ? controller.selection.end
-          : text.length;
-      final snippet = '![${file.name}]($link)\n';
-      controller.value = TextEditingValue(
-        text: text.replaceRange(caret, caret, snippet),
-        selection: TextSelection.collapsed(offset: caret + snippet.length),
+      final selection = _clampSelection(insertionSelection, text.length);
+      final selectedText = selection.isCollapsed
+          ? ''
+          : text.substring(selection.start, selection.end).trim();
+      final alt = _escapeImageAlt(
+        selectedText.isEmpty ? file.name : selectedText,
       );
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(context.l10n.imageSaved(link))));
-      }
-    } on Object catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.insertImageFailed('$error'))),
-        );
-      }
+      final leadingNewline =
+          selection.start > 0 && text[selection.start - 1] != '\n' ? '\n' : '';
+      final trailingNewline =
+          selection.end < text.length && text[selection.end] != '\n'
+          ? '\n'
+          : '';
+      final snippet = '$leadingNewline![$alt]($link)$trailingNewline';
+      controller.value = TextEditingValue(
+        text: text.replaceRange(selection.start, selection.end, snippet),
+        selection: TextSelection.collapsed(
+          offset: selection.start + snippet.length,
+        ),
+      );
+      _bodyFocus.requestFocus();
+      _message(context.l10n.imageImportSucceeded);
+    } on Object {
+      if (mounted) _message(context.l10n.imageImportFailed);
     } finally {
-      if (mounted) setState(() => _importingImage = false);
+      if (mounted) {
+        _bodyFocus.requestFocus();
+        setState(() => _importingImage = false);
+      }
     }
   }
 
-  Future<void> _persist({required bool popAfter}) async {
+  TextSelection _normalizedBodySelection() =>
+      _clampSelection(_body.value.selection, _body.value.text.length);
+
+  TextSelection _clampSelection(TextSelection selection, int textLength) {
+    if (!selection.isValid) {
+      return TextSelection.collapsed(offset: textLength);
+    }
+    return TextSelection(
+      baseOffset: selection.baseOffset.clamp(0, textLength),
+      extentOffset: selection.extentOffset.clamp(0, textLength),
+      affinity: selection.affinity,
+      isDirectional: selection.isDirectional,
+    );
+  }
+
+  String _escapeImageAlt(String value) =>
+      value.replaceAll('\\', r'\\').replaceAll(']', r'\]');
+
+  void _message(String message) {
+    _editorMessageTimer?.cancel();
+    setState(() => _editorMessage = message);
+    _editorMessageTimer = Timer(const Duration(seconds: 3), _dismissMessage);
+  }
+
+  void _dismissMessage() {
+    _editorMessageTimer?.cancel();
+    _editorMessageTimer = null;
+    if (!mounted || _editorMessage == null) return;
+    setState(() => _editorMessage = null);
+  }
+
+  Future<void> _persist({required bool popAfter, bool force = false}) async {
     _autosaveTimer?.cancel();
     if (_saving) return;
-    if (!_dirty.value) {
+    if (!_dirty.value && !force) {
       if (popAfter && mounted) Navigator.pop(context, _currentDocument);
       return;
     }
@@ -465,6 +519,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   }
 
   void _applyFormat(_MarkdownFormat format) {
+    _bodyFocus.requestFocus();
     switch (format) {
       case _MarkdownFormat.heading:
         _insertAtLineStart('## ');
@@ -632,14 +687,12 @@ enum _MarkdownFormat { heading, bold, italic, quote, list, link, code }
 class _SettledKeyboardDock extends StatefulWidget {
   const _SettledKeyboardDock({
     required this.enabled,
-    required this.titleFocus,
     required this.bodyFocus,
     required this.keyboardInset,
     required this.child,
   });
 
   final bool enabled;
-  final FocusNode titleFocus;
   final FocusNode bodyFocus;
   final ValueNotifier<double> keyboardInset;
   final Widget child;
@@ -656,15 +709,12 @@ class _SettledKeyboardDockState extends State<_SettledKeyboardDock>
   double? _lastSample;
   int _stableSamples = 0;
 
-  bool get _visible =>
-      widget.enabled &&
-      (widget.titleFocus.hasFocus || widget.bodyFocus.hasFocus);
+  bool get _visible => widget.enabled && widget.bodyFocus.hasFocus;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    widget.titleFocus.addListener(_focusChanged);
     widget.bodyFocus.addListener(_focusChanged);
   }
 
@@ -678,16 +728,11 @@ class _SettledKeyboardDockState extends State<_SettledKeyboardDock>
   @override
   void didUpdateWidget(covariant _SettledKeyboardDock oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.titleFocus != widget.titleFocus) {
-      oldWidget.titleFocus.removeListener(_focusChanged);
-      widget.titleFocus.addListener(_focusChanged);
-    }
     if (oldWidget.bodyFocus != widget.bodyFocus) {
       oldWidget.bodyFocus.removeListener(_focusChanged);
       widget.bodyFocus.addListener(_focusChanged);
     }
     if (oldWidget.enabled != widget.enabled ||
-        oldWidget.titleFocus != widget.titleFocus ||
         oldWidget.bodyFocus != widget.bodyFocus) {
       _beginSampling();
     }
@@ -741,7 +786,6 @@ class _SettledKeyboardDockState extends State<_SettledKeyboardDock>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _sampleTimer?.cancel();
-    widget.titleFocus.removeListener(_focusChanged);
     widget.bodyFocus.removeListener(_focusChanged);
     super.dispose();
   }
@@ -764,9 +808,14 @@ class _SettledKeyboardDockState extends State<_SettledKeyboardDock>
 }
 
 class _FormatBar extends StatelessWidget {
-  const _FormatBar({required this.onFormat, required this.onInsertImage});
+  const _FormatBar({
+    required this.onFormat,
+    required this.onInsertImage,
+    required this.importingImage,
+  });
   final ValueChanged<_MarkdownFormat> onFormat;
   final VoidCallback onInsertImage;
+  final bool importingImage;
 
   @override
   Widget build(BuildContext context) {
@@ -802,9 +851,15 @@ class _FormatBar extends StatelessWidget {
               _item(Icons.link_rounded, l10n.link, _MarkdownFormat.link),
               _item(Icons.code_rounded, l10n.code, _MarkdownFormat.code),
               GlassButtonGroupItem(
-                icon: const Icon(Icons.image_outlined),
+                icon: importingImage
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.image_outlined),
                 label: l10n.image,
                 onTap: onInsertImage,
+                enabled: !importingImage,
               ),
             ],
           ),

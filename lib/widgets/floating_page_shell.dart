@@ -81,9 +81,12 @@ class FloatingPageTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
+      // The status-bar inset belongs to the scrollable title rather than the
+      // page viewport. The initial title remains clear of system icons, while
+      // later content can scroll naturally behind the status bar.
+      padding: EdgeInsets.fromLTRB(
         22,
-        18,
+        MediaQuery.paddingOf(context).top + 18,
         FloatingPageShell.actionsReserve,
         12,
       ),

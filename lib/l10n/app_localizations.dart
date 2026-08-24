@@ -1262,6 +1262,18 @@ abstract class AppLocalizations {
   /// **'Image saved to {path}'**
   String imageSaved(String path);
 
+  /// No description provided for @imageImportSucceeded.
+  ///
+  /// In en, this message translates to:
+  /// **'Image imported'**
+  String get imageImportSucceeded;
+
+  /// No description provided for @imageImportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not import image'**
+  String get imageImportFailed;
+
   /// No description provided for @insertImageFailed.
   ///
   /// In en, this message translates to:

@@ -88,7 +88,7 @@ void main() {
     restored.dispose();
   });
 
-  test('Android 12 莫奈取色会成为有效主题种子色', () async {
+  test('莫奈取色默认关闭，用户开启后使用系统种子色', () async {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -110,6 +110,9 @@ void main() {
     await display.load();
 
     expect(display.dynamicColorSupported, isTrue);
+    expect(display.useDynamicColor, isFalse);
+    expect(display.effectiveSeedArgb, display.customSeedArgb);
+    display.setUseDynamicColor(true);
     expect(display.useDynamicColor, isTrue);
     expect(display.effectiveSeedArgb, 0xFF765A9B);
     display.dispose();

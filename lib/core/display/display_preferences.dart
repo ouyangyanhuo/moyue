@@ -54,7 +54,7 @@ class MoyueDisplayPreferences extends ChangeNotifier
   MoyueLocalePreference _localePreference = MoyueLocalePreference.system;
   MoyueFontFamily _appFontFamily = MoyueFontFamily.system;
   bool _dynamicColorSupported = false;
-  bool _useDynamicColor = true;
+  bool _useDynamicColor = false;
   int? _dynamicSeedArgb;
   int _customSeedArgb = 0xFF6D7967;
 
@@ -131,7 +131,7 @@ class MoyueDisplayPreferences extends ChangeNotifier
         MoyueFontFamily.system,
       );
       final useDynamicValue =
-          await preferences.getBool(_useDynamicColorKey) ?? true;
+          await preferences.getBool(_useDynamicColorKey) ?? false;
       final customSeedValue =
           await preferences.getInt(_customSeedArgbKey) ?? _customSeedArgb;
       final appearance = await SystemAppearanceService.load();

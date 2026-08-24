@@ -216,6 +216,8 @@
   "supportedImageTypes": "Only png, jpg, jpeg, gif, webp, and bmp images are supported",
   "imageSaved": "Image saved to {path}",
   "@imageSaved": {"placeholders": {"path": {"type": "String"}}},
+  "imageImportSucceeded": "Image imported",
+  "imageImportFailed": "Could not import image",
   "insertImageFailed": "Could not insert image: {error}",
   "@insertImageFailed": {"placeholders": {"error": {"type": "String"}}},
   "enterDraftTitle": "Enter a title first",

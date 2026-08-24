@@ -216,6 +216,8 @@
   "supportedImageTypes": "仅支持 png/jpg/jpeg/gif/webp/bmp 图片",
   "imageSaved": "图片已保存到 {path}",
   "@imageSaved": {"placeholders": {"path": {"type": "String"}}},
+  "imageImportSucceeded": "图片导入成功",
+  "imageImportFailed": "图片导入失败",
   "insertImageFailed": "插入图片失败：{error}",
   "@insertImageFailed": {"placeholders": {"error": {"type": "String"}}},
   "enterDraftTitle": "请先填写文稿标题",

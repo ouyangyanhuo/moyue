@@ -395,6 +395,7 @@ class _MoyueShellState extends State<MoyueShell> {
                 body: Material(
                   type: MaterialType.transparency,
                   child: SafeArea(
+                    top: false,
                     bottom: false,
                     child: IndexedStack(index: _selectedIndex, children: pages),
                   ),

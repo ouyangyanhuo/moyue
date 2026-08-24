@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:ui' show PointerDeviceKind;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -18,9 +20,12 @@ import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/models/library_folder.dart';
 import 'package:moyue_application/models/reading_document.dart';
+import 'package:moyue_application/services/system_share_service.dart';
 import 'package:moyue_application/widgets/scrolling_title.dart';
 import 'package:moyue_application/widgets/floating_document_header.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
+import 'package:share_plus/share_plus.dart'
+    show ShareParams, ShareResult, ShareResultStatus;
 
 void main() {
   test('编辑器可恢复路由会保留文档逻辑路径', () {
@@ -116,22 +121,44 @@ void main() {
     }
   });
 
+  testWidgets('首页滚动视口延伸到状态栏，初始标题仍避让系统图标', (tester) async {
+    tester.view.physicalSize = const Size(430, 932);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: 32);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPadding);
+
+    await tester.pumpWidget(const MoyueApp());
+    await _pumpIo(tester);
+
+    await tester.tapAt(tester.getCenter(find.byIcon(Icons.tune_outlined).last));
+    await tester.pump(const Duration(milliseconds: 500));
+    final scroll = find.byKey(const PageStorageKey('settings-scroll'));
+    final title = find.descendant(of: scroll, matching: find.text('Settings'));
+    expect(tester.getTopLeft(scroll).dy, 0);
+    expect(tester.getTopLeft(title).dy, greaterThanOrEqualTo(32));
+
+    await tester.drag(scroll, const Offset(0, -160));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(title).dy, lessThan(32));
+  });
+
   testWidgets('首页 Dock 边缘渐变会随系统亮暗模式切换', (tester) async {
     tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
-    addTearDown(
-      tester.platformDispatcher.clearPlatformBrightnessTestValue,
-    );
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
     await tester.pumpWidget(const MoyueApp());
     await _pumpIo(tester);
 
     LinearGradient gradient() =>
         (tester
-                    .widget<DecoratedBox>(
-                      find.byKey(const ValueKey('home-dock-edge-fade')),
-                    )
-                    .decoration
-                as BoxDecoration)
-            .gradient! as LinearGradient;
+                        .widget<DecoratedBox>(
+                          find.byKey(const ValueKey('home-dock-edge-fade')),
+                        )
+                        .decoration
+                    as BoxDecoration)
+                .gradient!
+            as LinearGradient;
     expect(
       ThemeData.estimateBrightnessForColor(gradient().colors.last),
       Brightness.dark,
@@ -341,6 +368,16 @@ void main() {
     );
     expect(formatBar.quality, GlassQuality.premium);
     expect(formatBar.useOwnLayer, isTrue);
+
+    // 格式工具只应操作正文，编辑标题时立即隐藏。
+    await tester.tap(find.byType(TextField).first);
+    await tester.pump();
+    expect(find.byIcon(Icons.format_bold_rounded), findsNothing);
+    await tester.tap(find.byType(TextField).last);
+    await tester.pump(const Duration(milliseconds: 240));
+    await tester.pump();
+    expect(find.byIcon(Icons.format_bold_rounded), findsOneWidget);
+
     final bodyField = tester.widget<TextField>(find.byType(TextField).last);
     expect(bodyField.scrollController, isNotNull);
     expect(
@@ -373,6 +410,80 @@ void main() {
       tester.getSize(find.byKey(const ValueKey('edit'))).height,
       canvasHeight,
     );
+  });
+
+  testWidgets('编辑工具栏按正文选区排版并保持输入焦点', (tester) async {
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetViewInsets);
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: const MaterialApp(home: MarkdownEditorPage()),
+      ),
+    );
+    await tester.pump();
+
+    final bodyFinder = find.byType(TextField).last;
+    await tester.tap(bodyFinder);
+    await tester.enterText(bodyFinder, '正文');
+    final body = tester.widget<TextField>(bodyFinder);
+    body.controller!.selection = const TextSelection(
+      baseOffset: 0,
+      extentOffset: 2,
+    );
+    await tester.pump(const Duration(milliseconds: 260));
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.format_bold_rounded));
+    await tester.pump();
+    expect(body.controller!.text, '**正文**');
+    expect(
+      body.controller!.selection,
+      const TextSelection(baseOffset: 2, extentOffset: 4),
+    );
+    expect(body.focusNode!.hasFocus, isTrue);
+  });
+
+  testWidgets('编辑器图片导入失败使用小型通用提示且不泄露错误', (tester) async {
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetViewInsets);
+    final originalPicker = FilePickerPlatform.instance;
+    FilePickerPlatform.instance = _ThrowingFilePicker();
+    addTearDown(() => FilePickerPlatform.instance = originalPicker);
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    final document = ReadingDocument(
+      id: 'editor-image-failure',
+      title: '插图测试.md',
+      content: '正文',
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026),
+      folderId: 'folder',
+      relativePath: 'markdown/folder/editor-image-failure.md',
+    );
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: MaterialApp(home: MarkdownEditorPage(document: document)),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byType(TextField).last);
+    await tester.pump(const Duration(milliseconds: 260));
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.image_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.text('图片导入失败'), findsOneWidget);
+    expect(find.textContaining('private/storage/path'), findsNothing);
+    final messageRect = tester.getRect(
+      find.byKey(const ValueKey('moyue-message-content')),
+    );
+    expect(messageRect.width, lessThanOrEqualTo(280));
+    expect(messageRect.height, lessThan(48));
   });
 
   testWidgets('新建菜单提供指定选项及导入格式说明', (tester) async {
@@ -1075,6 +1186,37 @@ void main() {
     }
   });
 
+  testWidgets('阅读器无目录提示点击消息以外的区域关闭', (tester) async {
+    final document = ReadingDocument(
+      id: 'no-headings',
+      title: '无目录测试',
+      content: '只有正文，没有任何标题。',
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026),
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: ReaderDetailPage(document: document)),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('目录'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前文档没有标题目录'), findsOneWidget);
+    final messageRect = tester.getRect(
+      find.byKey(const ValueKey('moyue-message-content')),
+    );
+    expect(messageRect.width, lessThanOrEqualTo(280));
+    expect(messageRect.height, lessThan(48));
+
+    await tester.tap(find.byKey(const ValueKey('moyue-message-content')));
+    await tester.pump();
+    expect(find.text('当前文档没有标题目录'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('moyue-message-outside-area')));
+    await tester.pumpAndSettle();
+    expect(find.text('当前文档没有标题目录'), findsNothing);
+  });
+
   testWidgets('Markdown 分享会先询问文件、文字或图片', (tester) async {
     final document = ReadingDocument(
       id: 'share-doc',
@@ -1095,6 +1237,47 @@ void main() {
     expect(find.text('分享为纯文字'), findsOneWidget);
     expect(find.text('分享整篇排版图片'), findsOneWidget);
     expect(find.bySemanticsLabel('分享文档'), findsNothing);
+  });
+
+  testWidgets('Markdown 整页图片在完成绘制后再调用系统分享', (tester) async {
+    ShareParams? sharedParams;
+    final shared = Completer<void>();
+    SystemShareService.debugShareOverride = (params) async {
+      sharedParams = params;
+      if (!shared.isCompleted) shared.complete();
+      return const ShareResult('moyue-test-share', ShareResultStatus.success);
+    };
+    addTearDown(() => SystemShareService.debugShareOverride = null);
+    final document = ReadingDocument(
+      id: 'share-image-doc',
+      title: '整页图片.md',
+      content: '# 整页图片\n\n${List.filled(24, '这是用于验证长文档完整绘制的段落。').join('\n\n')}',
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026),
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: ReaderDetailPage(document: document)),
+    );
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('分享文档'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('分享整篇排版图片'));
+    await tester.pumpAndSettle();
+    for (var attempt = 0; attempt < 30 && !shared.isCompleted; attempt++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+    }
+
+    expect(find.textContaining('分享文档失败'), findsNothing);
+    expect(sharedParams, isNotNull);
+    expect(sharedParams?.fileNameOverrides, <String>['整页图片.png']);
+    expect(sharedParams?.files?.single.mimeType, 'image/png');
+    final imageBytes = await sharedParams!.files!.single.readAsBytes();
+    expect(imageBytes.take(8), <int>[137, 80, 78, 71, 13, 10, 26, 10]);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('设置页墨模式开关保持禁用', (tester) async {
@@ -1118,6 +1301,14 @@ void main() {
     expect(
       tester.getSize(find.byKey(const ValueKey('墨模式-switch-touch-area'))),
       const Size(104, 56),
+    );
+    final switchTouchRect = tester.getRect(
+      find.byKey(const ValueKey('墨模式-switch-touch-area')),
+    );
+    final visibleSwitchRect = tester.getRect(find.byType(GlassSwitch).first);
+    expect(
+      (switchTouchRect.right - visibleSwitchRect.right).abs(),
+      lessThanOrEqualTo(0.5),
     );
     expect(
       tester
@@ -1215,7 +1406,10 @@ void main() {
     final wheel = find.byKey(const ValueKey('custom-color-wheel'));
     expect(wheel, findsOneWidget);
     expect(
-      find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)),
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
       findsNothing,
     );
     expect(
@@ -1262,6 +1456,40 @@ void main() {
       ),
       findsWidgets,
     );
+  });
+
+  testWidgets('清空缓存结果在没有 Material Scaffold 时仍可显示', (tester) async {
+    const systemChannel = MethodChannel('com.moyue.application/system');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(systemChannel, (call) async {
+      expect(call.method, 'clearCache');
+      return true;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(systemChannel, null));
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: const MaterialApp(home: SettingsPage()),
+      ),
+    );
+
+    await _scrollSettingsUntilVisible(tester, find.text('清空缓存'));
+    await tester.tap(find.text('清空缓存'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(FilledButton, '清空缓存'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('缓存已清空'), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle_outline_rounded), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('设置页文字详情与主页滑杆使用独立触控区', (tester) async {
@@ -1375,4 +1603,20 @@ Future<void> _scrollSettingsUntilVisible(
         .first,
   );
   await tester.pumpAndSettle();
+}
+
+class _ThrowingFilePicker extends FilePickerPlatform {
+  @override
+  Future<PlatformFile?> pickFile({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) => throw StateError('private/storage/path/image.png');
 }

@@ -385,15 +385,10 @@ class SettingsPageState extends State<SettingsPage> {
     if (!confirmed || !mounted) return;
     final cleared = await AppStorageMaintenanceService.clearCache();
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            cleared ? l10n.cacheCleared : l10n.storageOperationFailed,
-          ),
-        ),
-      );
+    await _showStorageResult(
+      succeeded: cleared,
+      message: cleared ? l10n.cacheCleared : l10n.storageOperationFailed,
+    );
   }
 
   Future<void> _clearApplicationData() async {
@@ -406,10 +401,36 @@ class SettingsPageState extends State<SettingsPage> {
     if (!confirmed || !mounted) return;
     final started = await AppStorageMaintenanceService.clearApplicationData();
     if (!started && mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(l10n.storageOperationFailed)));
+      await _showStorageResult(
+        succeeded: false,
+        message: l10n.storageOperationFailed,
+      );
     }
   }
+
+  Future<void> _showStorageResult({
+    required bool succeeded,
+    required String message,
+  }) => showDialog<void>(
+    context: context,
+    builder: (dialogContext) {
+      final colors = Theme.of(dialogContext).colorScheme;
+      return AlertDialog(
+        icon: Icon(
+          succeeded ? Icons.check_circle_outline_rounded : Icons.error_outline,
+          color: succeeded ? colors.primary : colors.error,
+        ),
+        content: Text(message, textAlign: TextAlign.center),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(dialogContext.l10n.gotIt),
+          ),
+        ],
+      );
+    },
+  );
 
   String _themePreferenceLabel(
     BuildContext context,
@@ -1753,7 +1774,10 @@ class _GlassSwitchControl extends StatelessWidget {
         child: Opacity(
           opacity: onChanged == null ? 0.45 : 1,
           child: Stack(
-            alignment: Alignment.center,
+            // Keep the 104×56 hit target while placing the visible control
+            // against its right edge. Previously centering it left a large
+            // invisible margin on the right and made every switch look inset.
+            alignment: Alignment.centerRight,
             children: [
               Positioned.fill(
                 child: GestureDetector(

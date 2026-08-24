@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/document_package_service.dart';
@@ -8,6 +8,9 @@ import 'package:share_plus/share_plus.dart';
 
 class SystemShareService {
   const SystemShareService._();
+
+  @visibleForTesting
+  static Future<ShareResult> Function(ShareParams params)? debugShareOverride;
 
   static Future<ShareResult> shareDocument(
     BuildContext context,
@@ -58,7 +61,7 @@ class SystemShareService {
       ));
     }
     if (files.isEmpty) throw StateError('没有可分享的项目');
-    return SharePlus.instance.share(
+    return _share(
       ShareParams(
         files: [
           for (final file in files)
@@ -84,7 +87,7 @@ class SystemShareService {
     BuildContext context, {
     required String text,
     required String subject,
-  }) => SharePlus.instance.share(
+  }) => _share(
     ShareParams(
       text: text,
       subject: subject,
@@ -115,7 +118,7 @@ class SystemShareService {
     required String fileName,
     required String mimeType,
   }) {
-    return SharePlus.instance.share(
+    return _share(
       ShareParams(
         files: [XFile.fromData(bytes, mimeType: mimeType)],
         fileNameOverrides: [fileName],
@@ -128,6 +131,13 @@ class SystemShareService {
     final box = context.findRenderObject();
     if (box is! RenderBox || !box.hasSize) return null;
     return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  static Future<ShareResult> _share(ShareParams params) {
+    final override = debugShareOverride;
+    return override == null
+        ? SharePlus.instance.share(params)
+        : override(params);
   }
 
   static String _safeName(String value, {required String fallback}) {

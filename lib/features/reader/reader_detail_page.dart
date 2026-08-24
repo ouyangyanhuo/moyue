@@ -21,6 +21,7 @@ import 'package:moyue_application/widgets/floating_document_header.dart';
 import 'package:moyue_application/widgets/image_lightbox.dart';
 import 'package:moyue_application/widgets/moyue_action_menu.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
+import 'package:moyue_application/widgets/moyue_transient_message.dart';
 import 'package:moyue_application/widgets/stable_reader_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -51,6 +52,8 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
       GlobalKey<WebViewHtmlViewState>();
   final Map<int, GlobalKey> _markdownHeadingKeys = {};
   bool _readerMenuVisible = false;
+  String? _readerMessage;
+  Timer? _readerMessageTimer;
 
   @override
   void initState() {
@@ -62,6 +65,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
   @override
   void dispose() {
     MoyueStorageService.instance.removeListener(_reloadDocument);
+    _readerMessageTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -164,6 +168,13 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                   onShare: _shareDocument,
                 ),
               ),
+            Positioned.fill(
+              child: MoyueTransientMessageOverlay(
+                message: _readerMessage,
+                bottomInset: MediaQuery.paddingOf(context).bottom + 88,
+                onDismiss: _dismissMessage,
+              ),
+            ),
           ],
         ),
       ),
@@ -396,15 +407,11 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
     );
     final deviceRatio = MediaQuery.devicePixelRatioOf(context).clamp(1.0, 2.5);
     final loadedImages = await _loadMarkdownShareImages();
-    if (!mounted) throw StateError(errorMessage);
-    for (final bytes in loadedImages.values) {
-      if (!mounted) throw StateError(errorMessage);
-      try {
-        await precacheImage(MemoryImage(bytes), context);
-      } on Object {
-        // A broken image is represented by the same stable placeholder used
-        // by the reader; the rest of the document can still be shared.
+    if (!mounted) {
+      for (final image in loadedImages.values) {
+        image.dispose();
       }
+      throw StateError(errorMessage);
     }
 
     late final OverlayEntry entry;
@@ -412,10 +419,10 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
       builder: (overlayContext) => Positioned.fill(
         child: IgnorePointer(
           child: Opacity(
-            // The RepaintBoundary retains its full unmodified pixels; this
-            // tiny ancestor opacity keeps the temporary full-document layout
-            // invisible while it receives real Theme/MediaQuery constraints.
-            opacity: 0.001,
+            // RenderOpacity quantizes alpha to 8 bits. Keep it just above the
+            // zero-alpha paint cutoff so the temporary boundary is genuinely
+            // painted while remaining visually imperceptible.
+            opacity: 1 / 255,
             child: SingleChildScrollView(
               clipBehavior: Clip.none,
               child: Align(
@@ -446,12 +453,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
     rootOverlay.insert(entry);
     ui.Image? image;
     try {
-      await WidgetsBinding.instance.endOfFrame;
-      await WidgetsBinding.instance.endOfFrame;
-      final boundary = boundaryKey.currentContext?.findRenderObject();
-      if (boundary is! RenderRepaintBoundary || !boundary.hasSize) {
-        throw StateError(errorMessage);
-      }
+      final boundary = await _waitForPaintedBoundary(boundaryKey, errorMessage);
       final size = boundary.size;
       // Keep one complete image while respecting common GPU texture and
       // memory limits. Very long notes are proportionally downsampled rather
@@ -472,10 +474,39 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
     } finally {
       image?.dispose();
       entry.remove();
+      // Unmount the temporary canvas before disposing the static image frames
+      // referenced by RawImage widgets inside it.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        for (final loadedImage in loadedImages.values) {
+          loadedImage.dispose();
+        }
+      });
+      WidgetsBinding.instance.scheduleFrame();
     }
   }
 
-  Future<Map<String, Uint8List>> _loadMarkdownShareImages() async {
+  Future<RenderRepaintBoundary> _waitForPaintedBoundary(
+    GlobalKey boundaryKey,
+    String errorMessage,
+  ) async {
+    // Markdown layout and image decoding can each request an additional frame.
+    // Explicitly schedule fresh frames because awaiting endOfFrame twice can
+    // otherwise observe the same already-completed frame.
+    for (var attempt = 0; attempt < 8; attempt++) {
+      WidgetsBinding.instance.scheduleFrame();
+      await WidgetsBinding.instance.endOfFrame;
+      final renderObject = boundaryKey.currentContext?.findRenderObject();
+      if (renderObject is RenderRepaintBoundary &&
+          renderObject.hasSize &&
+          !renderObject.debugNeedsLayout &&
+          !renderObject.debugNeedsPaint) {
+        return renderObject;
+      }
+    }
+    throw StateError(errorMessage);
+  }
+
+  Future<Map<String, ui.Image>> _loadMarkdownShareImages() async {
     final sources = <String>{};
     final nodes = md.Document(extensionSet: md.ExtensionSet.gitHubWeb)
         .parseLines(_document.content.split('\n'));
@@ -493,21 +524,40 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
     for (final node in nodes) {
       collect(node);
     }
-    final result = <String, Uint8List>{};
-    await Future.wait([
-      for (final source in sources)
-        MoyueStorageService.instance.readLinkedResource(_document, source).then(
-          (bytes) {
-            if (bytes != null) result[source] = bytes;
-          },
-        ),
-    ]);
+    final result = <String, ui.Image>{};
+    for (final source in sources) {
+      final bytes = await MoyueStorageService.instance.readLinkedResource(
+        _document,
+        source,
+      );
+      if (bytes == null) continue;
+      ui.Codec? codec;
+      try {
+        // Freeze animated GIF/WebP images at their first frame. Otherwise the
+        // animation continuously dirties the RepaintBoundary during capture.
+        codec = await ui.instantiateImageCodec(bytes);
+        final frame = await codec.getNextFrame();
+        result[source] = frame.image;
+      } on Object {
+        // Broken images keep a stable placeholder in the shared layout.
+      } finally {
+        codec?.dispose();
+      }
+    }
     return result;
   }
 
   void _message(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    _readerMessageTimer?.cancel();
+    setState(() => _readerMessage = message);
+    _readerMessageTimer = Timer(const Duration(seconds: 4), _dismissMessage);
+  }
+
+  void _dismissMessage() {
+    _readerMessageTimer?.cancel();
+    _readerMessageTimer = null;
+    if (!mounted || _readerMessage == null) return;
+    setState(() => _readerMessage = null);
   }
 }
 
@@ -655,7 +705,7 @@ class _MarkdownShareCanvas extends StatelessWidget {
   const _MarkdownShareCanvas({required this.data, required this.images});
 
   final String data;
-  final Map<String, Uint8List> images;
+  final Map<String, ui.Image> images;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -665,8 +715,8 @@ class _MarkdownShareCanvas extends StatelessWidget {
       selectable: false,
       styleSheet: _markdownStyleSheet(context),
       imageBuilder: (uri, title, alt) {
-        final bytes = images[uri.toString()];
-        if (bytes == null) {
+        final image = images[uri.toString()];
+        if (image == null) {
           return Container(
             height: 120,
             alignment: Alignment.center,
@@ -679,11 +729,7 @@ class _MarkdownShareCanvas extends StatelessWidget {
         }
         return ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Image.memory(
-            bytes,
-            fit: BoxFit.contain,
-            gaplessPlayback: true,
-          ),
+          child: RawImage(image: image, fit: BoxFit.contain),
         );
       },
     ),

@@ -641,6 +641,12 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get imageImportSucceeded => '图片导入成功';
+
+  @override
+  String get imageImportFailed => '图片导入失败';
+
+  @override
   String insertImageFailed(String error) {
     return '插入图片失败：$error';
   }
