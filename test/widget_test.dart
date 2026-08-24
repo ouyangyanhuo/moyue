@@ -116,6 +116,36 @@ void main() {
     }
   });
 
+  testWidgets('首页 Dock 边缘渐变会随系统亮暗模式切换', (tester) async {
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    addTearDown(
+      tester.platformDispatcher.clearPlatformBrightnessTestValue,
+    );
+    await tester.pumpWidget(const MoyueApp());
+    await _pumpIo(tester);
+
+    LinearGradient gradient() =>
+        (tester
+                    .widget<DecoratedBox>(
+                      find.byKey(const ValueKey('home-dock-edge-fade')),
+                    )
+                    .decoration
+                as BoxDecoration)
+            .gradient! as LinearGradient;
+    expect(
+      ThemeData.estimateBrightnessForColor(gradient().colors.last),
+      Brightness.dark,
+    );
+
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
+    tester.platformDispatcher.onPlatformBrightnessChanged?.call();
+    await tester.pumpAndSettle();
+    expect(
+      ThemeData.estimateBrightnessForColor(gradient().colors.last),
+      Brightness.light,
+    );
+  });
+
   testWidgets('圆形搜索按钮可以展开并过滤文档', (tester) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
@@ -316,6 +346,11 @@ void main() {
     expect(
       (bodyField.decoration!.contentPadding! as EdgeInsets).bottom,
       greaterThan(300),
+    );
+    expect(
+      (bodyField.decoration!.contentPadding! as EdgeInsets).bottom,
+      lessThan(340),
+      reason: '正文只为键盘留白，不应再为浮动工具栏挖出遮挡区',
     );
     await tester.enterText(
       find.byType(TextField).last,
@@ -535,7 +570,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('删除'), findsOneWidget);
     expect(find.text('移动到…'), findsOneWidget);
-    expect(find.text('分享所选文档'), findsNothing);
+    expect(find.text('分享所选项目'), findsOneWidget);
   });
 
   testWidgets('子文件夹使用长按拖拽且载荷可同时保留文档与目录多选', (tester) async {
@@ -1058,7 +1093,7 @@ void main() {
     expect(find.text('分享 Markdown'), findsOneWidget);
     expect(find.text('分享 Markdown 文件'), findsOneWidget);
     expect(find.text('分享为纯文字'), findsOneWidget);
-    expect(find.text('分享当前阅读页图片'), findsOneWidget);
+    expect(find.text('分享整篇排版图片'), findsOneWidget);
     expect(find.bySemanticsLabel('分享文档'), findsNothing);
   });
 
@@ -1159,6 +1194,74 @@ void main() {
     );
     await tester.pump();
     expect(display.htmlWebViewEnabled, isTrue);
+  });
+
+  testWidgets('自定义应用颜色使用 HSV 调色轮而不是颜色代码输入', (tester) async {
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    final initial = display.customSeedArgb;
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: const MaterialApp(home: Scaffold(body: SettingsPage())),
+      ),
+    );
+
+    await tester.tap(find.text('应用配色'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('自定义颜色'));
+    await tester.pumpAndSettle();
+
+    final wheel = find.byKey(const ValueKey('custom-color-wheel'));
+    expect(wheel, findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('custom-color-value-slider')),
+      findsOneWidget,
+    );
+    final wheelRect = tester.getRect(wheel);
+    await tester.tapAt(wheelRect.centerRight - const Offset(8, 0));
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('应用')),
+    );
+    await tester.pumpAndSettle();
+    expect(display.customSeedArgb, isNot(initial));
+    expect(display.useDynamicColor, isFalse);
+  });
+
+  testWidgets('清空数据与缓存位于存储区且危险操作使用警告对话框', (tester) async {
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: const MaterialApp(home: Scaffold(body: SettingsPage())),
+      ),
+    );
+
+    await tester.scrollUntilVisible(
+      find.text('清空全部数据'),
+      280,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -180));
+    await tester.pumpAndSettle();
+    expect(find.text('清空缓存'), findsOneWidget);
+    await tester.tap(find.text('清空全部数据'));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+    expect(find.textContaining('不可撤销的危险操作'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('清空全部数据'),
+      ),
+      findsWidgets,
+    );
   });
 
   testWidgets('设置页文字详情与主页滑杆使用独立触控区', (tester) async {

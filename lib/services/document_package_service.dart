@@ -1536,13 +1536,52 @@ class DocumentPackageService {
   }
 
   Future<MoyueExport> exportMoyueFolder(String folderId) async {
+    return _exportMoyueFolder(folderId);
+  }
+
+  Future<MoyueExport> exportMoyueSubfolder(
+    String folderId,
+    String logicalPath,
+  ) async {
+    final normalized = _safeArchivePath(logicalPath.trim());
+    if (normalized == '.') throw const FormatException('子文件夹路径不能为空');
+    return _exportMoyueFolder(folderId, logicalRoot: normalized);
+  }
+
+  Future<MoyueExport> _exportMoyueFolder(
+    String folderId, {
+    String logicalRoot = '',
+  }) async {
     final db = await index;
     final folder = await db.folder(folderId);
     if (folder == null) throw StateError('找不到文档包');
-    final docs = await db.packageDocuments(folderId);
-    if (docs.isEmpty) throw StateError('空文件夹无法导出');
-    final resources = await db.packageResources(folderId);
     final base = folder['relative_path']! as String;
+    final allDocs = await db.packageDocuments(folderId);
+    final docs = logicalRoot.isEmpty
+        ? allDocs
+        : allDocs
+              .where((row) {
+                final path = _logicalPath(row, folderPath: base);
+                return p.posix.isWithin(logicalRoot, path);
+              })
+              .toList(growable: false);
+    if (docs.isEmpty) throw StateError('空文件夹无法导出');
+    final documentIds = {for (final row in docs) row['id']! as String};
+    final allResources = await db.packageResources(folderId);
+    final resources = logicalRoot.isEmpty
+        ? allResources
+        : allResources
+              .where((row) {
+                final documentId = row['document_id'] as String?;
+                if (documentId != null) return documentIds.contains(documentId);
+                final path = p.posix.relative(
+                  row['relative_path']! as String,
+                  from: base,
+                );
+                return path == logicalRoot ||
+                    p.posix.isWithin(logicalRoot, path);
+              })
+              .toList(growable: false);
     final archive = Archive();
     final documentMeta = <Map<String, Object?>>[];
     final resourceMeta = <Map<String, Object?>>[];
@@ -1550,6 +1589,9 @@ class DocumentPackageService {
     for (final row in docs) {
       final id = row['id']! as String;
       final logicalPath = _logicalPath(row, folderPath: base);
+      final exportedLogicalPath = logicalRoot.isEmpty
+          ? logicalPath
+          : p.posix.relative(logicalPath, from: logicalRoot);
       final archivePath = p.posix.join(
         'payload',
         'documents',
@@ -1564,7 +1606,7 @@ class DocumentPackageService {
       );
       documentMeta.add({
         'id': id,
-        'path': logicalPath,
+        'path': exportedLogicalPath,
         'archive_path': archivePath,
         'kind': row['kind'],
         'sha256': row['content_hash'],
@@ -1583,6 +1625,9 @@ class DocumentPackageService {
         );
       } else {
         logicalPath = p.posix.relative(relative, from: base);
+        if (logicalRoot.isNotEmpty) {
+          logicalPath = p.posix.relative(logicalPath, from: logicalRoot);
+        }
       }
       final archivePath = p.posix.join(
         'payload',
@@ -1652,9 +1697,11 @@ class DocumentPackageService {
     final meta = {
       'format': 'moyue',
       'format_version': 1,
-      'display_name': folder['name'],
-      'marker': folder['marker'],
-      'single': folder['single'] == 1,
+      'display_name': logicalRoot.isEmpty
+          ? folder['name']
+          : p.posix.basename(logicalRoot),
+      'marker': logicalRoot.isEmpty ? folder['marker'] : 'shared-subfolder',
+      'single': logicalRoot.isEmpty && folder['single'] == 1,
       'primary_document_id': primaryId,
       'primary_document': primaryMeta['archive_path'],
       'documents': documentMeta,
@@ -1667,7 +1714,8 @@ class DocumentPackageService {
       ),
     );
     return MoyueExport(
-      fileName: '${_safeFileName(folder['name']! as String)}.moyue',
+      fileName:
+          '${_safeFileName(logicalRoot.isEmpty ? folder['name']! as String : p.posix.basename(logicalRoot))}.moyue',
       bytes: ZipEncoder().encodeBytes(archive),
     );
   }

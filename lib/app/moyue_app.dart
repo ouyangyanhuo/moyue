@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -29,6 +30,7 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
   final MoyueDisplayPreferences _display = MoyueDisplayPreferences();
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   final _incomingFiles = IncomingFileService.instance;
+  final _dynamicColorKey = GlobalKey<DynamicColorBuilderState>();
   int _seenIncomingRevision = 0;
   Timer? _appearanceRefreshTimer;
 
@@ -78,115 +80,127 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       unawaited(DebugService.instance.refresh());
       unawaited(_display.load());
+      unawaited(_dynamicColorKey.currentState?.initPlatformState());
       // Wallpaper/theme overlays can be committed shortly after the activity
       // resumes. Re-read once after that window so a newly applied wallpaper
       // cannot leave the previous seed color cached in the running app.
       _appearanceRefreshTimer?.cancel();
       _appearanceRefreshTimer = Timer(const Duration(milliseconds: 900), () {
-        if (mounted) unawaited(_display.load());
+        if (!mounted) return;
+        unawaited(_display.load());
+        unawaited(_dynamicColorKey.currentState?.initPlatformState());
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return DisplayPreferencesScope(
-      controller: _display,
-      child: AnimatedBuilder(
-        animation: _display,
-        builder: (context, _) {
-          final seedColor = Color(_display.effectiveSeedArgb);
-          final themeMode = switch (_display.themePreference) {
-            MoyueThemePreference.system => ThemeMode.system,
-            MoyueThemePreference.light => ThemeMode.light,
-            MoyueThemePreference.dark => ThemeMode.dark,
-          };
-          return MaterialApp(
-            debugShowCheckedModeBanner: false,
-            scaffoldMessengerKey: _messengerKey,
-            onGenerateTitle: (context) => AppLocalizations.of(context).appName,
-            theme: buildMoyueTheme(
-              inkMode: _display.isInkMode,
-              brightness: Brightness.light,
-              seedColor: seedColor,
-              fontFamily: _display.appFontFamily,
-              reduceMotion: _display.reduceMotion,
-            ),
-            darkTheme: buildMoyueTheme(
-              inkMode: _display.isInkMode,
-              brightness: Brightness.dark,
-              seedColor: seedColor,
-              fontFamily: _display.appFontFamily,
-              reduceMotion: _display.reduceMotion,
-            ),
-            themeMode: themeMode,
-            locale: _display.locale,
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            restorationScopeId: 'moyue_app',
-            builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(
-                textScaler: TextScaler.linear(_display.appFontScale),
-                disableAnimations:
-                    MediaQuery.disableAnimationsOf(context) ||
-                    _display.reduceMotion,
-                accessibleNavigation:
-                    MediaQuery.accessibleNavigationOf(context) ||
-                    _display.reduceMotion,
+    return DynamicColorBuilder(
+      key: _dynamicColorKey,
+      builder: (lightDynamic, darkDynamic) => DisplayPreferencesScope(
+        controller: _display,
+        child: AnimatedBuilder(
+          animation: _display,
+          builder: (context, _) {
+            final seedColor = Color(_display.effectiveSeedArgb);
+            final useMonet = _display.useDynamicColor;
+            final themeMode = switch (_display.themePreference) {
+              MoyueThemePreference.system => ThemeMode.system,
+              MoyueThemePreference.light => ThemeMode.light,
+              MoyueThemePreference.dark => ThemeMode.dark,
+            };
+            return MaterialApp(
+              debugShowCheckedModeBanner: false,
+              scaffoldMessengerKey: _messengerKey,
+              onGenerateTitle: (context) =>
+                  AppLocalizations.of(context).appName,
+              theme: buildMoyueTheme(
+                inkMode: _display.isInkMode,
+                brightness: Brightness.light,
+                seedColor: seedColor,
+                fontFamily: _display.appFontFamily,
+                dynamicColorScheme: useMonet ? lightDynamic : null,
+                reduceMotion: _display.reduceMotion,
               ),
-              child: GlassTheme(
-                data: GlassThemeData(
-                  light: GlassThemeVariant.light.copyWith(
-                    settings: GlassThemeVariant.light.settings?.copyWith(
-                      glassColor: Colors.white.withValues(
-                        alpha: _display.glassOpacity,
-                      ),
-                      lightIntensity: 0.28,
-                      ambientStrength: 0,
-                      fresnelStrength: 0,
-                      edgeAbsorption: 0.06,
-                    ),
-                  ),
-                  dark: GlassThemeVariant.dark.copyWith(
-                    settings: GlassThemeVariant.dark.settings?.copyWith(
-                      glassColor: Colors.white.withValues(
-                        alpha: _display.glassOpacity,
-                      ),
-                      lightIntensity: 0.22,
-                      ambientStrength: 0,
-                      fresnelStrength: 0,
-                      edgeAbsorption: 0.09,
-                    ),
-                  ),
-                  interaction: const GlassInteractionSettings(stretch: 0.18),
+              darkTheme: buildMoyueTheme(
+                inkMode: _display.isInkMode,
+                brightness: Brightness.dark,
+                seedColor: seedColor,
+                fontFamily: _display.appFontFamily,
+                dynamicColorScheme: useMonet ? darkDynamic : null,
+                reduceMotion: _display.reduceMotion,
+              ),
+              themeMode: themeMode,
+              locale: _display.locale,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              restorationScopeId: 'moyue_app',
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(_display.appFontScale),
+                  disableAnimations:
+                      MediaQuery.disableAnimationsOf(context) ||
+                      _display.reduceMotion,
+                  accessibleNavigation:
+                      MediaQuery.accessibleNavigationOf(context) ||
+                      _display.reduceMotion,
                 ),
-                // 全局调试浮层挂在 Navigator 之上的最外层，
-                // 这样阅读页、文件夹页、编辑页等被推入的完整路由也能覆盖到。
-                child: Stack(
-                  children: [
-                    ?child,
-                    ListenableBuilder(
-                      listenable: DebugService.instance,
-                      builder: (context, _) {
-                        final debug = DebugService.instance;
-                        if (!debug.enabled || !debug.fpsBadgeVisible) {
-                          return const SizedBox.shrink();
-                        }
-                        // 右上角、页面操作按钮行之下，避免遮挡玻璃控件。
-                        return Positioned(
-                          top: MediaQuery.paddingOf(context).top + 58,
-                          right: 12,
-                          child: const IgnorePointer(child: DebugFpsOverlay()),
-                        );
-                      },
+                child: GlassTheme(
+                  data: GlassThemeData(
+                    light: GlassThemeVariant.light.copyWith(
+                      settings: GlassThemeVariant.light.settings?.copyWith(
+                        glassColor: Colors.white.withValues(
+                          alpha: _display.glassOpacity,
+                        ),
+                        lightIntensity: 0.28,
+                        ambientStrength: 0,
+                        fresnelStrength: 0,
+                        edgeAbsorption: 0.06,
+                      ),
                     ),
-                  ],
+                    dark: GlassThemeVariant.dark.copyWith(
+                      settings: GlassThemeVariant.dark.settings?.copyWith(
+                        glassColor: Colors.white.withValues(
+                          alpha: _display.glassOpacity,
+                        ),
+                        lightIntensity: 0.22,
+                        ambientStrength: 0,
+                        fresnelStrength: 0,
+                        edgeAbsorption: 0.09,
+                      ),
+                    ),
+                    interaction: const GlassInteractionSettings(stretch: 0.18),
+                  ),
+                  // 全局调试浮层挂在 Navigator 之上的最外层，
+                  // 这样阅读页、文件夹页、编辑页等被推入的完整路由也能覆盖到。
+                  child: Stack(
+                    children: [
+                      ?child,
+                      ListenableBuilder(
+                        listenable: DebugService.instance,
+                        builder: (context, _) {
+                          final debug = DebugService.instance;
+                          if (!debug.enabled || !debug.fpsBadgeVisible) {
+                            return const SizedBox.shrink();
+                          }
+                          // 右上角、页面操作按钮行之下，避免遮挡玻璃控件。
+                          return Positioned(
+                            top: MediaQuery.paddingOf(context).top + 58,
+                            right: 12,
+                            child: const IgnorePointer(
+                              child: DebugFpsOverlay(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            home: const MoyueShell(),
-          );
-        },
+              home: const MoyueShell(),
+            );
+          },
+        ),
       ),
     );
   }
@@ -307,6 +321,19 @@ class _MoyueShellState extends State<MoyueShell> {
                 // when a custom background widget is present. Supplying the
                 // active surface keeps the dock mask dark in night mode.
                 backgroundColor: theme.colorScheme.surface,
+                // The package's texture-capture fade can retain a light
+                // background frame across a runtime theme change. Moyue uses
+                // an explicit theme-aware overlay below the dock instead.
+                bottomEdgeFade: false,
+                bodyOverlays: [
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 132 + MediaQuery.paddingOf(context).bottom,
+                    child: const _MoyueDockEdgeFade(),
+                  ),
+                ],
                 statusBarStyle: theme.brightness == Brightness.dark
                     ? GlassStatusBarStyle.light
                     : GlassStatusBarStyle.dark,
@@ -414,5 +441,32 @@ class _MoyueShellState extends State<MoyueShell> {
     } else {
       _settingsKey.currentState?.showAbout();
     }
+  }
+}
+
+class _MoyueDockEdgeFade extends StatelessWidget {
+  const _MoyueDockEdgeFade();
+
+  @override
+  Widget build(BuildContext context) {
+    final surface = Theme.of(context).colorScheme.surface;
+    return IgnorePointer(
+      child: DecoratedBox(
+        key: const ValueKey('home-dock-edge-fade'),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              surface.withValues(alpha: 0),
+              surface.withValues(alpha: 0.12),
+              surface.withValues(alpha: 0.72),
+              surface,
+            ],
+            stops: const [0, 0.34, 0.72, 1],
+          ),
+        ),
+      ),
+    );
   }
 }

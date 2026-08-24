@@ -13,7 +13,7 @@ class MoyueBackdrop extends StatelessWidget {
     if (isInk) return const ColoredBox(color: MoyuePalette.eInkPaper);
 
     if (theme.brightness == Brightness.dark) {
-      final accent = Color(display.effectiveSeedArgb);
+      final accent = theme.colorScheme.primary;
       return DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -40,7 +40,7 @@ class MoyueBackdrop extends StatelessWidget {
       );
     }
 
-    final accent = Color(display.effectiveSeedArgb);
+    final accent = theme.colorScheme.primary;
     return DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(

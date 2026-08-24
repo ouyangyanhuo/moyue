@@ -1012,18 +1012,18 @@ class _FolderPageState extends State<_FolderPage> {
           label: context.l10n.moveTo,
           icon: Icons.drive_file_move_outline,
         ),
-        if (_selectedDirectories.isEmpty && selected.isNotEmpty) ...[
+        if (selected.isNotEmpty || _selectedDirectories.isNotEmpty)
           MoyueMenuAction(
             value: 'share',
-            label: context.l10n.shareSelectedDocuments,
+            label: context.l10n.shareSelectedItems,
             icon: Icons.ios_share_rounded,
           ),
+        if (_selectedDirectories.isEmpty && selected.isNotEmpty)
           MoyueMenuAction(
             value: 'share-folder',
             label: context.l10n.shareEntireFolder,
             icon: Icons.folder_zip_outlined,
           ),
-        ],
         MoyueMenuAction(
           value: 'delete',
           label: context.l10n.delete,
@@ -1036,7 +1036,10 @@ class _FolderPageState extends State<_FolderPage> {
     if (action == 'move') {
       await _chooseMoveDestination(selection);
     } else if (action == 'share') {
-      await _shareDocuments(selected);
+      await _shareSelectedFolderItems(
+        selected,
+        _selectedDirectories.toList(growable: false),
+      );
     } else if (action == 'share-folder') {
       await _shareCurrentFolder();
     } else if (action == 'delete') {
@@ -1077,9 +1080,39 @@ class _FolderPageState extends State<_FolderPage> {
     if (target != null && mounted) await _moveItems(selection, target);
   }
 
-  Future<void> _shareDocuments(List<ReadingDocument> documents) async {
+  Future<void> _shareSelectedFolderItems(
+    List<ReadingDocument> documents,
+    List<String> directories,
+  ) async {
     try {
-      await SystemShareService.shareSelection(context, documents: documents);
+      // A selected parent already contains every selected descendant. Export
+      // only the highest selected directories to avoid duplicate packages.
+      final topDirectories = directories
+          .where((path) {
+            return !directories.any(
+              (other) => other != path && path.startsWith('$other/'),
+            );
+          })
+          .toList(growable: false);
+      final standaloneDocuments = documents
+          .where((document) {
+            final path = document.logicalPath;
+            if (path == null) return true;
+            return !topDirectories.any(
+              (directory) => path.startsWith('$directory/'),
+            );
+          })
+          .toList(growable: false);
+      final exports = await Future.wait([
+        for (final directory in topDirectories)
+          MoyueStorageService.instance.exportSubfolder(_folder, directory),
+      ]);
+      if (!mounted) return;
+      await SystemShareService.shareSelection(
+        context,
+        documents: standaloneDocuments,
+        folders: exports,
+      );
     } on Object catch (error) {
       if (mounted) {
         await _showNotice(context, context.l10n.shareFailed, '$error');

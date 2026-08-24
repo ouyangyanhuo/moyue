@@ -174,6 +174,69 @@ void main() {
     );
   });
 
+  test('选中的逻辑子文件夹会单独导出完整 moyue 文档包', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'moyue-export-subfolder-',
+    );
+    final store = _IndexedMemoryStore(root);
+    final service = DocumentPackageService(store: store);
+    addTearDown(() async {
+      await service.close();
+      await root.delete(recursive: true);
+    });
+
+    await service.createFolder('整本书');
+    var folder = (await service.loadFolders()).single;
+    var first = await service.importIntoFolder(
+      folder: folder,
+      fileName: '第一章.md',
+      bytes: Uint8List.fromList(utf8.encode('# 第一章')),
+      logicalDirectory: '上卷',
+    );
+    await service.importIntoFolder(
+      folder: folder,
+      fileName: '第二章.html',
+      bytes: Uint8List.fromList(utf8.encode('<h1>第二章</h1>')),
+      logicalDirectory: '上卷/章节',
+    );
+    await service.importIntoFolder(
+      folder: folder,
+      fileName: '附录.md',
+      bytes: Uint8List.fromList(utf8.encode('# 附录')),
+      logicalDirectory: '附录',
+    );
+    final imageLink = await service.saveImageResource(
+      document: first,
+      fileName: '插图.png',
+      bytes: Uint8List.fromList([8, 6, 4, 2]),
+    );
+    first = await service.saveMarkdown(
+      title: first.title,
+      content: '# 第一章\n\n![]($imageLink)',
+      existing: first,
+    );
+    folder = (await service.loadFolders()).single;
+
+    final export = await service.exportMoyueSubfolder(folder.id, '上卷');
+    expect(export.fileName, '上卷.moyue');
+    final archive = ZipDecoder().decodeBytes(export.bytes);
+    final metaFile = archive.files.singleWhere(
+      (file) => file.name == 'meta.json',
+    );
+    final meta = jsonDecode(utf8.decode(metaFile.readBytes()!)) as Map;
+    expect(meta['display_name'], '上卷');
+    expect(meta['single'], isFalse);
+    final documents = (meta['documents'] as List).cast<Map>();
+    expect(documents.map((item) => item['path']).toSet(), {
+      '第一章.md',
+      '章节/第二章.html',
+    });
+    expect(documents.map((item) => item['path']), isNot(contains('附录/附录.md')));
+    final resources = (meta['resources'] as List).cast<Map>();
+    expect(resources, isNotEmpty);
+    expect(resources.any((item) => item['document_id'] == first.id), isTrue);
+  });
+
   test('v3 索引升级时为旧文档补齐逻辑路径', () async {
     final root = await Directory.systemTemp.createTemp('moyue-storage-v3-');
     final databasePath = p.join(root.path, 'index.db');

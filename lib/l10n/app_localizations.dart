@@ -1175,7 +1175,7 @@ abstract class AppLocalizations {
   /// No description provided for @chooseMarkdownShareFormat.
   ///
   /// In en, this message translates to:
-  /// **'Share the file, plain text, or an image of the current reading page'**
+  /// **'Share the file, plain text, or one image of the complete rendered document'**
   String get chooseMarkdownShareFormat;
 
   /// No description provided for @shareAsFile.
@@ -1193,7 +1193,7 @@ abstract class AppLocalizations {
   /// No description provided for @shareAsImage.
   ///
   /// In en, this message translates to:
-  /// **'Share current page as image'**
+  /// **'Share full rendered document as image'**
   String get shareAsImage;
 
   /// No description provided for @cannotCreateShareImage.
@@ -1381,6 +1381,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Image resource not found'**
   String get imageResourceMissing;
+
+  /// No description provided for @storageSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Storage'**
+  String get storageSection;
+
+  /// No description provided for @clearCache.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear cache'**
+  String get clearCache;
+
+  /// No description provided for @clearCacheSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Keeps documents, subscriptions, and settings'**
+  String get clearCacheSummary;
+
+  /// No description provided for @clearApplicationData.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear all data'**
+  String get clearApplicationData;
+
+  /// No description provided for @clearApplicationDataSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletes documents, subscriptions, and settings'**
+  String get clearApplicationDataSummary;
+
+  /// No description provided for @clearCacheQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear the cache?'**
+  String get clearCacheQuestion;
+
+  /// No description provided for @clearCacheWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This is a dangerous operation. Temporary imports and cached files will be deleted; documents, subscriptions, and settings will remain.'**
+  String get clearCacheWarning;
+
+  /// No description provided for @clearApplicationDataQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear all application data?'**
+  String get clearApplicationDataQuestion;
+
+  /// No description provided for @clearApplicationDataWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This dangerous operation cannot be undone. All documents, folders, RSS subscriptions, settings, and caches will be permanently deleted, and the app will close.'**
+  String get clearApplicationDataWarning;
+
+  /// No description provided for @cacheCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Cache cleared'**
+  String get cacheCleared;
+
+  /// No description provided for @storageOperationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The operation failed. Try again later.'**
+  String get storageOperationFailed;
 }
 
 class _AppLocalizationsDelegate

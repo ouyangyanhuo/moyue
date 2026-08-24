@@ -1,9 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/services/app_restart_service.dart';
+import 'package:moyue_application/services/app_storage_maintenance_service.dart';
 import 'package:moyue_application/services/app_version_service.dart';
 import 'package:moyue_application/services/debug_service.dart';
 import 'package:moyue_application/widgets/floating_page_shell.dart';
@@ -335,9 +338,77 @@ class SettingsPageState extends State<SettingsPage> {
     final selected = await showDialog<int>(
       context: context,
       builder: (context) =>
-          _ColorHexDialog(initialArgb: display.customSeedArgb),
+          _ColorWheelDialog(initialArgb: display.customSeedArgb),
     );
     if (selected != null) display.setCustomSeedArgb(selected);
+  }
+
+  Future<bool> _confirmDangerousAction({
+    required String title,
+    required String message,
+    required String actionLabel,
+  }) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          final colors = Theme.of(dialogContext).colorScheme;
+          return AlertDialog(
+            icon: Icon(Icons.warning_amber_rounded, color: colors.error),
+            title: Text(title, textAlign: TextAlign.center),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(dialogContext.l10n.cancel),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: colors.error,
+                  foregroundColor: colors.onError,
+                ),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(actionLabel),
+              ),
+            ],
+          );
+        },
+      ) ??
+      false;
+
+  Future<void> _clearCache() async {
+    final l10n = context.l10n;
+    final confirmed = await _confirmDangerousAction(
+      title: l10n.clearCacheQuestion,
+      message: l10n.clearCacheWarning,
+      actionLabel: l10n.clearCache,
+    );
+    if (!confirmed || !mounted) return;
+    final cleared = await AppStorageMaintenanceService.clearCache();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            cleared ? l10n.cacheCleared : l10n.storageOperationFailed,
+          ),
+        ),
+      );
+  }
+
+  Future<void> _clearApplicationData() async {
+    final l10n = context.l10n;
+    final confirmed = await _confirmDangerousAction(
+      title: l10n.clearApplicationDataQuestion,
+      message: l10n.clearApplicationDataWarning,
+      actionLabel: l10n.clearApplicationData,
+    );
+    if (!confirmed || !mounted) return;
+    final started = await AppStorageMaintenanceService.clearApplicationData();
+    if (!started && mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(l10n.storageOperationFailed)));
+    }
   }
 
   String _themePreferenceLabel(
@@ -416,10 +487,17 @@ class SettingsPageState extends State<SettingsPage> {
       l10n.debugSection,
       l10n.fpsDisplay,
     ].join(' ').toLowerCase();
+    final storageTerms = [
+      '存储缓存数据危险操作清空重置',
+      l10n.storageSection,
+      l10n.clearCache,
+      l10n.clearApplicationData,
+    ].join(' ').toLowerCase();
     final showDisplay = query.isEmpty || displayTerms.contains(query);
     final showGeneral = query.isEmpty || generalTerms.contains(query);
     final showReading = query.isEmpty || readingTerms.contains(query);
     final showDebug = query.isEmpty || debugTerms.contains(query);
+    final showStorage = query.isEmpty || storageTerms.contains(query);
     final debugVisible = debug.enabled && showDebug;
 
     // 标题随页面滚动正常收起；搜索按钮固定在视口之外的浮层里
@@ -600,6 +678,27 @@ class SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             ],
+            if (showStorage) ...[
+              SliverToBoxAdapter(child: SectionLabel(l10n.storageSection)),
+              SliverToBoxAdapter(
+                child: _SettingsCard(
+                  children: [
+                    _SettingSummaryTile(
+                      icon: Icons.cleaning_services_outlined,
+                      title: l10n.clearCache,
+                      status: l10n.clearCacheSummary,
+                      onTap: _clearCache,
+                    ),
+                    const Divider(indent: 56),
+                    _DangerSettingTile(
+                      title: l10n.clearApplicationData,
+                      status: l10n.clearApplicationDataSummary,
+                      onTap: _clearApplicationData,
+                    ),
+                  ],
+                ),
+              ),
+            ],
             if (debugVisible) ...[
               SliverToBoxAdapter(child: SectionLabel(l10n.debugSection)),
               SliverToBoxAdapter(
@@ -628,7 +727,11 @@ class SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             ],
-            if (!showDisplay && !showGeneral && !showReading && !debugVisible)
+            if (!showDisplay &&
+                !showGeneral &&
+                !showReading &&
+                !showStorage &&
+                !debugVisible)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(child: Text(l10n.noMatchingSettings)),
@@ -1208,68 +1311,174 @@ class _CustomColorButton extends StatelessWidget {
   );
 }
 
-class _ColorHexDialog extends StatefulWidget {
-  const _ColorHexDialog({required this.initialArgb});
+class _ColorWheelDialog extends StatefulWidget {
+  const _ColorWheelDialog({required this.initialArgb});
 
   final int initialArgb;
 
   @override
-  State<_ColorHexDialog> createState() => _ColorHexDialogState();
+  State<_ColorWheelDialog> createState() => _ColorWheelDialogState();
 }
 
-class _ColorHexDialogState extends State<_ColorHexDialog> {
-  late final TextEditingController _controller;
-  String? _error;
+class _ColorWheelDialogState extends State<_ColorWheelDialog> {
+  late HSVColor _color;
 
   @override
   void initState() {
     super.initState();
-    final rgb = (widget.initialArgb & 0xFFFFFF)
-        .toRadixString(16)
-        .padLeft(6, '0')
-        .toUpperCase();
-    _controller = TextEditingController(text: '#$rgb');
+    _color = HSVColor.fromColor(Color(widget.initialArgb));
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    var value = _controller.text.trim();
-    if (value.startsWith('#')) value = value.substring(1);
-    if (!RegExp(r'^[0-9a-fA-F]{6}$').hasMatch(value)) {
-      setState(() => _error = context.l10n.invalidHexColor);
-      return;
-    }
-    Navigator.pop(context, 0xFF000000 | int.parse(value, radix: 16));
+  void _updateWheel(Offset position, double size) {
+    final center = Offset(size / 2, size / 2);
+    final vector = position - center;
+    final radius = size / 2;
+    final saturation = (vector.distance / radius).clamp(0.0, 1.0);
+    final radians = math.atan2(vector.dy, vector.dx);
+    final hue = (radians * 180 / math.pi + 360) % 360;
+    setState(() => _color = _color.withHue(hue).withSaturation(saturation));
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: Text(context.l10n.customAppColor),
-    content: TextField(
-      controller: _controller,
-      autofocus: true,
-      textCapitalization: TextCapitalization.characters,
-      maxLength: 7,
-      decoration: InputDecoration(
-        labelText: context.l10n.hexColor,
-        hintText: '#6D7967',
-        errorText: _error,
+    content: SizedBox(
+      width: 292,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final size = math.min(constraints.maxWidth, 252.0);
+              return Semantics(
+                label: context.l10n.customAppColor,
+                value: _color.toColor().toARGB32().toRadixString(16),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (details) =>
+                      _updateWheel(details.localPosition, size),
+                  onPanStart: (details) =>
+                      _updateWheel(details.localPosition, size),
+                  onPanUpdate: (details) =>
+                      _updateWheel(details.localPosition, size),
+                  child: CustomPaint(
+                    key: const ValueKey('custom-color-wheel'),
+                    size: Size.square(size),
+                    painter: _HsvColorWheelPainter(_color),
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Icon(Icons.brightness_low_rounded, size: 20),
+              Expanded(
+                child: Slider(
+                  key: const ValueKey('custom-color-value-slider'),
+                  value: _color.value,
+                  min: 0.15,
+                  onChanged: (value) =>
+                      setState(() => _color = _color.withValue(value)),
+                ),
+              ),
+              const Icon(Icons.brightness_high_rounded, size: 20),
+            ],
+          ),
+          Container(
+            height: 32,
+            decoration: BoxDecoration(
+              color: _color.toColor(),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+          ),
+        ],
       ),
-      onSubmitted: (_) => _submit(),
     ),
     actions: [
       TextButton(
         onPressed: () => Navigator.pop(context),
         child: Text(context.l10n.cancel),
       ),
-      FilledButton(onPressed: _submit, child: Text(context.l10n.apply)),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _color.toColor().toARGB32()),
+        child: Text(context.l10n.apply),
+      ),
     ],
   );
+}
+
+class _HsvColorWheelPainter extends CustomPainter {
+  const _HsvColorWheelPainter(this.color);
+
+  final HSVColor color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = size.shortestSide / 2;
+    final bounds = Rect.fromCircle(center: center, radius: radius);
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..shader = const SweepGradient(
+          colors: [
+            Color(0xFFFF0000),
+            Color(0xFFFFFF00),
+            Color(0xFF00FF00),
+            Color(0xFF00FFFF),
+            Color(0xFF0000FF),
+            Color(0xFFFF00FF),
+            Color(0xFFFF0000),
+          ],
+        ).createShader(bounds),
+    );
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..shader = const RadialGradient(
+          colors: [Colors.white, Color(0x00FFFFFF)],
+        ).createShader(bounds),
+    );
+    if (color.value < 1) {
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()..color = Colors.black.withValues(alpha: 1 - color.value),
+      );
+    }
+
+    final angle = color.hue * math.pi / 180;
+    final selector =
+        center +
+        Offset(math.cos(angle), math.sin(angle)) * radius * color.saturation;
+    canvas.drawCircle(
+      selector,
+      11,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..color = Colors.white,
+    );
+    canvas.drawCircle(
+      selector,
+      12.5,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..color = Colors.black.withValues(alpha: 0.42),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_HsvColorWheelPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _SettingSummaryTile extends StatelessWidget {
@@ -1307,6 +1516,46 @@ class _SettingSummaryTile extends StatelessWidget {
         ),
       ),
       trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+      onTap: onTap,
+    );
+  }
+}
+
+class _DangerSettingTile extends StatelessWidget {
+  const _DangerSettingTile({
+    required this.title,
+    required this.status,
+    required this.onTap,
+  });
+
+  final String title;
+  final String status;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final error = theme.colorScheme.error;
+    return ListTile(
+      key: ValueKey('$title-danger-setting'),
+      minTileHeight: 66,
+      leading: Icon(Icons.delete_forever_outlined, size: 21, color: error),
+      title: Text(
+        title,
+        style: theme.textTheme.titleSmall?.copyWith(
+          color: error,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      subtitle: Text(
+        status,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      trailing: Icon(Icons.chevron_right_rounded, size: 20, color: error),
       onTap: onTap,
     );
   }

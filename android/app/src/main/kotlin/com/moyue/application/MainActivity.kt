@@ -1,6 +1,7 @@
 package com.moyue.application
 
 import android.app.WallpaperManager
+import android.app.ActivityManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -113,6 +114,25 @@ class MainActivity : FlutterActivity() {
                         )
                     )
                 }
+                "clearCache" -> {
+                    incomingFilesExecutor.execute {
+                        val cleared = listOfNotNull(
+                            cacheDir,
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) codeCacheDir else null,
+                            externalCacheDir
+                        ).distinctBy { it.absolutePath }.all(::deleteDirectoryContents)
+                        runOnUiThread { result.success(cleared) }
+                    }
+                }
+                "clearApplicationData" -> {
+                    // Return to Dart first so the confirmation sheet can close.
+                    // Android terminates this process as part of clearing data.
+                    result.success(true)
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        (getSystemService(ACTIVITY_SERVICE) as ActivityManager)
+                            .clearApplicationUserData()
+                    }, 220)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -144,6 +164,13 @@ class MainActivity : FlutterActivity() {
             return null
         }
         return color.toLong() and 0xFFFFFFFFL
+    }
+
+    private fun deleteDirectoryContents(directory: File): Boolean {
+        if (!directory.exists()) return true
+        return directory.listFiles()?.all { child ->
+            if (child.isDirectory) child.deleteRecursively() else child.delete()
+        } ?: true
     }
 
     private fun captureIncomingIntent(intent: Intent?) {

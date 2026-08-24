@@ -150,6 +150,11 @@ class MoyueStorageService extends ChangeNotifier {
   Future<MoyueExport> exportFolder(LibraryFolder folder) =>
       _packages.exportMoyueFolder(folder.id);
 
+  Future<MoyueExport> exportSubfolder(
+    LibraryFolder rootFolder,
+    String logicalPath,
+  ) => _packages.exportMoyueSubfolder(rootFolder.id, logicalPath);
+
   Future<ReadingDocument> moveDocument({
     required ReadingDocument document,
     required LibraryFolder target,

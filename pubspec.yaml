@@ -29,6 +29,9 @@ dependencies:
 
   # 跟随系统明暗模式，并为后续的主题切换设置保留统一入口。
   adaptive_theme: 3.7.2
+  # 1.9 keeps the Flutter Material ColorScheme API. The 2.x line targets the
+  # separate material_ui scheme type and cannot be passed to ThemeData yet.
+  dynamic_color: 1.9.0
   liquid_glass_widgets: ^0.29.6
   file_picker: ^12.0.0
   flutter_markdown_plus: ^1.0.12

@@ -592,7 +592,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get shareMarkdown => '分享 Markdown';
 
   @override
-  String get chooseMarkdownShareFormat => '选择分享文件、纯文字或当前阅读页图片';
+  String get chooseMarkdownShareFormat => '选择分享文件、纯文字或整篇排版图片';
 
   @override
   String get shareAsFile => '分享 Markdown 文件';
@@ -601,7 +601,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get shareAsText => '分享为纯文字';
 
   @override
-  String get shareAsImage => '分享当前阅读页图片';
+  String get shareAsImage => '分享整篇排版图片';
 
   @override
   String get cannotCreateShareImage => '无法生成分享图片';
@@ -705,4 +705,38 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get imageResourceMissing => '图片资源不存在';
+
+  @override
+  String get storageSection => '存储';
+
+  @override
+  String get clearCache => '清空缓存';
+
+  @override
+  String get clearCacheSummary => '不影响文档、订阅和设置';
+
+  @override
+  String get clearApplicationData => '清空全部数据';
+
+  @override
+  String get clearApplicationDataSummary => '删除文档、订阅及全部设置';
+
+  @override
+  String get clearCacheQuestion => '确定清空缓存？';
+
+  @override
+  String get clearCacheWarning => '这是危险操作。临时导入文件及缓存会被删除，但文档、订阅和设置会保留。';
+
+  @override
+  String get clearApplicationDataQuestion => '确定清空全部数据？';
+
+  @override
+  String get clearApplicationDataWarning =>
+      '这是不可撤销的危险操作。所有文档、文件夹、RSS 订阅、设置和缓存都会被永久删除，应用随后会关闭。';
+
+  @override
+  String get cacheCleared => '缓存已清空';
+
+  @override
+  String get storageOperationFailed => '操作失败，请稍后重试';
 }

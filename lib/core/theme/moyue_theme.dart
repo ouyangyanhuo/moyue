@@ -26,6 +26,7 @@ ThemeData buildMoyueTheme({
   required Brightness brightness,
   required Color seedColor,
   required MoyueFontFamily fontFamily,
+  ColorScheme? dynamicColorScheme,
   bool reduceMotion = false,
 }) {
   final dark = brightness == Brightness.dark;
@@ -34,44 +35,48 @@ ThemeData buildMoyueTheme({
       : dark
       ? MoyuePalette.nightPaper
       : MoyuePalette.paper;
-  final scheme =
-      ColorScheme.fromSeed(
-        seedColor: inkMode ? const Color(0xFF3F423E) : seedColor,
-        brightness: brightness,
-        surface: surface,
-      ).copyWith(
-        primary: inkMode ? const Color(0xFF323531) : null,
-        onPrimary: inkMode ? Colors.white : null,
-        surface: surface,
-        onSurface: inkMode
-            ? MoyuePalette.eInk
-            : dark
-            ? MoyuePalette.nightInk
-            : MoyuePalette.ink,
-        surfaceContainer: inkMode
-            ? MoyuePalette.eInkSurface
-            : dark
-            ? MoyuePalette.nightSurface
-            : MoyuePalette.surface,
-        surfaceContainerHighest: inkMode
-            ? const Color(0xFFDADAD6)
-            : dark
-            ? MoyuePalette.nightSurfaceStrong
-            : MoyuePalette.paperStrong,
-        onSurfaceVariant: dark
-            ? MoyuePalette.nightMutedInk
-            : MoyuePalette.mutedInk,
-        outline: inkMode
-            ? const Color(0xFF8B8D88)
-            : dark
-            ? MoyuePalette.nightHairline
-            : MoyuePalette.hairline,
-        outlineVariant: inkMode
-            ? const Color(0xFFC4C5C1)
-            : dark
-            ? MoyuePalette.nightHairline
-            : MoyuePalette.hairline,
-      );
+  final generatedScheme =
+      !inkMode && dynamicColorScheme?.brightness == brightness
+      ? dynamicColorScheme!
+      : ColorScheme.fromSeed(
+          seedColor: inkMode ? const Color(0xFF3F423E) : seedColor,
+          brightness: brightness,
+          surface: surface,
+        );
+  // Monet supplies the complete Android tonal palette. Moyue only replaces
+  // the paper/surface roles that define the reader's eye-friendly canvas;
+  // primary, secondary, tertiary and their containers stay system-derived.
+  final scheme = generatedScheme.copyWith(
+    primary: inkMode ? const Color(0xFF323531) : null,
+    onPrimary: inkMode ? Colors.white : null,
+    surface: surface,
+    onSurface: inkMode
+        ? MoyuePalette.eInk
+        : dark
+        ? MoyuePalette.nightInk
+        : MoyuePalette.ink,
+    surfaceContainer: inkMode
+        ? MoyuePalette.eInkSurface
+        : dark
+        ? MoyuePalette.nightSurface
+        : MoyuePalette.surface,
+    surfaceContainerHighest: inkMode
+        ? const Color(0xFFDADAD6)
+        : dark
+        ? MoyuePalette.nightSurfaceStrong
+        : MoyuePalette.paperStrong,
+    onSurfaceVariant: dark ? MoyuePalette.nightMutedInk : MoyuePalette.mutedInk,
+    outline: inkMode
+        ? const Color(0xFF8B8D88)
+        : dark
+        ? MoyuePalette.nightHairline
+        : MoyuePalette.hairline,
+    outlineVariant: inkMode
+        ? const Color(0xFFC4C5C1)
+        : dark
+        ? MoyuePalette.nightHairline
+        : MoyuePalette.hairline,
+  );
   final selectedFontFamily = _fontFamilyName(fontFamily);
   final base = ThemeData(
     brightness: brightness,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -49,7 +50,6 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
   final GlobalKey<WebViewHtmlViewState> _webViewKey =
       GlobalKey<WebViewHtmlViewState>();
   final Map<int, GlobalKey> _markdownHeadingKeys = {};
-  final GlobalKey _markdownShareBoundaryKey = GlobalKey();
   bool _readerMenuVisible = false;
 
   @override
@@ -89,16 +89,13 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                 data: MediaQuery.of(context)
                     .copyWith(textScaler: TextScaler.linear(_textScale)),
                 child: _document.kind == DocumentKind.markdown
-                    ? RepaintBoundary(
-                        key: _markdownShareBoundaryKey,
-                        child: _MarkdownDocument(
-                          data: _document.content,
-                          document: _document,
-                          topInset: readerTopInset,
-                          controller: _scrollController,
-                          headingKeys: _markdownHeadingKeys,
-                          bottomInset: readerBottomInset,
-                        ),
+                    ? _MarkdownDocument(
+                        data: _document.content,
+                        document: _document,
+                        topInset: readerTopInset,
+                        controller: _scrollController,
+                        headingKeys: _markdownHeadingKeys,
+                        bottomInset: readerBottomInset,
                       )
                     : useWebView
                     ? WebViewHtmlView(
@@ -356,7 +353,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
           );
           return;
         case _MarkdownShareOption.image:
-          final bytes = await _captureMarkdownPage();
+          final bytes = await _captureEntireMarkdown();
           if (!mounted) return;
           await SystemShareService.shareMarkdownImage(
             context,
@@ -389,24 +386,123 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
     }
   }
 
-  Future<Uint8List> _captureMarkdownPage() async {
+  Future<Uint8List> _captureEntireMarkdown() async {
     final errorMessage = context.l10n.cannotCreateShareImage;
-    final deviceRatio = MediaQuery.devicePixelRatioOf(context);
-    await WidgetsBinding.instance.endOfFrame;
-    final boundary = _markdownShareBoundaryKey.currentContext
-        ?.findRenderObject();
-    if (boundary is! RenderRepaintBoundary || !boundary.hasSize) {
-      throw StateError(errorMessage);
+    final rootOverlay = Overlay.of(context, rootOverlay: true);
+    final boundaryKey = GlobalKey();
+    final captureWidth = (MediaQuery.sizeOf(context).width - 32).clamp(
+      320.0,
+      680.0,
+    );
+    final deviceRatio = MediaQuery.devicePixelRatioOf(context).clamp(1.0, 2.5);
+    final loadedImages = await _loadMarkdownShareImages();
+    if (!mounted) throw StateError(errorMessage);
+    for (final bytes in loadedImages.values) {
+      if (!mounted) throw StateError(errorMessage);
+      try {
+        await precacheImage(MemoryImage(bytes), context);
+      } on Object {
+        // A broken image is represented by the same stable placeholder used
+        // by the reader; the rest of the document can still be shared.
+      }
     }
-    final pixelRatio = deviceRatio.clamp(1.0, 2.5).toDouble();
-    final image = await boundary.toImage(pixelRatio: pixelRatio);
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (overlayContext) => Positioned.fill(
+        child: IgnorePointer(
+          child: Opacity(
+            // The RepaintBoundary retains its full unmodified pixels; this
+            // tiny ancestor opacity keeps the temporary full-document layout
+            // invisible while it receives real Theme/MediaQuery constraints.
+            opacity: 0.001,
+            child: SingleChildScrollView(
+              clipBehavior: Clip.none,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: RepaintBoundary(
+                  key: boundaryKey,
+                  child: MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(textScaler: TextScaler.linear(_textScale)),
+                    child: Material(
+                      color: Theme.of(context).colorScheme.surface,
+                      child: SizedBox(
+                        width: captureWidth,
+                        child: _MarkdownShareCanvas(
+                          data: _document.content,
+                          images: loadedImages,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    rootOverlay.insert(entry);
+    ui.Image? image;
     try {
+      await WidgetsBinding.instance.endOfFrame;
+      await WidgetsBinding.instance.endOfFrame;
+      final boundary = boundaryKey.currentContext?.findRenderObject();
+      if (boundary is! RenderRepaintBoundary || !boundary.hasSize) {
+        throw StateError(errorMessage);
+      }
+      final size = boundary.size;
+      // Keep one complete image while respecting common GPU texture and
+      // memory limits. Very long notes are proportionally downsampled rather
+      // than truncated to the visible viewport.
+      final dimensionRatio = 16000 / math.max(size.width, size.height);
+      final areaRatio = math.sqrt(
+        40000000 / math.max(1, size.width * size.height),
+      );
+      final pixelRatio = math.min(
+        deviceRatio,
+        math.min(dimensionRatio, areaRatio),
+      );
+      if (pixelRatio < 0.2) throw StateError(errorMessage);
+      image = await boundary.toImage(pixelRatio: pixelRatio);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       if (data == null) throw StateError(errorMessage);
       return data.buffer.asUint8List();
     } finally {
-      image.dispose();
+      image?.dispose();
+      entry.remove();
     }
+  }
+
+  Future<Map<String, Uint8List>> _loadMarkdownShareImages() async {
+    final sources = <String>{};
+    final nodes = md.Document(extensionSet: md.ExtensionSet.gitHubWeb)
+        .parseLines(_document.content.split('\n'));
+    void collect(md.Node node) {
+      if (node is! md.Element) return;
+      if (node.tag == 'img') {
+        final source = node.attributes['src'];
+        if (source != null && source.isNotEmpty) sources.add(source);
+      }
+      for (final child in node.children ?? const <md.Node>[]) {
+        collect(child);
+      }
+    }
+
+    for (final node in nodes) {
+      collect(node);
+    }
+    final result = <String, Uint8List>{};
+    await Future.wait([
+      for (final source in sources)
+        MoyueStorageService.instance.readLinkedResource(_document, source).then(
+          (bytes) {
+            if (bytes != null) result[source] = bytes;
+          },
+        ),
+    ]);
+    return result;
   }
 
   void _message(String message) {
@@ -521,8 +617,6 @@ class _MarkdownDocument extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final body = theme.textTheme.bodyLarge!;
     final headingAllocator = _MarkdownHeadingAllocator(headingKeys);
     return Markdown(
       data: data,
@@ -552,46 +646,87 @@ class _MarkdownDocument extends StatelessWidget {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
         }
       },
-      styleSheet: MarkdownStyleSheet(
-        p: body,
-        h1: theme.textTheme.headlineLarge?.copyWith(height: 1.35),
-        h2: theme.textTheme.headlineMedium?.copyWith(height: 1.4),
-        h3: theme.textTheme.titleLarge?.copyWith(height: 1.4),
-        h4: theme.textTheme.titleMedium,
-        blockquote: body.copyWith(color: theme.colorScheme.onSurfaceVariant),
-        blockquotePadding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
-        blockquoteDecoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(
-            alpha: 0.54,
-          ),
-          border: Border(
-            left: BorderSide(color: theme.colorScheme.primary, width: 3),
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        code: theme.textTheme.bodyMedium?.copyWith(
-          fontFamily: 'monospace',
-          backgroundColor: theme.colorScheme.surfaceContainerHighest,
-        ),
-        codeblockPadding: const EdgeInsets.all(16),
-        codeblockDecoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        listBullet: body.copyWith(color: theme.colorScheme.primary),
-        a: body.copyWith(
-          color: theme.colorScheme.primary,
-          decoration: TextDecoration.underline,
-        ),
-        horizontalRuleDecoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
-        ),
-      ),
+      styleSheet: _markdownStyleSheet(context),
     );
   }
+}
+
+class _MarkdownShareCanvas extends StatelessWidget {
+  const _MarkdownShareCanvas({required this.data, required this.images});
+
+  final String data;
+  final Map<String, Uint8List> images;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(32, 34, 32, 38),
+    child: MarkdownBody(
+      data: data,
+      selectable: false,
+      styleSheet: _markdownStyleSheet(context),
+      imageBuilder: (uri, title, alt) {
+        final bytes = images[uri.toString()];
+        if (bytes == null) {
+          return Container(
+            height: 120,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.broken_image_outlined),
+          );
+        }
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+          ),
+        );
+      },
+    ),
+  );
+}
+
+MarkdownStyleSheet _markdownStyleSheet(BuildContext context) {
+  final theme = Theme.of(context);
+  final body = theme.textTheme.bodyLarge!;
+  return MarkdownStyleSheet(
+    p: body,
+    h1: theme.textTheme.headlineLarge?.copyWith(height: 1.35),
+    h2: theme.textTheme.headlineMedium?.copyWith(height: 1.4),
+    h3: theme.textTheme.titleLarge?.copyWith(height: 1.4),
+    h4: theme.textTheme.titleMedium,
+    blockquote: body.copyWith(color: theme.colorScheme.onSurfaceVariant),
+    blockquotePadding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+    blockquoteDecoration: BoxDecoration(
+      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
+      border: Border(
+        left: BorderSide(color: theme.colorScheme.primary, width: 3),
+      ),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    code: theme.textTheme.bodyMedium?.copyWith(
+      fontFamily: 'monospace',
+      backgroundColor: theme.colorScheme.surfaceContainerHighest,
+    ),
+    codeblockPadding: const EdgeInsets.all(16),
+    codeblockDecoration: BoxDecoration(
+      color: theme.colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: theme.colorScheme.outlineVariant),
+    ),
+    listBullet: body.copyWith(color: theme.colorScheme.primary),
+    a: body.copyWith(
+      color: theme.colorScheme.primary,
+      decoration: TextDecoration.underline,
+    ),
+    horizontalRuleDecoration: BoxDecoration(
+      border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+    ),
+  );
 }
 
 class _MarkdownHeadingAllocator {

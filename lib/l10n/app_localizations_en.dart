@@ -617,7 +617,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chooseMarkdownShareFormat =>
-      'Share the file, plain text, or an image of the current reading page';
+      'Share the file, plain text, or one image of the complete rendered document';
 
   @override
   String get shareAsFile => 'Share Markdown file';
@@ -626,7 +626,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shareAsText => 'Share as plain text';
 
   @override
-  String get shareAsImage => 'Share current page as image';
+  String get shareAsImage => 'Share full rendered document as image';
 
   @override
   String get cannotCreateShareImage => 'Could not create the share image';
@@ -733,4 +733,41 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get imageResourceMissing => 'Image resource not found';
+
+  @override
+  String get storageSection => 'Storage';
+
+  @override
+  String get clearCache => 'Clear cache';
+
+  @override
+  String get clearCacheSummary =>
+      'Keeps documents, subscriptions, and settings';
+
+  @override
+  String get clearApplicationData => 'Clear all data';
+
+  @override
+  String get clearApplicationDataSummary =>
+      'Deletes documents, subscriptions, and settings';
+
+  @override
+  String get clearCacheQuestion => 'Clear the cache?';
+
+  @override
+  String get clearCacheWarning =>
+      'This is a dangerous operation. Temporary imports and cached files will be deleted; documents, subscriptions, and settings will remain.';
+
+  @override
+  String get clearApplicationDataQuestion => 'Clear all application data?';
+
+  @override
+  String get clearApplicationDataWarning =>
+      'This dangerous operation cannot be undone. All documents, folders, RSS subscriptions, settings, and caches will be permanently deleted, and the app will close.';
+
+  @override
+  String get cacheCleared => 'Cache cleared';
+
+  @override
+  String get storageOperationFailed => 'The operation failed. Try again later.';
 }

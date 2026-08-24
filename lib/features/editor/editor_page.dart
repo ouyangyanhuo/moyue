@@ -587,7 +587,11 @@ class _EditorCanvas extends StatelessWidget {
                       20,
                       16,
                       20,
-                      inset > 0 ? inset + 86 : 24,
+                      // The canvas remains full-height and the glass toolbar
+                      // floats over it. Reserve only the keyboard height here
+                      // so text can continue beneath the translucent toolbar;
+                      // scrollPadding above still keeps the caret reachable.
+                      inset > 0 ? inset + 20 : 24,
                     ),
                   ),
                 ),
