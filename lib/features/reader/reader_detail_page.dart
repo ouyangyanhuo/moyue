@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/features/editor/editor_page.dart';
 import 'package:moyue_application/features/reader/native_html_view.dart';
@@ -17,6 +20,7 @@ import 'package:moyue_application/widgets/floating_document_header.dart';
 import 'package:moyue_application/widgets/image_lightbox.dart';
 import 'package:moyue_application/widgets/moyue_action_menu.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
+import 'package:moyue_application/widgets/stable_reader_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ReaderDetailPage extends StatefulWidget {
@@ -45,6 +49,8 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
   final GlobalKey<WebViewHtmlViewState> _webViewKey =
       GlobalKey<WebViewHtmlViewState>();
   final Map<int, GlobalKey> _markdownHeadingKeys = {};
+  final GlobalKey _markdownShareBoundaryKey = GlobalKey();
+  bool _readerMenuVisible = false;
 
   @override
   void initState() {
@@ -83,13 +89,16 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                 data: MediaQuery.of(context)
                     .copyWith(textScaler: TextScaler.linear(_textScale)),
                 child: _document.kind == DocumentKind.markdown
-                    ? _MarkdownDocument(
-                        data: _document.content,
-                        document: _document,
-                        topInset: readerTopInset,
-                        controller: _scrollController,
-                        headingKeys: _markdownHeadingKeys,
-                        bottomInset: readerBottomInset,
+                    ? RepaintBoundary(
+                        key: _markdownShareBoundaryKey,
+                        child: _MarkdownDocument(
+                          data: _document.content,
+                          document: _document,
+                          topInset: readerTopInset,
+                          controller: _scrollController,
+                          headingKeys: _markdownHeadingKeys,
+                          bottomInset: readerBottomInset,
+                        ),
                       )
                     : useWebView
                     ? WebViewHtmlView(
@@ -132,7 +141,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                     title: _document.title,
                     onBack: () => Navigator.of(context).pop(),
                     actionIcon: Icons.edit_outlined,
-                    actionLabel: '编辑 Markdown',
+                    actionLabel: context.l10n.editMarkdown,
                     onAction: _document.kind == DocumentKind.markdown
                         ? _editDocument
                         : null,
@@ -140,23 +149,24 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                 ),
               ),
             ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: MediaQuery.paddingOf(context).bottom + 12,
-              height: 64,
-              child: _ReaderToolbar(
-                showTextControls: !useWebView,
-                onTableOfContents: _showTableOfContents,
-                onDecreaseText: () => setState(
-                  () => _textScale = (_textScale - 0.1).clamp(0.8, 1.4),
+            if (!_readerMenuVisible)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: MediaQuery.paddingOf(context).bottom + 12,
+                height: 64,
+                child: _ReaderToolbar(
+                  showTextControls: !useWebView,
+                  onTableOfContents: _showTableOfContents,
+                  onDecreaseText: () => setState(
+                    () => _textScale = (_textScale - 0.1).clamp(0.8, 1.4),
+                  ),
+                  onIncreaseText: () => setState(
+                    () => _textScale = (_textScale + 0.1).clamp(0.8, 1.4),
+                  ),
+                  onShare: _shareDocument,
                 ),
-                onIncreaseText: () => setState(
-                  () => _textScale = (_textScale + 0.1).clamp(0.8, 1.4),
-                ),
-                onShare: _shareDocument,
               ),
-            ),
           ],
         ),
       ),
@@ -240,13 +250,12 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
   Future<void> _showTableOfContents() async {
     final headings = _headings;
     if (headings.isEmpty) {
-      _message('当前文档没有标题目录');
+      _message(context.l10n.documentHasNoHeadings);
       return;
     }
-    final selected = await showMoyueActionMenu<_ReaderHeading>(
-      context: context,
-      title: '目录',
-      message: '选择标题以跳转',
+    final selected = await _showReaderActionMenu<_ReaderHeading>(
+      title: context.l10n.tableOfContents,
+      message: context.l10n.chooseHeadingToJump,
       actions: [
         for (final heading in headings)
           MoyueMenuAction(
@@ -263,6 +272,8 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
   }
 
   Future<void> _scrollToHeading(_ReaderHeading heading) async {
+    final reduceMotion =
+        DisplayPreferencesScope.maybeOf(context)?.reduceMotion ?? false;
     if (_document.kind == DocumentKind.html) {
       if ((DisplayPreferencesScope.maybeOf(context)?.htmlWebViewEnabled ??
               false) &&
@@ -277,9 +288,13 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
       final headingContext =
           _markdownHeadingKeys[heading.index]?.currentContext;
       if (headingContext != null) {
+        final duration = moyueMotionDuration(
+          context,
+          const Duration(milliseconds: 320),
+        );
         await Scrollable.ensureVisible(
           headingContext,
-          duration: const Duration(milliseconds: 320),
+          duration: duration,
           curve: Curves.easeOutCubic,
           alignment: 0.04,
         );
@@ -289,18 +304,108 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
     if (!_scrollController.hasClients) return;
     final length = _document.content.length;
     final ratio = length == 0 ? 0.0 : heading.offset / length;
-    await _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent * ratio,
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeOutCubic,
-    );
+    final offset = _scrollController.position.maxScrollExtent * ratio;
+    if (reduceMotion) {
+      _scrollController.jumpTo(offset);
+    } else {
+      await _scrollController.animateTo(
+        offset,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   Future<void> _shareDocument() async {
     try {
-      await SystemShareService.shareDocument(context, _document);
+      if (_document.kind == DocumentKind.html) {
+        await SystemShareService.shareDocument(context, _document);
+        return;
+      }
+      final option = await _showReaderActionMenu<_MarkdownShareOption>(
+        title: context.l10n.shareMarkdown,
+        message: context.l10n.chooseMarkdownShareFormat,
+        actions: [
+          MoyueMenuAction(
+            value: _MarkdownShareOption.file,
+            label: context.l10n.shareAsFile,
+            icon: Icons.description_outlined,
+          ),
+          MoyueMenuAction(
+            value: _MarkdownShareOption.text,
+            label: context.l10n.shareAsText,
+            icon: Icons.text_snippet_outlined,
+          ),
+          MoyueMenuAction(
+            value: _MarkdownShareOption.image,
+            label: context.l10n.shareAsImage,
+            icon: Icons.image_outlined,
+          ),
+        ],
+      );
+      if (option == null || !mounted) return;
+      switch (option) {
+        case _MarkdownShareOption.file:
+          await SystemShareService.shareDocument(context, _document);
+          return;
+        case _MarkdownShareOption.text:
+          await SystemShareService.shareText(
+            context,
+            text: _document.content,
+            subject: _document.title,
+          );
+          return;
+        case _MarkdownShareOption.image:
+          final bytes = await _captureMarkdownPage();
+          if (!mounted) return;
+          await SystemShareService.shareMarkdownImage(
+            context,
+            bytes: bytes,
+            title: _document.title,
+          );
+          return;
+      }
     } on Object catch (error) {
-      if (mounted) _message('分享失败：$error');
+      if (mounted) _message(context.l10n.shareDocumentFailed('$error'));
+    }
+  }
+
+  Future<T?> _showReaderActionMenu<T>({
+    required List<MoyueMenuAction<T>> actions,
+    String? title,
+    String? message,
+  }) async {
+    if (_readerMenuVisible) return null;
+    setState(() => _readerMenuVisible = true);
+    try {
+      return await showMoyueActionMenu<T>(
+        context: context,
+        title: title,
+        message: message,
+        actions: actions,
+      );
+    } finally {
+      if (mounted) setState(() => _readerMenuVisible = false);
+    }
+  }
+
+  Future<Uint8List> _captureMarkdownPage() async {
+    final errorMessage = context.l10n.cannotCreateShareImage;
+    final deviceRatio = MediaQuery.devicePixelRatioOf(context);
+    await WidgetsBinding.instance.endOfFrame;
+    final boundary = _markdownShareBoundaryKey.currentContext
+        ?.findRenderObject();
+    if (boundary is! RenderRepaintBoundary || !boundary.hasSize) {
+      throw StateError(errorMessage);
+    }
+    final pixelRatio = deviceRatio.clamp(1.0, 2.5).toDouble();
+    final image = await boundary.toImage(pixelRatio: pixelRatio);
+    try {
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (data == null) throw StateError(errorMessage);
+      return data.buffer.asUint8List();
+    } finally {
+      image.dispose();
     }
   }
 
@@ -324,6 +429,8 @@ class _ReaderHeading {
   final int offset;
 }
 
+enum _MarkdownShareOption { file, text, image }
+
 class _ReaderToolbar extends StatelessWidget {
   const _ReaderToolbar({
     required this.showTextControls,
@@ -340,43 +447,46 @@ class _ReaderToolbar extends StatelessWidget {
   final VoidCallback onShare;
 
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _button(
-          context,
-          icon: Icons.format_list_bulleted_rounded,
-          label: '目录',
-          onPressed: onTableOfContents,
-        ),
-        if (showTextControls) ...[
-          const SizedBox(width: 8),
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
           _button(
             context,
-            icon: Icons.text_decrease_rounded,
-            label: '缩小字体',
-            onPressed: onDecreaseText,
+            icon: Icons.format_list_bulleted_rounded,
+            label: l10n.tableOfContents,
+            onPressed: onTableOfContents,
           ),
+          if (showTextControls) ...[
+            const SizedBox(width: 8),
+            _button(
+              context,
+              icon: Icons.text_decrease_rounded,
+              label: l10n.decreaseFontSize,
+              onPressed: onDecreaseText,
+            ),
+            const SizedBox(width: 8),
+            _button(
+              context,
+              icon: Icons.text_increase_rounded,
+              label: l10n.increaseFontSize,
+              onPressed: onIncreaseText,
+            ),
+          ],
           const SizedBox(width: 8),
           _button(
             context,
-            icon: Icons.text_increase_rounded,
-            label: '放大字体',
-            onPressed: onIncreaseText,
+            icon: Icons.ios_share_rounded,
+            label: l10n.shareDocument,
+            onPressed: onShare,
           ),
         ],
-        const SizedBox(width: 8),
-        _button(
-          context,
-          icon: Icons.ios_share_rounded,
-          label: '分享文档',
-          onPressed: onShare,
-        ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 
   Widget _button(
     BuildContext context, {
@@ -423,27 +533,18 @@ class _MarkdownDocument extends StatelessWidget {
         for (final tag in const ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
           tag: _MarkdownHeadingBuilder(headingAllocator),
       },
-      imageBuilder: (uri, title, alt) => FutureBuilder<Uint8List?>(
-        future: MoyueStorageService.instance.readLinkedResource(
-          document,
-          uri.toString(),
+      imageBuilder: (uri, title, alt) => ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: StableReaderImage(
+          cacheKey: '${document.id}:${uri.toString()}',
+          loader: () => MoyueStorageService.instance.readLinkedResource(
+            document,
+            uri.toString(),
+          ),
+          fit: BoxFit.contain,
+          semanticLabel: alt,
+          onTap: (bytes) => unawaited(ImageLightbox.show(context, bytes)),
         ),
-        builder: (context, snapshot) {
-          final bytes = snapshot.data;
-          if (bytes == null) {
-            return const SizedBox(
-              height: 80,
-              child: Center(child: Icon(Icons.broken_image_outlined)),
-            );
-          }
-          return GestureDetector(
-            onTap: () => unawaited(ImageLightbox.show(context, bytes)),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.memory(bytes, fit: BoxFit.contain),
-            ),
-          );
-        },
       ),
       onTapLink: (_, href, _) async {
         final uri = href == null ? null : Uri.tryParse(href);

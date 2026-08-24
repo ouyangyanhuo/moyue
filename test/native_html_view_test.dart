@@ -183,6 +183,8 @@ void main() {
         contains('data:image/jpeg;base64,'),
         contains('padding-top: 96.0px'),
         contains('padding-bottom: 92.0px'),
+        contains('scrollbar-width: none'),
+        contains('::-webkit-scrollbar'),
       ),
     );
   });

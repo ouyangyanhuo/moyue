@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/services/app_restart_service.dart';
 import 'package:moyue_application/services/app_version_service.dart';
 import 'package:moyue_application/services/debug_service.dart';
@@ -19,8 +20,20 @@ class SettingsPage extends StatefulWidget {
 
 class SettingsPageState extends State<SettingsPage> {
   static const _fontScales = <double>[0.85, 0.95, 1.0, 1.1, 1.2, 1.3, 1.4];
+  static const _customColors = <int>[
+    0xFF6D7967,
+    0xFF5B6F8F,
+    0xFF7B5F87,
+    0xFF9A624B,
+    0xFF3E7D73,
+  ];
   String _query = '';
   final _searchKey = GlobalKey<ExpandableGlassSearchState>();
+
+  AnimationStyle? get _sheetAnimationStyle =>
+      DisplayPreferencesScope.maybeOf(context)?.reduceMotion ?? false
+      ? AnimationStyle.noAnimation
+      : null;
 
   void openSearch() => _searchKey.currentState?.open();
 
@@ -30,6 +43,7 @@ class SettingsPageState extends State<SettingsPage> {
       context: context,
       showDragHandle: true,
       useSafeArea: true,
+      sheetAnimationStyle: _sheetAnimationStyle,
       builder: (sheetContext) => _AboutSheet(version: version),
     );
   }
@@ -42,6 +56,7 @@ class SettingsPageState extends State<SettingsPage> {
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
     useSafeArea: false,
+    sheetAnimationStyle: _sheetAnimationStyle,
     builder: (sheetContext) => MoyueMaterialSheet(
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -70,13 +85,16 @@ class SettingsPageState extends State<SettingsPage> {
   }) => _showSettingDetail(
     listenable: listenable,
     contentBuilder: (context) {
+      final l10n = context.l10n;
       final current = value();
       return _SettingDetailSheet(
         key: ValueKey('$title-setting-detail'),
         icon: icon,
         title: title,
         description: description,
-        status: statusBuilder?.call(current) ?? (current ? '已开启' : '已关闭'),
+        status:
+            statusBuilder?.call(current) ??
+            (current ? l10n.enabled : l10n.disabled),
         control: Align(
           alignment: Alignment.centerRight,
           child: _GlassSwitchControl(
@@ -96,8 +114,8 @@ class SettingsPageState extends State<SettingsPage> {
         contentBuilder: (context) => _SettingDetailSheet(
           key: const ValueKey('对比度-setting-detail'),
           icon: Icons.contrast_rounded,
-          title: '对比度',
-          description: '调整纸张背景与文字、图标之间的明暗差异。数值越高，前景与背景的区分越明显。',
+          title: context.l10n.contrast,
+          description: context.l10n.contrastDescription,
           status: '${(display.contrast * 100).round()}%',
           control: _ExpandedGlassSlider(
             touchAreaKey: const ValueKey('contrast-slider-touch-area'),
@@ -107,30 +125,32 @@ class SettingsPageState extends State<SettingsPage> {
         ),
       );
 
-  Future<void> _showNativeEngineDetail(
-    DisplayModeController display,
-  ) => _showSettingDetail(
-    listenable: display,
-    contentBuilder: (context) {
-      final htmlUsesWebView = display.htmlWebViewEnabled;
-      return _SettingDetailSheet(
-        key: const ValueKey('原生排版引擎-setting-detail'),
-        icon: Icons.auto_awesome_motion_outlined,
-        title: '原生排版引擎',
-        description: htmlUsesWebView
-            ? 'Markdown 始终使用 Flutter 原生高性能引擎渲染，不依赖 WebView。当前 HTML 已设置为使用网页引擎。'
-            : 'Markdown 与 HTML 当前都使用 Flutter 原生组件排版。Markdown 始终不会依赖 WebView。',
-        status: htmlUsesWebView ? 'Markdown' : 'Markdown 与 HTML',
+  Future<void> _showNativeEngineDetail(DisplayModeController display) =>
+      _showSettingDetail(
+        listenable: display,
+        contentBuilder: (context) {
+          final l10n = context.l10n;
+          final htmlUsesWebView = display.htmlWebViewEnabled;
+          return _SettingDetailSheet(
+            key: const ValueKey('原生排版引擎-setting-detail'),
+            icon: Icons.auto_awesome_motion_outlined,
+            title: l10n.nativeLayoutEngine,
+            description: htmlUsesWebView
+                ? l10n.nativeEngineWebViewDescription
+                : l10n.nativeEngineAllDescription,
+            status: htmlUsesWebView ? l10n.markdownOnly : l10n.markdownAndHtml,
+          );
+        },
       );
-    },
-  );
 
   Future<void> _chooseFontSize(DisplayModeController display) async {
+    final l10n = context.l10n;
     final initialIndex = _nearestFontScaleIndex(display.appFontScale);
     final selected = await showModalBottomSheet<double>(
       context: context,
       showDragHandle: true,
       useSafeArea: true,
+      sheetAnimationStyle: _sheetAnimationStyle,
       builder: (sheetContext) => _FontScalePickerSheet(
         scales: _fontScales,
         initialIndex: initialIndex,
@@ -142,16 +162,16 @@ class SettingsPageState extends State<SettingsPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('需要重启墨阅'),
-        content: const Text('应用新的软件字体大小后，墨阅会立即重启，以确保所有页面同步生效。'),
+        title: Text(dialogContext.l10n.restartRequired),
+        content: Text(dialogContext.l10n.restartRequiredDescription),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
+            child: Text(dialogContext.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('应用并重启'),
+            child: Text(dialogContext.l10n.applyAndRestart),
           ),
         ],
       ),
@@ -161,9 +181,189 @@ class SettingsPageState extends State<SettingsPage> {
     final restarted = await AppRestartService.restart();
     if (!restarted && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('字号已保存，请手动重新打开墨阅以完全生效')));
+          .showSnackBar(SnackBar(content: Text(l10n.fontSavedRestartManually)));
     }
   }
+
+  Future<void> _chooseThemePreference(DisplayModeController display) async {
+    final l10n = context.l10n;
+    final selected = await showModalBottomSheet<MoyueThemePreference>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      sheetAnimationStyle: _sheetAnimationStyle,
+      builder: (sheetContext) => _OptionPickerSheet<MoyueThemePreference>(
+        title: l10n.nightMode,
+        selected: display.themePreference,
+        options: [
+          _PickerOption(
+            value: MoyueThemePreference.system,
+            icon: Icons.brightness_auto_rounded,
+            title: l10n.followSystem,
+            subtitle: l10n.followSystemThemeDescription,
+          ),
+          _PickerOption(
+            value: MoyueThemePreference.light,
+            icon: Icons.light_mode_outlined,
+            title: l10n.lightMode,
+            subtitle: l10n.lightModeDescription,
+          ),
+          _PickerOption(
+            value: MoyueThemePreference.dark,
+            icon: Icons.dark_mode_outlined,
+            title: l10n.darkMode,
+            subtitle: l10n.darkModeDescription,
+          ),
+        ],
+      ),
+    );
+    if (selected != null) display.setThemePreference(selected);
+  }
+
+  Future<void> _chooseLocalePreference(DisplayModeController display) async {
+    final l10n = context.l10n;
+    final selected = await showModalBottomSheet<MoyueLocalePreference>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      sheetAnimationStyle: _sheetAnimationStyle,
+      builder: (sheetContext) => _OptionPickerSheet<MoyueLocalePreference>(
+        title: l10n.language,
+        selected: display.localePreference,
+        options: [
+          _PickerOption(
+            value: MoyueLocalePreference.system,
+            icon: Icons.language_rounded,
+            title: l10n.followSystem,
+            subtitle: l10n.systemPreferredLanguage,
+          ),
+          _PickerOption(
+            value: MoyueLocalePreference.chinese,
+            icon: Icons.translate_rounded,
+            title: l10n.chinese,
+            subtitle: l10n.simplifiedChinese,
+          ),
+          _PickerOption(
+            value: MoyueLocalePreference.english,
+            icon: Icons.translate_rounded,
+            title: l10n.english,
+            subtitle: l10n.english,
+          ),
+        ],
+      ),
+    );
+    if (selected != null) display.setLocalePreference(selected);
+  }
+
+  Future<void> _chooseFontFamily(DisplayModeController display) async {
+    final selected = await showModalBottomSheet<MoyueFontFamily>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      sheetAnimationStyle: _sheetAnimationStyle,
+      builder: (sheetContext) =>
+          _FontFamilyPickerSheet(initialValue: display.appFontFamily),
+    );
+    if (selected != null) display.setAppFontFamily(selected);
+  }
+
+  Future<void> _showColorSettings(DisplayModeController display) =>
+      _showSettingDetail(
+        listenable: display,
+        contentBuilder: (context) {
+          final l10n = context.l10n;
+          final systemAvailable = display.dynamicColorSupported;
+          return _SettingDetailSheet(
+            key: const ValueKey('应用配色-setting-detail'),
+            icon: Icons.palette_outlined,
+            title: l10n.appColors,
+            description: l10n.appColorsDescription,
+            status: display.useDynamicColor && systemAvailable
+                ? l10n.monetColors
+                : l10n.customColor,
+            control: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: Text(l10n.useSystemMonet)),
+                    _GlassSwitchControl(
+                      touchAreaKey: const ValueKey(
+                        'dynamic-color-switch-touch-area',
+                      ),
+                      value: display.useDynamicColor && systemAvailable,
+                      onChanged: systemAvailable
+                          ? display.setUseDynamicColor
+                          : null,
+                      semanticLabel: l10n.monetColors,
+                    ),
+                  ],
+                ),
+                if (!systemAvailable)
+                  Text(
+                    l10n.monetUnavailable,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final value in _customColors)
+                      _ColorChoice(
+                        color: Color(value),
+                        selected:
+                            !display.useDynamicColor &&
+                            display.customSeedArgb == value,
+                        onTap: () => display.setCustomSeedArgb(value),
+                      ),
+                    _CustomColorButton(
+                      color: Color(display.customSeedArgb),
+                      onTap: () => _chooseCustomColor(display),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      );
+
+  Future<void> _chooseCustomColor(DisplayModeController display) async {
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (context) =>
+          _ColorHexDialog(initialArgb: display.customSeedArgb),
+    );
+    if (selected != null) display.setCustomSeedArgb(selected);
+  }
+
+  String _themePreferenceLabel(
+    BuildContext context,
+    MoyueThemePreference value,
+  ) => switch (value) {
+    MoyueThemePreference.system => context.l10n.followSystem,
+    MoyueThemePreference.light => context.l10n.lightMode,
+    MoyueThemePreference.dark => context.l10n.darkMode,
+  };
+
+  String _localePreferenceLabel(
+    BuildContext context,
+    MoyueLocalePreference value,
+  ) => switch (value) {
+    MoyueLocalePreference.system => context.l10n.followSystem,
+    MoyueLocalePreference.chinese => context.l10n.chinese,
+    MoyueLocalePreference.english => context.l10n.english,
+  };
+
+  String _fontFamilyLabel(BuildContext context, MoyueFontFamily value) =>
+      switch (value) {
+        MoyueFontFamily.system => context.l10n.systemSans,
+        MoyueFontFamily.claude => context.l10n.claudeStyleSans,
+        MoyueFontFamily.rounded => context.l10n.roundedSans,
+      };
 
   int _nearestFontScaleIndex(double value) {
     var result = 0;
@@ -180,13 +380,46 @@ class SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final display = DisplayPreferencesScope.of(context);
     final debug = DebugService.instance;
-    final query = _query.trim();
-    final showDisplay = query.isEmpty || '显示墨模式对比度护眼字体字号大小'.contains(query);
-    final showReading =
-        query.isEmpty || '阅读动画翻页动效HTML WebView网页原生预见性返回手势'.contains(query);
-    final showDebug = query.isEmpty || '调试帧率实时显示'.contains(query);
+    final query = _query.trim().toLowerCase();
+    final displayTerms = [
+      '显示主题配色莫奈自定义颜色夜间深色墨模式对比度护眼字体衬线Claude字号大小',
+      l10n.displaySection,
+      l10n.appColors,
+      l10n.monetColors,
+      l10n.customColor,
+      l10n.nightMode,
+      l10n.inkMode,
+      l10n.contrast,
+      l10n.sansSerifFont,
+      l10n.softwareFontSize,
+    ].join(' ').toLowerCase();
+    final generalTerms = [
+      '通用语言中文英文国际化i18n',
+      l10n.generalSection,
+      l10n.language,
+      l10n.chinese,
+      l10n.english,
+    ].join(' ').toLowerCase();
+    final readingTerms = [
+      '阅读动画翻页动效HTML WebView网页原生预见性返回手势',
+      l10n.readingSection,
+      l10n.reduceMotion,
+      l10n.predictiveBack,
+      l10n.webReader,
+      l10n.nativeLayoutEngine,
+    ].join(' ').toLowerCase();
+    final debugTerms = [
+      '调试帧率实时显示',
+      l10n.debugSection,
+      l10n.fpsDisplay,
+    ].join(' ').toLowerCase();
+    final showDisplay = query.isEmpty || displayTerms.contains(query);
+    final showGeneral = query.isEmpty || generalTerms.contains(query);
+    final showReading = query.isEmpty || readingTerms.contains(query);
+    final showDebug = query.isEmpty || debugTerms.contains(query);
     final debugVisible = debug.enabled && showDebug;
 
     // 标题随页面滚动正常收起；搜索按钮固定在视口之外的浮层里
@@ -194,41 +427,71 @@ class SettingsPageState extends State<SettingsPage> {
     return ListenableBuilder(
       listenable: debug,
       builder: (context, _) => FloatingPageShell(
-        searchHint: '搜索设置',
+        searchHint: l10n.searchSettings,
         searchKey: _searchKey,
         onSearch: (value) => setState(() => _query = value),
         child: CustomScrollView(
           key: const PageStorageKey('settings-scroll'),
           slivers: [
-            const SliverToBoxAdapter(
-              child: FloatingPageTitle(title: '设置', subtitle: '墨模式 · 回归墨水屏'),
+            SliverToBoxAdapter(
+              child: FloatingPageTitle(
+                title: l10n.settingsTitle,
+                subtitle: l10n.settingsSubtitle,
+              ),
             ),
             if (showDisplay) ...[
-              const SliverToBoxAdapter(child: SectionLabel('显示')),
+              SliverToBoxAdapter(child: SectionLabel(l10n.displaySection)),
               SliverToBoxAdapter(
                 child: _SettingsCard(
                   children: [
+                    _SettingSummaryTile(
+                      icon: Icons.palette_outlined,
+                      title: l10n.appColors,
+                      status:
+                          display.useDynamicColor &&
+                              display.dynamicColorSupported
+                          ? l10n.monetColors
+                          : l10n.customColor,
+                      onTap: () => _showColorSettings(display),
+                    ),
+                    const Divider(indent: 56),
+                    _SettingSummaryTile(
+                      icon: Icons.dark_mode_outlined,
+                      title: l10n.nightMode,
+                      status: _themePreferenceLabel(
+                        context,
+                        display.themePreference,
+                      ),
+                      onTap: () => _chooseThemePreference(display),
+                    ),
+                    const Divider(indent: 56),
+                    _SettingSummaryTile(
+                      icon: Icons.font_download_outlined,
+                      title: l10n.sansSerifFont,
+                      status: _fontFamilyLabel(context, display.appFontFamily),
+                      onTap: () => _chooseFontFamily(display),
+                    ),
+                    const Divider(indent: 56),
                     _GlassSwitchTile(
                       value: false,
                       onChanged: null,
                       icon: Icons.water_drop_outlined,
-                      title: '墨模式',
-                      subtitle: '暂未开放',
+                      title: l10n.inkMode,
+                      subtitle: l10n.unavailable,
                       onDetails: () => _showSwitchDetail(
                         listenable: display,
                         icon: Icons.water_drop_outlined,
-                        title: '墨模式',
-                        description:
-                            '是模仿电子墨水屏的显示效果，关闭各类动画为纯粹阅读而生的模式。接口已经预留，当前版本暂未开放。',
+                        title: l10n.inkMode,
+                        description: l10n.inkModeDescription,
                         value: () => false,
                         onChanged: null,
-                        statusBuilder: (_) => '暂未开放',
+                        statusBuilder: (_) => l10n.unavailable,
                       ),
                     ),
                     const Divider(indent: 56),
                     _ContrastSettingTile(
                       icon: Icons.contrast_rounded,
-                      title: '对比度',
+                      title: l10n.contrast,
                       value: display.contrast,
                       onChanged: display.setContrast,
                       onDetails: () => _showContrastDetail(display),
@@ -236,7 +499,7 @@ class SettingsPageState extends State<SettingsPage> {
                     const Divider(indent: 56),
                     _SettingSummaryTile(
                       icon: Icons.text_fields_rounded,
-                      title: '软件字体大小',
+                      title: l10n.softwareFontSize,
                       status: '${(display.appFontScale * 100).round()}%',
                       onTap: () => _chooseFontSize(display),
                     ),
@@ -244,8 +507,26 @@ class SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             ],
+            if (showGeneral) ...[
+              SliverToBoxAdapter(child: SectionLabel(l10n.generalSection)),
+              SliverToBoxAdapter(
+                child: _SettingsCard(
+                  children: [
+                    _SettingSummaryTile(
+                      icon: Icons.translate_rounded,
+                      title: l10n.language,
+                      status: _localePreferenceLabel(
+                        context,
+                        display.localePreference,
+                      ),
+                      onTap: () => _chooseLocalePreference(display),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             if (showReading) ...[
-              const SliverToBoxAdapter(child: SectionLabel('阅读')),
+              SliverToBoxAdapter(child: SectionLabel(l10n.readingSection)),
               SliverToBoxAdapter(
                 child: _SettingsCard(
                   children: [
@@ -253,14 +534,15 @@ class SettingsPageState extends State<SettingsPage> {
                       value: display.reduceMotion,
                       onChanged: display.setReduceMotion,
                       icon: Icons.motion_photos_off_outlined,
-                      title: '减少动态效果',
-                      subtitle: display.reduceMotion ? '已开启' : '已关闭',
+                      title: l10n.reduceMotion,
+                      subtitle: display.reduceMotion
+                          ? l10n.enabled
+                          : l10n.disabled,
                       onDetails: () => _showSwitchDetail(
                         listenable: display,
                         icon: Icons.motion_photos_off_outlined,
-                        title: '减少动态效果',
-                        description:
-                            '减少页面切换、列表状态变化和部分装饰动画，降低视觉干扰，也可减轻低刷新率设备的刷新压力。',
+                        title: l10n.reduceMotion,
+                        description: l10n.reduceMotionDescription,
                         value: () => display.reduceMotion,
                         onChanged: display.setReduceMotion,
                       ),
@@ -270,18 +552,19 @@ class SettingsPageState extends State<SettingsPage> {
                       value: display.predictiveBackEnabled,
                       onChanged: display.setPredictiveBackEnabled,
                       icon: Icons.swipe_left_alt_rounded,
-                      title: '预见性返回',
+                      title: l10n.predictiveBack,
                       subtitle: display.predictiveBackEnabled
-                          ? '预见性返回'
-                          : '普通返回',
+                          ? l10n.predictiveBack
+                          : l10n.standardBack,
                       onDetails: () => _showSwitchDetail(
                         listenable: display,
                         icon: Icons.swipe_left_alt_rounded,
-                        title: '预见性返回',
-                        description: '在支持的 Android 设备上，返回手势过程中会预览即将返回的页面。当前仍存在少量兼容问题；关闭后使用普通返回行为。',
+                        title: l10n.predictiveBack,
+                        description: l10n.predictiveBackDescription,
                         value: () => display.predictiveBackEnabled,
                         onChanged: display.setPredictiveBackEnabled,
-                        statusBuilder: (value) => value ? '预见性返回' : '普通返回',
+                        statusBuilder: (value) =>
+                            value ? l10n.predictiveBack : l10n.standardBack,
                       ),
                     ),
                     const Divider(indent: 56),
@@ -289,28 +572,28 @@ class SettingsPageState extends State<SettingsPage> {
                       value: display.htmlWebViewEnabled,
                       onChanged: display.setHtmlWebViewEnabled,
                       icon: Icons.language_rounded,
-                      title: 'Web 阅读器',
+                      title: l10n.webReader,
                       subtitle: display.htmlWebViewEnabled
                           ? 'WebView'
-                          : '原生 Flutter',
+                          : l10n.nativeFlutter,
                       onDetails: () => _showSwitchDetail(
                         listenable: display,
                         icon: Icons.language_rounded,
-                        title: 'Web 阅读器',
-                        description: '开启后 HTML 使用系统 WebView 渲染，以获得更完整的网页、CSS 与 JavaScript 兼容性；关闭后使用 Flutter 原生排版。Markdown 始终使用原生渲染。',
+                        title: l10n.webReader,
+                        description: l10n.webReaderDescription,
                         value: () => display.htmlWebViewEnabled,
                         onChanged: display.setHtmlWebViewEnabled,
                         statusBuilder: (value) =>
-                            value ? 'WebView' : '原生 Flutter',
+                            value ? 'WebView' : l10n.nativeFlutter,
                       ),
                     ),
                     const Divider(indent: 56),
                     _SettingSummaryTile(
                       icon: Icons.auto_awesome_motion_outlined,
-                      title: '原生排版引擎',
+                      title: l10n.nativeLayoutEngine,
                       status: display.htmlWebViewEnabled
-                          ? 'Markdown'
-                          : 'Markdown 与 HTML',
+                          ? l10n.markdownOnly
+                          : l10n.markdownAndHtml,
                       onTap: () => _showNativeEngineDetail(display),
                     ),
                   ],
@@ -318,7 +601,7 @@ class SettingsPageState extends State<SettingsPage> {
               ),
             ],
             if (debugVisible) ...[
-              const SliverToBoxAdapter(child: SectionLabel('调试')),
+              SliverToBoxAdapter(child: SectionLabel(l10n.debugSection)),
               SliverToBoxAdapter(
                 child: _SettingsCard(
                   children: [
@@ -326,26 +609,29 @@ class SettingsPageState extends State<SettingsPage> {
                       value: debug.fpsBadgeVisible,
                       onChanged: (value) => debug.fpsBadgeVisible = value,
                       icon: Icons.speed_rounded,
-                      title: '帧率显示',
-                      subtitle: debug.fpsBadgeVisible ? '显示中' : '已隐藏',
+                      title: l10n.fpsDisplay,
+                      subtitle: debug.fpsBadgeVisible
+                          ? l10n.showing
+                          : l10n.hidden,
                       onDetails: () => _showSwitchDetail(
                         listenable: debug,
                         icon: Icons.speed_rounded,
-                        title: '帧率显示',
-                        description: '在屏幕右上角显示实时渲染帧率，仅用于调试性能；关闭后不会显示帧率徽标。',
+                        title: l10n.fpsDisplay,
+                        description: l10n.fpsDisplayDescription,
                         value: () => debug.fpsBadgeVisible,
                         onChanged: (value) => debug.fpsBadgeVisible = value,
-                        statusBuilder: (value) => value ? '显示中' : '已隐藏',
+                        statusBuilder: (value) =>
+                            value ? l10n.showing : l10n.hidden,
                       ),
                     ),
                   ],
                 ),
               ),
             ],
-            if (!showDisplay && !showReading && !debugVisible)
-              const SliverFillRemaining(
+            if (!showDisplay && !showGeneral && !showReading && !debugVisible)
+              SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(child: Text('没有匹配的设置')),
+                child: Center(child: Text(l10n.noMatchingSettings)),
               ),
             const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
           ],
@@ -361,41 +647,44 @@ class _AboutSheet extends StatelessWidget {
   final Future<String> version;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          '墨阅',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 6),
-        const Text('朴素、护眼的 Markdown、HTML 与 RSS 阅读器'),
-        const SizedBox(height: 22),
-        const ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.person_outline_rounded),
-          title: Text('作者'),
-          subtitle: Text('Magneto'),
-        ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.info_outline_rounded),
-          title: const Text('版本'),
-          subtitle: FutureBuilder<String>(
-            future: version,
-            builder: (context, snapshot) {
-              if (snapshot.hasData) return Text(snapshot.data!);
-              if (snapshot.hasError) return const Text('无法读取版本信息');
-              return const Text('正在读取版本信息…');
-            },
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            l10n.appName,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
           ),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(height: 6),
+          Text(l10n.aboutTagline),
+          const SizedBox(height: 22),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.person_outline_rounded),
+            title: Text(l10n.author),
+            subtitle: const Text('Magneto'),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.info_outline_rounded),
+            title: Text(l10n.version),
+            subtitle: FutureBuilder<String>(
+              future: version,
+              builder: (context, snapshot) {
+                if (snapshot.hasData) return Text(snapshot.data!);
+                if (snapshot.hasError) return Text(l10n.versionUnavailable);
+                return Text(l10n.versionLoading);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SettingDetailSheet extends StatelessWidget {
@@ -458,7 +747,10 @@ class _SettingDetailSheet extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Text('当前状态', style: theme.textTheme.labelLarge),
+                Text(
+                  context.l10n.currentStatus,
+                  style: theme.textTheme.labelLarge,
+                ),
                 const Spacer(),
                 Flexible(
                   child: Text(
@@ -514,17 +806,19 @@ class _FontScalePickerSheetState extends State<_FontScalePickerSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final l10n = context.l10n;
     return SizedBox(
       height: 380,
       child: Column(
         children: [
-          Text('软件字体大小', style: theme.textTheme.titleLarge),
+          Text(l10n.softwareFontSize, style: theme.textTheme.titleLarge),
           const SizedBox(height: 6),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Text(
-              '调整墨阅所有页面的界面字号。当前选择 '
-              '${(widget.scales[_selectedIndex] * 100).round()}%，应用后需要重启。',
+              l10n.fontSizeDescription(
+                (widget.scales[_selectedIndex] * 100).round(),
+              ),
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colors.onSurfaceVariant,
@@ -566,7 +860,10 @@ class _FontScalePickerSheetState extends State<_FontScalePickerSheet> {
                         shadowColor: colors.shadow.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(18),
                         child: AnimatedSize(
-                          duration: const Duration(milliseconds: 160),
+                          duration: moyueMotionDuration(
+                            context,
+                            const Duration(milliseconds: 160),
+                          ),
                           curve: Curves.easeOutCubic,
                           child: SizedBox(
                             width: selected ? 156 : 112,
@@ -611,7 +908,7 @@ class _FontScalePickerSheetState extends State<_FontScalePickerSheet> {
               child: FilledButton(
                 onPressed: () =>
                     Navigator.pop(context, widget.scales[_selectedIndex]),
-                child: const Text('应用'),
+                child: Text(l10n.apply),
               ),
             ),
           ),
@@ -619,6 +916,360 @@ class _FontScalePickerSheetState extends State<_FontScalePickerSheet> {
       ),
     );
   }
+}
+
+class _PickerOption<T> {
+  const _PickerOption({
+    required this.value,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final T value;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+}
+
+class _OptionPickerSheet<T> extends StatelessWidget {
+  const _OptionPickerSheet({
+    required this.title,
+    required this.selected,
+    required this.options,
+  });
+
+  final String title;
+  final T selected;
+  final List<_PickerOption<T>> options;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 2, 18, 22),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 0, 6, 12),
+            child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+          ),
+          for (final option in options)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: option.value == selected
+                    ? colors.secondaryContainer
+                    : colors.surfaceContainer,
+                borderRadius: BorderRadius.circular(18),
+                child: ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  leading: Icon(option.icon),
+                  title: Text(option.title),
+                  subtitle: Text(option.subtitle),
+                  trailing: option.value == selected
+                      ? Icon(Icons.check_circle_rounded, color: colors.primary)
+                      : null,
+                  onTap: () => Navigator.pop(context, option.value),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FontFamilyPickerSheet extends StatefulWidget {
+  const _FontFamilyPickerSheet({required this.initialValue});
+
+  final MoyueFontFamily initialValue;
+
+  @override
+  State<_FontFamilyPickerSheet> createState() => _FontFamilyPickerSheetState();
+}
+
+class _FontFamilyPickerSheetState extends State<_FontFamilyPickerSheet> {
+  late final FixedExtentScrollController _controller;
+  late int _selectedIndex;
+
+  static const _values = MoyueFontFamily.values;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = _values.indexOf(widget.initialValue);
+    _controller = FixedExtentScrollController(initialItem: _selectedIndex);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String _label(BuildContext context, MoyueFontFamily value) => switch (value) {
+    MoyueFontFamily.system => context.l10n.systemSans,
+    MoyueFontFamily.claude => context.l10n.claudeStyleSans,
+    MoyueFontFamily.rounded => context.l10n.roundedSans,
+  };
+
+  String? _previewFamily(MoyueFontFamily value) => switch (value) {
+    MoyueFontFamily.system => null,
+    MoyueFontFamily.claude => 'serif',
+    MoyueFontFamily.rounded => 'sans-serif-rounded',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final l10n = context.l10n;
+    return SizedBox(
+      height: 380,
+      child: Column(
+        children: [
+          Text(l10n.sansSerifFont, style: theme.textTheme.titleLarge),
+          const SizedBox(height: 6),
+          Text(
+            l10n.chooseSansSerif,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListWheelScrollView.useDelegate(
+              key: const ValueKey('app-font-family-wheel'),
+              controller: _controller,
+              itemExtent: 58,
+              physics: const FixedExtentScrollPhysics(),
+              diameterRatio: 1.5,
+              overAndUnderCenterOpacity: 0.45,
+              onSelectedItemChanged: (value) {
+                if (_selectedIndex != value) {
+                  setState(() => _selectedIndex = value);
+                }
+              },
+              childDelegate: ListWheelChildBuilderDelegate(
+                childCount: _values.length,
+                builder: (context, index) {
+                  final value = _values[index];
+                  final selected = index == _selectedIndex;
+                  return Center(
+                    child: Material(
+                      key: selected
+                          ? const ValueKey('app-font-family-selected-option')
+                          : ValueKey('app-font-family-option-$index'),
+                      color: selected
+                          ? colors.secondaryContainer
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(18),
+                      child: SizedBox(
+                        width: selected ? 250 : 220,
+                        height: 46,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _label(context, value),
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontFamily: _previewFamily(value),
+                                color: selected
+                                    ? colors.onSecondaryContainer
+                                    : colors.onSurfaceVariant,
+                                fontWeight: selected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
+                            ),
+                            if (selected) ...[
+                              const SizedBox(width: 8),
+                              Icon(
+                                Icons.check_rounded,
+                                size: 18,
+                                color: colors.onSecondaryContainer,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () =>
+                    Navigator.pop(context, _values[_selectedIndex]),
+                child: Text(l10n.apply),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ColorChoice extends StatelessWidget {
+  const _ColorChoice({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    selected: selected,
+    label: '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
+    child: InkResponse(
+      onTap: onTap,
+      radius: 28,
+      child: AnimatedContainer(
+        duration: moyueMotionDuration(
+          context,
+          const Duration(milliseconds: 160),
+        ),
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+          border: Border.all(
+            color: selected
+                ? Theme.of(context).colorScheme.onSurface
+                : Theme.of(context).colorScheme.outlineVariant,
+            width: selected ? 3 : 1,
+          ),
+        ),
+        child: selected
+            ? Icon(
+                Icons.check_rounded,
+                color:
+                    ThemeData.estimateBrightnessForColor(color) ==
+                        Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
+              )
+            : null,
+      ),
+    ),
+  );
+}
+
+class _CustomColorButton extends StatelessWidget {
+  const _CustomColorButton({required this.color, required this.onTap});
+
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: context.l10n.customColor,
+    child: InkResponse(
+      onTap: onTap,
+      radius: 28,
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: SweepGradient(
+            colors: [
+              color,
+              const Color(0xFFEF5350),
+              const Color(0xFFFFCA28),
+              const Color(0xFF66BB6A),
+              const Color(0xFF42A5F5),
+              const Color(0xFFAB47BC),
+              color,
+            ],
+          ),
+          border: Border.all(color: Theme.of(context).colorScheme.outline),
+        ),
+        child: const Icon(Icons.edit_rounded, size: 18, color: Colors.white),
+      ),
+    ),
+  );
+}
+
+class _ColorHexDialog extends StatefulWidget {
+  const _ColorHexDialog({required this.initialArgb});
+
+  final int initialArgb;
+
+  @override
+  State<_ColorHexDialog> createState() => _ColorHexDialogState();
+}
+
+class _ColorHexDialogState extends State<_ColorHexDialog> {
+  late final TextEditingController _controller;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final rgb = (widget.initialArgb & 0xFFFFFF)
+        .toRadixString(16)
+        .padLeft(6, '0')
+        .toUpperCase();
+    _controller = TextEditingController(text: '#$rgb');
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    var value = _controller.text.trim();
+    if (value.startsWith('#')) value = value.substring(1);
+    if (!RegExp(r'^[0-9a-fA-F]{6}$').hasMatch(value)) {
+      setState(() => _error = context.l10n.invalidHexColor);
+      return;
+    }
+    Navigator.pop(context, 0xFF000000 | int.parse(value, radix: 16));
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(context.l10n.customAppColor),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      textCapitalization: TextCapitalization.characters,
+      maxLength: 7,
+      decoration: InputDecoration(
+        labelText: context.l10n.hexColor,
+        hintText: '#6D7967',
+        errorText: _error,
+      ),
+      onSubmitted: (_) => _submit(),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(context.l10n.cancel),
+      ),
+      FilledButton(onPressed: _submit, child: Text(context.l10n.apply)),
+    ],
+  );
 }
 
 class _SettingSummaryTile extends StatelessWidget {
@@ -688,7 +1339,7 @@ class _GlassSwitchTile extends StatelessWidget {
       leading: Icon(icon, size: 21),
       title: Semantics(
         button: true,
-        label: '查看$title说明',
+        label: context.l10n.viewSettingDescription(title),
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: onDetails,
@@ -777,7 +1428,7 @@ class _ContrastSettingTile extends StatelessWidget {
               children: [
                 Semantics(
                   button: true,
-                  label: '查看$title说明',
+                  label: context.l10n.viewSettingDescription(title),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(10),
                     onTap: onDetails,

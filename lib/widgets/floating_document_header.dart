@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 import 'package:moyue_application/widgets/moyue_glass_title_pill.dart';
@@ -31,7 +32,7 @@ class FloatingDocumentHeader extends StatelessWidget {
       MoyueGlassIconButton(
         onPressed: onBack,
         icon: const Icon(Icons.chevron_left_rounded, size: 22),
-        semanticLabel: '返回',
+        semanticLabel: context.l10n.back,
         size: 44,
         useOwnLayer: useOwnLayer,
         settings: moyueGlassSettings(context),
@@ -41,7 +42,7 @@ class FloatingDocumentHeader extends StatelessWidget {
         child: MoyueGlassTitlePill(
           title: title,
           onTap: onTitleTap,
-          semanticLabel: '修改文件夹名称',
+          semanticLabel: context.l10n.renameFolder,
           useOwnLayer: useOwnLayer,
         ),
       ),

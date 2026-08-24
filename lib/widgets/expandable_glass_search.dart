@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:moyue_application/core/i18n/moyue_i18n.dart';
+import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 
@@ -50,7 +52,7 @@ class ExpandableGlassSearchState extends State<ExpandableGlassSearch> {
   @override
   Widget build(BuildContext context) {
     return AnimatedSize(
-      duration: const Duration(milliseconds: 280),
+      duration: moyueMotionDuration(context, const Duration(milliseconds: 280)),
       curve: Curves.easeOutCubic,
       alignment: Alignment.centerRight,
       child: _expanded
@@ -81,7 +83,7 @@ class ExpandableGlassSearchState extends State<ExpandableGlassSearch> {
                   MoyueGlassIconButton(
                     icon: const Icon(Icons.close_rounded, size: 20),
                     onPressed: _close,
-                    semanticLabel: '关闭搜索',
+                    semanticLabel: context.l10n.closeSearch,
                     size: 44,
                     settings: moyueGlassSettings(context),
                   ),
@@ -92,7 +94,7 @@ class ExpandableGlassSearchState extends State<ExpandableGlassSearch> {
               key: const ValueKey('round-search-button'),
               icon: const Icon(Icons.search_rounded),
               onPressed: open,
-              semanticLabel: '搜索',
+              semanticLabel: context.l10n.search,
               size: 44,
               useOwnLayer: true,
               settings: moyueGlassSettings(context),

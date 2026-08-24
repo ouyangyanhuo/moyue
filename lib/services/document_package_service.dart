@@ -1311,6 +1311,127 @@ class DocumentPackageService {
     return movedPath;
   }
 
+  /// 把首页上的根文件夹整体收进另一个根文件夹，目标中会创建一个同名
+  /// 逻辑子目录。文档、关联资源、游离资源和显式空目录都会一起移动。
+  Future<String> moveRootFolder({
+    required LibraryFolder sourceRoot,
+    required LibraryFolder targetRoot,
+  }) async {
+    if (sourceRoot.id == targetRoot.id) {
+      throw const FormatException('不能把文件夹移入自身');
+    }
+    final db = await index;
+    final sourceRow = await db.folder(sourceRoot.id);
+    final targetRow = await db.folder(targetRoot.id);
+    if (sourceRow == null || sourceRow['parent_id'] != null) {
+      throw StateError('源根文件夹不存在');
+    }
+    if (targetRow == null || targetRow['parent_id'] != null) {
+      throw StateError('目标根文件夹不存在');
+    }
+
+    final targetDocumentRows = await db.packageDocuments(targetRoot.id);
+    final targetNestedRows = await db.nestedFolders(targetRoot.id);
+    final occupied = _logicalDirectories(
+      documentRows: targetDocumentRows,
+      nestedRows: targetNestedRows,
+      rootPath: targetRow['relative_path']! as String,
+    ).map((path) => path.toLowerCase()).toSet();
+    final rawName = sourceRoot.name.trim().isEmpty
+        ? 'Folder'
+        : sourceRoot.name.trim();
+    final baseName = p.posix.basename(rawName.replaceAll('\\', '/'));
+    var movedPath = baseName;
+    for (var suffix = 2; occupied.contains(movedPath.toLowerCase()); suffix++) {
+      movedPath = '$baseName ($suffix)';
+    }
+    await _ensureNestedFolderPath(
+      db: db,
+      rootRow: targetRow,
+      logicalPath: movedPath,
+    );
+
+    final sourceDocumentRows = await db.packageDocuments(sourceRoot.id);
+    final sourceNestedRows = await db.nestedFolders(sourceRoot.id);
+    final sourceDirectories = _logicalDirectories(
+      documentRows: sourceDocumentRows,
+      nestedRows: sourceNestedRows,
+      rootPath: sourceRow['relative_path']! as String,
+    );
+    final topLevelDirectories =
+        sourceDirectories
+            .where((path) => p.posix.dirname(path) == '.')
+            .toList(growable: false)
+          ..sort();
+    for (final logicalPath in topLevelDirectories) {
+      await moveSubfolder(
+        sourceRoot: sourceRoot,
+        logicalPath: logicalPath,
+        targetRoot: targetRoot,
+        targetParentPath: movedPath,
+      );
+    }
+
+    final sourceBase = sourceRow['relative_path']! as String;
+    for (final row in await db.packageDocuments(sourceRoot.id)) {
+      final relativePath = row['relative_path']! as String;
+      final logicalPath = _logicalPath(row, folderPath: sourceBase);
+      final visibleName = p.posix.basename(logicalPath);
+      await moveDocument(
+        document: ReadingDocument(
+          id: row['id']! as String,
+          title: row['name']! as String,
+          content: decodeImportedText(await _files.readBytes(relativePath)),
+          kind: row['kind'] == 'html'
+              ? DocumentKind.html
+              : DocumentKind.markdown,
+          updatedAt: DateTime.fromMillisecondsSinceEpoch(
+            row['updated_at']! as int,
+          ),
+          sourceLabel: '文件夹',
+          filePath: relativePath,
+          folderId: sourceRoot.id,
+          relativePath: relativePath,
+          logicalPath: logicalPath,
+        ),
+        target: targetRoot,
+        targetLogicalPath: p.posix.join(movedPath, visibleName),
+        preserveSourceFolder: true,
+      );
+    }
+
+    final targetBase = targetRow['relative_path']! as String;
+    for (final row in await db.packageResources(sourceRoot.id)) {
+      final oldPath = row['relative_path']! as String;
+      final logicalPath = p.posix.relative(oldPath, from: sourceBase);
+      final targetPath = p.posix.join(targetBase, movedPath, logicalPath);
+      final bytes = await _files.readBytes(oldPath);
+      await db.moveResource(
+        resource: ResourceRecord(
+          id: row['id']! as String,
+          folderId: targetRoot.id,
+          documentId: null,
+          name: row['name']! as String,
+          mimeType: row['mime_type']! as String,
+          relativePath: targetPath,
+          contentHash: row['content_hash']! as String,
+          sizeBytes: row['size_bytes']! as int,
+        ),
+        sourceFolderId: sourceRoot.id,
+        writeFile: () => _files.writeFiles({targetPath: bytes}),
+      );
+      try {
+        await _files.deleteFile(oldPath);
+      } on Object {
+        // 新文件与索引已提交，旧副本可由后续存储审计清理。
+      }
+    }
+
+    await db.deleteFolder(sourceRoot.id);
+    await _files.deleteFolder(sourceBase);
+    return movedPath;
+  }
+
   Future<void> deleteDocument(ReadingDocument document) async {
     final folderId = document.folderId;
     if (folderId == null) return;

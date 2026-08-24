@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:moyue_application/core/display/display_preferences.dart';
+import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 
 enum MoyueCreateAction { markdown, folder, import }
 
@@ -51,26 +53,32 @@ Future<MoyueCreateAction?> showMoyueCreateMenu({
   context: context,
   backgroundColor: Colors.transparent,
   useSafeArea: false,
+  enableDrag: false,
+  isDismissible: true,
+  sheetAnimationStyle:
+      DisplayPreferencesScope.maybeOf(context)?.reduceMotion ?? false
+      ? AnimationStyle.noAnimation
+      : null,
   builder: (sheetContext) => MoyueMaterialSheet(
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         ListTile(
           leading: const Icon(Icons.note_add_outlined),
-          title: const Text('新建 Markdown'),
+          title: Text(context.l10n.newMarkdown),
           onTap: () => Navigator.pop(sheetContext, MoyueCreateAction.markdown),
         ),
         ListTile(
           leading: const Icon(Icons.create_new_folder_outlined),
-          title: const Text('新建文件夹'),
+          title: Text(context.l10n.newFolder),
           onTap: () => Navigator.pop(sheetContext, MoyueCreateAction.folder),
         ),
         ListTile(
           leading: const Icon(Icons.file_open_outlined),
-          title: const Text('导入文件或文档包'),
+          title: Text(context.l10n.importFileOrPackage),
           trailing: IconButton(
             icon: const Icon(Icons.error_outline_rounded),
-            tooltip: '支持的文件格式',
+            tooltip: context.l10n.supportedFileFormats,
             onPressed: () => _showImportHelp(sheetContext),
           ),
           onTap: () => Navigator.pop(sheetContext, MoyueCreateAction.import),
@@ -84,17 +92,12 @@ Future<MoyueCreateAction?> showMoyueCreateMenu({
 Future<void> _showImportHelp(BuildContext context) => showDialog<void>(
   context: context,
   builder: (dialogContext) => AlertDialog(
-    title: const Text('支持的文件'),
-    content: const Text(
-      '支持 .md、.html、.zip 和 .moyue。\n\n'
-      'ZIP 或 .moyue 至少需要 2 个文件，并包含 Markdown 或 HTML。'
-      '包内只允许 HTML、Markdown、CSS、JS、常见图片和视频；'
-      '文档数量大于 2 时会自动创建文件夹。',
-    ),
+    title: Text(context.l10n.supportedFiles),
+    content: Text(context.l10n.supportedFilesDescription),
     actions: [
       TextButton(
         onPressed: () => Navigator.pop(dialogContext),
-        child: const Text('知道了'),
+        child: Text(context.l10n.gotIt),
       ),
     ],
   ),

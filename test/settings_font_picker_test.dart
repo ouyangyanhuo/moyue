@@ -19,7 +19,7 @@ void main() {
         child: const MaterialApp(home: Scaffold(body: SettingsPage())),
       ),
     );
-    await tester.ensureVisible(find.text('软件字体大小'));
+    await _scrollSettingsUntilVisible(tester, find.text('软件字体大小'));
     await tester.tap(find.text('软件字体大小'));
     await tester.pumpAndSettle();
 
@@ -66,7 +66,7 @@ void main() {
         child: const MaterialApp(home: Scaffold(body: SettingsPage())),
       ),
     );
-    await tester.ensureVisible(find.text('软件字体大小'));
+    await _scrollSettingsUntilVisible(tester, find.text('软件字体大小'));
     await tester.tap(find.text('软件字体大小'));
     await tester.pumpAndSettle();
     await tester.drag(
@@ -84,6 +84,36 @@ void main() {
     expect(calls.single.method, 'restartApp');
   });
 
+  testWidgets('界面字体使用 WheelView 并可切换 Claude 衬线字体栈', (tester) async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: const MaterialApp(home: Scaffold(body: SettingsPage())),
+      ),
+    );
+
+    await _scrollSettingsUntilVisible(tester, find.text('界面字体'));
+    await tester.tap(find.text('界面字体'));
+    await tester.pumpAndSettle();
+
+    final wheel = find.byKey(const ValueKey('app-font-family-wheel'));
+    expect(wheel, findsOneWidget);
+    expect(
+      find.descendant(of: wheel, matching: find.byType(GlassContainer)),
+      findsNothing,
+    );
+    await tester.drag(wheel, const Offset(0, -70));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+
+    expect(display.appFontFamily, MoyueFontFamily.claude);
+  });
+
   testWidgets('原生重启通道不可用时会安全返回 false', (tester) async {
     const channel = MethodChannel('com.moyue.application/system');
     final messenger =
@@ -96,4 +126,21 @@ void main() {
 
     expect(await AppRestartService.restart(), isFalse);
   });
+}
+
+Future<void> _scrollSettingsUntilVisible(
+  WidgetTester tester,
+  Finder target,
+) async {
+  await tester.scrollUntilVisible(
+    target,
+    180,
+    scrollable: find
+        .descendant(
+          of: find.byType(CustomScrollView),
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
+  await tester.pumpAndSettle();
 }

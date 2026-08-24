@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:moyue_application/core/display/display_preferences.dart';
 
 abstract final class MoyuePalette {
   static const paper = Color(0xFFF7F3E9);
@@ -11,31 +13,72 @@ abstract final class MoyuePalette {
   static const eInkPaper = Color(0xFFF2F2EF);
   static const eInkSurface = Color(0xFFE7E7E3);
   static const eInk = Color(0xFF181A18);
+  static const nightPaper = Color(0xFF171A18);
+  static const nightSurface = Color(0xFF202420);
+  static const nightSurfaceStrong = Color(0xFF2A2F2A);
+  static const nightInk = Color(0xFFE7EAE4);
+  static const nightMutedInk = Color(0xFFB8BFB7);
+  static const nightHairline = Color(0xFF424941);
 }
 
-ThemeData buildMoyueTheme({required bool inkMode}) {
+ThemeData buildMoyueTheme({
+  required bool inkMode,
+  required Brightness brightness,
+  required Color seedColor,
+  required MoyueFontFamily fontFamily,
+  bool reduceMotion = false,
+}) {
+  final dark = brightness == Brightness.dark;
+  final surface = inkMode
+      ? MoyuePalette.eInkPaper
+      : dark
+      ? MoyuePalette.nightPaper
+      : MoyuePalette.paper;
   final scheme =
       ColorScheme.fromSeed(
-        seedColor: inkMode ? const Color(0xFF3F423E) : MoyuePalette.moss,
-        brightness: Brightness.light,
-        surface: inkMode ? MoyuePalette.eInkPaper : MoyuePalette.paper,
+        seedColor: inkMode ? const Color(0xFF3F423E) : seedColor,
+        brightness: brightness,
+        surface: surface,
       ).copyWith(
-        primary: inkMode ? const Color(0xFF323531) : MoyuePalette.moss,
-        onPrimary: Colors.white,
-        surface: inkMode ? MoyuePalette.eInkPaper : MoyuePalette.paper,
-        onSurface: inkMode ? MoyuePalette.eInk : MoyuePalette.ink,
+        primary: inkMode ? const Color(0xFF323531) : null,
+        onPrimary: inkMode ? Colors.white : null,
+        surface: surface,
+        onSurface: inkMode
+            ? MoyuePalette.eInk
+            : dark
+            ? MoyuePalette.nightInk
+            : MoyuePalette.ink,
         surfaceContainer: inkMode
             ? MoyuePalette.eInkSurface
+            : dark
+            ? MoyuePalette.nightSurface
             : MoyuePalette.surface,
         surfaceContainerHighest: inkMode
             ? const Color(0xFFDADAD6)
+            : dark
+            ? MoyuePalette.nightSurfaceStrong
             : MoyuePalette.paperStrong,
-        outline: inkMode ? const Color(0xFF8B8D88) : MoyuePalette.hairline,
+        onSurfaceVariant: dark
+            ? MoyuePalette.nightMutedInk
+            : MoyuePalette.mutedInk,
+        outline: inkMode
+            ? const Color(0xFF8B8D88)
+            : dark
+            ? MoyuePalette.nightHairline
+            : MoyuePalette.hairline,
         outlineVariant: inkMode
             ? const Color(0xFFC4C5C1)
+            : dark
+            ? MoyuePalette.nightHairline
             : MoyuePalette.hairline,
       );
-  final base = ThemeData.light(useMaterial3: true).textTheme;
+  final selectedFontFamily = _fontFamilyName(fontFamily);
+  final base = ThemeData(
+    brightness: brightness,
+    useMaterial3: true,
+    fontFamily: selectedFontFamily,
+    fontFamilyFallback: _fontFamilyFallback(fontFamily),
+  ).textTheme;
   final textTheme = base
       .copyWith(
         headlineLarge: base.headlineLarge?.copyWith(
@@ -75,12 +118,16 @@ ThemeData buildMoyueTheme({required bool inkMode}) {
       .apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface);
 
   return ThemeData(
-    brightness: Brightness.light,
+    brightness: brightness,
     useMaterial3: true,
+    fontFamily: selectedFontFamily,
+    fontFamilyFallback: _fontFamilyFallback(fontFamily),
     colorScheme: scheme,
     scaffoldBackgroundColor: scheme.surface,
     textTheme: textTheme,
-    splashFactory: inkMode ? NoSplash.splashFactory : InkSparkle.splashFactory,
+    splashFactory: inkMode || reduceMotion
+        ? NoSplash.splashFactory
+        : InkSparkle.splashFactory,
     dividerColor: scheme.outlineVariant,
     appBarTheme: AppBarTheme(
       elevation: 0,
@@ -122,3 +169,39 @@ ThemeData buildMoyueTheme({required bool inkMode}) {
     ),
   );
 }
+
+String? _fontFamilyName(MoyueFontFamily family) => switch (family) {
+  MoyueFontFamily.system => null,
+  MoyueFontFamily.claude => switch (defaultTargetPlatform) {
+    TargetPlatform.android => 'serif',
+    TargetPlatform.iOS || TargetPlatform.macOS => 'New York',
+    TargetPlatform.windows => 'Georgia',
+    TargetPlatform.linux => 'Noto Serif',
+    TargetPlatform.fuchsia => 'serif',
+  },
+  MoyueFontFamily.rounded => switch (defaultTargetPlatform) {
+    TargetPlatform.android => 'sans-serif-rounded',
+    TargetPlatform.iOS || TargetPlatform.macOS => 'SF Pro Rounded',
+    TargetPlatform.windows => 'Segoe UI Variable',
+    TargetPlatform.linux => 'Ubuntu',
+    TargetPlatform.fuchsia => 'Roboto',
+  },
+};
+
+List<String> _fontFamilyFallback(MoyueFontFamily family) => switch (family) {
+  MoyueFontFamily.system => const [],
+  MoyueFontFamily.claude => const [
+    'Source Serif 4',
+    'Noto Serif',
+    'Noto Serif CJK SC',
+    'Songti SC',
+    'STSong',
+    'Georgia',
+  ],
+  MoyueFontFamily.rounded => const [
+    'SF Pro Rounded',
+    'Arial Rounded MT Bold',
+    'Noto Sans CJK SC',
+    'Noto Sans SC',
+  ],
+};

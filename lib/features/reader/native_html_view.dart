@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:moyue_application/services/native_html_preprocessor.dart';
 import 'package:moyue_application/widgets/image_lightbox.dart';
+import 'package:moyue_application/widgets/stable_reader_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 把 HTML/CSS 映射成原生 Flutter widget 树，不创建 WebView。
@@ -228,7 +230,7 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
       },
       onErrorBuilder: (context, element, error) => _HtmlPlaceholder(
         icon: Icons.warning_amber_rounded,
-        label: '无法渲染 ${element.localName}',
+        label: context.l10n.cannotRenderElement(element.localName ?? 'HTML'),
       ),
       onLoadingBuilder: (_, _, _) => const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
@@ -574,44 +576,28 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
     if (source == null || source.isEmpty) return const SizedBox.shrink();
     final uri = Uri.tryParse(source);
     if (uri != null && uri.hasScheme) return null;
-    return FutureBuilder<Uint8List?>(
-      future: _loadResource(source),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(child: CircularProgressIndicator.adaptive()),
-          );
-        }
-        final bytes = snapshot.data;
-        if (bytes == null) {
-          return const _HtmlPlaceholder(
-            icon: Icons.broken_image_outlined,
-            label: '图片资源不存在',
-          );
-        }
-        final avatar = element.classes.contains('avatar');
-        final image = GestureDetector(
-          onTap: () => unawaited(ImageLightbox.show(context, bytes)),
-          child: Image.memory(
-            bytes,
-            width: avatar ? 84 : double.infinity,
-            height: avatar ? 84 : null,
-            fit: avatar ? BoxFit.cover : BoxFit.contain,
-            gaplessPlayback: true,
-          ),
-        );
-        if (avatar) {
-          return ClipOval(child: SizedBox.square(dimension: 84, child: image));
-        }
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: image,
-          ),
-        );
-      },
+    final avatar = element.classes.contains('avatar');
+    final declaredWidth = double.tryParse(element.attributes['width'] ?? '');
+    final declaredHeight = double.tryParse(element.attributes['height'] ?? '');
+    final image = StableReaderImage(
+      cacheKey: '${widget.resourceCacheKey}:$source',
+      loader: () => _loadResource(source),
+      width: avatar ? 84 : declaredWidth,
+      height: avatar ? 84 : declaredHeight,
+      fit: avatar ? BoxFit.cover : BoxFit.contain,
+      semanticLabel: element.attributes['alt'],
+      onTap: (bytes) => unawaited(ImageLightbox.show(context, bytes)),
+      errorBuilder: (context) => _HtmlPlaceholder(
+        icon: Icons.broken_image_outlined,
+        label: context.l10n.imageResourceMissing,
+      ),
+    );
+    if (avatar) {
+      return ClipOval(child: SizedBox.square(dimension: 84, child: image));
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: ClipRRect(borderRadius: BorderRadius.circular(12), child: image),
     );
   }
 

@@ -33,7 +33,8 @@ class _MemoryStore implements PackageFileStore {
       String.fromCharCodes(await readBytes(relativePath));
 
   @override
-  Future<void> deleteFile(String relativePath) async => files.remove(relativePath);
+  Future<void> deleteFile(String relativePath) async =>
+      files.remove(relativePath);
 
   @override
   Future<void> deleteFolder(String relativePath) async {
@@ -53,20 +54,17 @@ class _MemoryStore implements PackageFileStore {
   }
 }
 
-ReadingDocument _doc(
-  String id,
-  String relativePath, {
-  String content = '',
-}) => ReadingDocument(
-  id: id,
-  title: id,
-  content: content,
-  kind: DocumentKind.markdown,
-  updatedAt: DateTime(2026),
-  folderId: 'f1',
-  filePath: relativePath,
-  relativePath: relativePath,
-);
+ReadingDocument _doc(String id, String relativePath, {String content = ''}) =>
+    ReadingDocument(
+      id: id,
+      title: id,
+      content: content,
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026),
+      folderId: 'f1',
+      filePath: relativePath,
+      relativePath: relativePath,
+    );
 
 void main() {
   test('saveImageResource 写入文档旁 images/ 目录并返回相对链接', () async {

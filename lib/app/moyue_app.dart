@@ -14,6 +14,7 @@ import 'package:moyue_application/l10n/app_localizations.dart';
 import 'package:moyue_application/models/library_folder.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/debug_service.dart';
+import 'package:moyue_application/services/incoming_file_service.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
 
@@ -26,20 +27,49 @@ class MoyueApp extends StatefulWidget {
 
 class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
   final MoyueDisplayPreferences _display = MoyueDisplayPreferences();
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  final _incomingFiles = IncomingFileService.instance;
+  int _seenIncomingRevision = 0;
+  Timer? _appearanceRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _incomingFiles.addListener(_handleIncomingFile);
     unawaited(DebugService.instance.refresh());
     unawaited(_display.load());
+    unawaited(_incomingFiles.initialize());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _incomingFiles.removeListener(_handleIncomingFile);
+    _appearanceRefreshTimer?.cancel();
     _display.dispose();
     super.dispose();
+  }
+
+  void _handleIncomingFile() {
+    final event = _incomingFiles.latestEvent;
+    if (event == null || event.revision <= _seenIncomingRevision) return;
+    _seenIncomingRevision = event.revision;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final messageContext = _messengerKey.currentContext;
+      if (messageContext == null) return;
+      final l10n = AppLocalizations.of(messageContext);
+      final text = event.succeeded
+          ? l10n.fileImported(event.fileName)
+          : l10n.fileImportFailed(
+              event.fileName,
+              event.error ?? l10n.unknownError,
+            );
+      _messengerKey.currentState
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(text)));
+    });
   }
 
   @override
@@ -47,6 +77,14 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
     // 回到前台时重查 debug.lock，便于随时放入/移除文件切换调试模式。
     if (state == AppLifecycleState.resumed) {
       unawaited(DebugService.instance.refresh());
+      unawaited(_display.load());
+      // Wallpaper/theme overlays can be committed shortly after the activity
+      // resumes. Re-read once after that window so a newly applied wallpaper
+      // cannot leave the previous seed color cached in the running app.
+      _appearanceRefreshTimer?.cancel();
+      _appearanceRefreshTimer = Timer(const Duration(milliseconds: 900), () {
+        if (mounted) unawaited(_display.load());
+      });
     }
   }
 
@@ -56,68 +94,99 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
       controller: _display,
       child: AnimatedBuilder(
         animation: _display,
-        builder: (context, _) => MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: '墨阅',
-          theme: buildMoyueTheme(inkMode: _display.isInkMode),
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          restorationScopeId: 'moyue_app',
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context)
-                .copyWith(textScaler: TextScaler.linear(_display.appFontScale)),
-            child: GlassTheme(
-              data: GlassThemeData(
-                light: GlassThemeVariant.light.copyWith(
-                  settings: GlassThemeVariant.light.settings?.copyWith(
-                    glassColor: Colors.white.withValues(
-                      alpha: _display.glassOpacity,
-                    ),
-                    lightIntensity: 0.28,
-                    ambientStrength: 0,
-                    fresnelStrength: 0,
-                    edgeAbsorption: 0.06,
-                  ),
-                ),
-                dark: GlassThemeVariant.dark.copyWith(
-                  settings: GlassThemeVariant.dark.settings?.copyWith(
-                    glassColor: Colors.white.withValues(
-                      alpha: _display.glassOpacity,
-                    ),
-                    lightIntensity: 0.22,
-                    ambientStrength: 0,
-                    fresnelStrength: 0,
-                    edgeAbsorption: 0.09,
-                  ),
-                ),
-                interaction: const GlassInteractionSettings(stretch: 0.18),
+        builder: (context, _) {
+          final seedColor = Color(_display.effectiveSeedArgb);
+          final themeMode = switch (_display.themePreference) {
+            MoyueThemePreference.system => ThemeMode.system,
+            MoyueThemePreference.light => ThemeMode.light,
+            MoyueThemePreference.dark => ThemeMode.dark,
+          };
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            scaffoldMessengerKey: _messengerKey,
+            onGenerateTitle: (context) => AppLocalizations.of(context).appName,
+            theme: buildMoyueTheme(
+              inkMode: _display.isInkMode,
+              brightness: Brightness.light,
+              seedColor: seedColor,
+              fontFamily: _display.appFontFamily,
+              reduceMotion: _display.reduceMotion,
+            ),
+            darkTheme: buildMoyueTheme(
+              inkMode: _display.isInkMode,
+              brightness: Brightness.dark,
+              seedColor: seedColor,
+              fontFamily: _display.appFontFamily,
+              reduceMotion: _display.reduceMotion,
+            ),
+            themeMode: themeMode,
+            locale: _display.locale,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            restorationScopeId: 'moyue_app',
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(_display.appFontScale),
+                disableAnimations:
+                    MediaQuery.disableAnimationsOf(context) ||
+                    _display.reduceMotion,
+                accessibleNavigation:
+                    MediaQuery.accessibleNavigationOf(context) ||
+                    _display.reduceMotion,
               ),
-              // 全局调试浮层挂在 Navigator 之上的最外层，
-              // 这样阅读页、文件夹页、编辑页等被推入的完整路由也能覆盖到。
-              child: Stack(
-                children: [
-                  ?child,
-                  ListenableBuilder(
-                    listenable: DebugService.instance,
-                    builder: (context, _) {
-                      final debug = DebugService.instance;
-                      if (!debug.enabled || !debug.fpsBadgeVisible) {
-                        return const SizedBox.shrink();
-                      }
-                      // 右上角、页面操作按钮行之下，避免遮挡玻璃控件。
-                      return Positioned(
-                        top: MediaQuery.paddingOf(context).top + 58,
-                        right: 12,
-                        child: const IgnorePointer(child: DebugFpsOverlay()),
-                      );
-                    },
+              child: GlassTheme(
+                data: GlassThemeData(
+                  light: GlassThemeVariant.light.copyWith(
+                    settings: GlassThemeVariant.light.settings?.copyWith(
+                      glassColor: Colors.white.withValues(
+                        alpha: _display.glassOpacity,
+                      ),
+                      lightIntensity: 0.28,
+                      ambientStrength: 0,
+                      fresnelStrength: 0,
+                      edgeAbsorption: 0.06,
+                    ),
                   ),
-                ],
+                  dark: GlassThemeVariant.dark.copyWith(
+                    settings: GlassThemeVariant.dark.settings?.copyWith(
+                      glassColor: Colors.white.withValues(
+                        alpha: _display.glassOpacity,
+                      ),
+                      lightIntensity: 0.22,
+                      ambientStrength: 0,
+                      fresnelStrength: 0,
+                      edgeAbsorption: 0.09,
+                    ),
+                  ),
+                  interaction: const GlassInteractionSettings(stretch: 0.18),
+                ),
+                // 全局调试浮层挂在 Navigator 之上的最外层，
+                // 这样阅读页、文件夹页、编辑页等被推入的完整路由也能覆盖到。
+                child: Stack(
+                  children: [
+                    ?child,
+                    ListenableBuilder(
+                      listenable: DebugService.instance,
+                      builder: (context, _) {
+                        final debug = DebugService.instance;
+                        if (!debug.enabled || !debug.fpsBadgeVisible) {
+                          return const SizedBox.shrink();
+                        }
+                        // 右上角、页面操作按钮行之下，避免遮挡玻璃控件。
+                        return Positioned(
+                          top: MediaQuery.paddingOf(context).top + 58,
+                          right: 12,
+                          child: const IgnorePointer(child: DebugFpsOverlay()),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          home: const MoyueShell(),
-        ),
+            home: const MoyueShell(),
+          );
+        },
       ),
     );
   }
@@ -183,6 +252,7 @@ class _MoyueShellState extends State<MoyueShell> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final display = DisplayPreferencesScope.of(context);
     final dockSettings = LiquidGlassSettings(
       ambientRim: 1,
@@ -233,26 +303,32 @@ class _MoyueShellState extends State<MoyueShell> {
               type: MaterialType.transparency,
               child: GlassScaffold(
                 background: const MoyueBackdrop(),
-                statusBarStyle: GlassStatusBarStyle.dark,
+                // GlassScaffold uses this color for its bottom edge fade even
+                // when a custom background widget is present. Supplying the
+                // active surface keeps the dock mask dark in night mode.
+                backgroundColor: theme.colorScheme.surface,
+                statusBarStyle: theme.brightness == Brightness.dark
+                    ? GlassStatusBarStyle.light
+                    : GlassStatusBarStyle.dark,
                 bottomBar: GlassTabBar.bottom(
-                  tabs: const [
+                  tabs: [
                     GlassTab(
-                      icon: Icon(Icons.menu_book_outlined),
-                      activeIcon: Icon(Icons.menu_book_rounded),
-                      label: '阅读',
-                      semanticLabel: '阅读',
+                      icon: const Icon(Icons.menu_book_outlined),
+                      activeIcon: const Icon(Icons.menu_book_rounded),
+                      label: l10n.readingTab,
+                      semanticLabel: l10n.readingTab,
                     ),
                     GlassTab(
-                      icon: Icon(Icons.rss_feed_outlined),
-                      activeIcon: Icon(Icons.rss_feed_rounded),
-                      label: '订阅',
-                      semanticLabel: '订阅',
+                      icon: const Icon(Icons.rss_feed_outlined),
+                      activeIcon: const Icon(Icons.rss_feed_rounded),
+                      label: l10n.subscriptionsTab,
+                      semanticLabel: l10n.subscriptionsTab,
                     ),
                     GlassTab(
-                      icon: Icon(Icons.tune_outlined),
-                      activeIcon: Icon(Icons.tune_rounded),
-                      label: '设置',
-                      semanticLabel: '设置',
+                      icon: const Icon(Icons.tune_outlined),
+                      activeIcon: const Icon(Icons.tune_rounded),
+                      label: l10n.settingsTab,
+                      semanticLabel: l10n.settingsTab,
                     ),
                   ],
                   selectedIndex: _selectedIndex,
@@ -260,6 +336,9 @@ class _MoyueShellState extends State<MoyueShell> {
                       setState(() => _selectedIndex = index),
                   settings: dockSettings,
                   quality: GlassQuality.premium,
+                  glowDuration: display.reduceMotion
+                      ? Duration.zero
+                      : const Duration(milliseconds: 300),
                   extraButton: GlassTabBarExtraButton(
                     icon: Icon(
                       _selectedIndex == 2
@@ -267,9 +346,9 @@ class _MoyueShellState extends State<MoyueShell> {
                           : Icons.add_rounded,
                     ),
                     label: switch (_selectedIndex) {
-                      0 => '新建或导入',
-                      1 => '添加订阅',
-                      _ => '关于墨阅',
+                      0 => l10n.createOrImport,
+                      1 => l10n.addSubscription,
+                      _ => l10n.aboutMoyue,
                     },
                     size: 64,
                     onTap: _invokePrimaryAction,
@@ -313,7 +392,7 @@ class _MoyueShellState extends State<MoyueShell> {
                       vertical: 10,
                     ),
                     child: Text(
-                      '再按一次返回桌面',
+                      l10n.pressBackAgain,
                       style: theme.textTheme.labelLarge?.copyWith(
                         color: theme.colorScheme.onInverseSurface,
                       ),

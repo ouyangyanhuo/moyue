@@ -7,12 +7,42 @@ class MoyueBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isInk =
-        DisplayPreferencesScope.of(context).mode == ReadingDisplayMode.ink;
+    final theme = Theme.of(context);
+    final display = DisplayPreferencesScope.of(context);
+    final isInk = display.mode == ReadingDisplayMode.ink;
     if (isInk) return const ColoredBox(color: MoyuePalette.eInkPaper);
 
-    return const DecoratedBox(
-      decoration: BoxDecoration(
+    if (theme.brightness == Brightness.dark) {
+      final accent = Color(display.effectiveSeedArgb);
+      return DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF181B19), Color(0xFF151816), Color(0xFF111512)],
+            stops: [0, 0.58, 1],
+          ),
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              top: -90,
+              right: -80,
+              child: _SoftCircle(size: 260, color: accent),
+            ),
+            Positioned(
+              bottom: 70,
+              left: -120,
+              child: _SoftCircle(size: 320, color: accent),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final accent = Color(display.effectiveSeedArgb);
+    return DecoratedBox(
+      decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -22,8 +52,16 @@ class MoyueBackdrop extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Positioned(top: -90, right: -80, child: _SoftCircle(size: 260)),
-          Positioned(bottom: 70, left: -120, child: _SoftCircle(size: 320)),
+          Positioned(
+            top: -90,
+            right: -80,
+            child: _SoftCircle(size: 260, color: accent),
+          ),
+          Positioned(
+            bottom: 70,
+            left: -120,
+            child: _SoftCircle(size: 320, color: accent),
+          ),
         ],
       ),
     );
@@ -31,17 +69,18 @@ class MoyueBackdrop extends StatelessWidget {
 }
 
 class _SoftCircle extends StatelessWidget {
-  const _SoftCircle({required this.size});
+  const _SoftCircle({required this.size, required this.color});
   final double size;
+  final Color color;
 
   @override
   Widget build(BuildContext context) => IgnorePointer(
     child: Container(
       width: size,
       height: size,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Color(0x2EB7C4AE),
+        color: color.withValues(alpha: 0.13),
       ),
     ),
   );

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/services/webview_document_builder.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -80,7 +81,7 @@ class WebViewHtmlViewState extends State<WebViewHtmlView> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = '当前平台不支持系统 WebView，请关闭设置中的 WebView 阅读器。';
+          _error = context.l10n.unsupportedWebViewPlatform;
         });
       }
       return;
@@ -102,6 +103,8 @@ class WebViewHtmlViewState extends State<WebViewHtmlView> {
       final controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(Colors.transparent)
+        ..setVerticalScrollBarEnabled(false)
+        ..setHorizontalScrollBarEnabled(false)
         ..setNavigationDelegate(
           NavigationDelegate(
             onPageFinished: (_) {

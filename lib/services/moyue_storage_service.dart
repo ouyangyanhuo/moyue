@@ -191,6 +191,26 @@ class MoyueStorageService extends ChangeNotifier {
     return moved;
   }
 
+  /// 首页拖拽只在所有文档和根文件夹移动完成后刷新一次。
+  Future<void> moveLibraryItems({
+    required List<ReadingDocument> documents,
+    required List<LibraryFolder> folders,
+    required LibraryFolder target,
+  }) async {
+    var changed = false;
+    for (final document in documents) {
+      if (document.folderId == target.id) continue;
+      await _packages.moveDocument(document: document, target: target);
+      changed = true;
+    }
+    for (final folder in folders) {
+      if (folder.id == target.id) continue;
+      await _packages.moveRootFolder(sourceRoot: folder, targetRoot: target);
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
   Future<String> moveSubfolder({
     required LibraryFolder sourceRoot,
     required String logicalPath,

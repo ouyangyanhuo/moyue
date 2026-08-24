@@ -66,7 +66,7 @@ class RssService {
                 id: item.id ?? link ?? '${source.id}-${item.title}',
                 sourceId: source.id,
                 sourceTitle: sourceTitle,
-                title: _clean(item.title) ?? '无标题文章',
+                title: _clean(item.title) ?? '',
                 summary: _plainText(item.summary ?? item.content ?? ''),
                 link: link == null ? null : Uri.tryParse(link),
                 publishedAt: DateTime.tryParse(
@@ -90,7 +90,7 @@ class RssService {
               id: item.guid ?? item.link ?? '${source.id}-${item.title}',
               sourceId: source.id,
               sourceTitle: sourceTitle,
-              title: _clean(item.title) ?? '无标题文章',
+              title: _clean(item.title) ?? '',
               summary: _plainText(item.description ?? ''),
               link: item.link == null ? null : Uri.tryParse(item.link!),
               publishedAt: _parseRssDate(item.pubDate),

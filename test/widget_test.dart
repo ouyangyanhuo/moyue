@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui';
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -47,19 +47,19 @@ void main() {
     await tester.pumpWidget(const MoyueApp());
     await _pumpIo(tester);
 
-    expect(find.text('阅读'), findsWidgets);
+    expect(find.text('Reading'), findsWidgets);
     expect(find.byIcon(Icons.edit_outlined), findsNothing);
 
     await tester.tapAt(
       tester.getCenter(find.byIcon(Icons.rss_feed_outlined).last),
     );
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('订阅源'), findsOneWidget);
-    expect(find.text('还没有订阅'), findsOneWidget);
+    expect(find.text('Sources'), findsOneWidget);
+    expect(find.text('No subscriptions yet'), findsOneWidget);
 
     await tester.tapAt(tester.getCenter(find.byIcon(Icons.tune_outlined).last));
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('设置'), findsWidgets);
+    expect(find.text('Settings'), findsWidgets);
     expect(find.byType(GlassSlider), findsOneWidget);
     expect(find.byType(GlassSwitch), findsNWidgets(4));
     expect(find.byType(Slider), findsNothing);
@@ -160,14 +160,14 @@ void main() {
     await tester.tapAt(tester.getCenter(find.byIcon(Icons.tune_outlined).last));
     await tester.pump(const Duration(milliseconds: 350));
 
-    final about = find.bySemanticsLabel('关于墨阅');
+    final about = find.bySemanticsLabel('About Moyue');
     expect(about, findsOneWidget);
     await tester.tap(about);
     await tester.pump(const Duration(milliseconds: 350));
 
-    expect(find.text('作者'), findsOneWidget);
+    expect(find.text('Author'), findsOneWidget);
     expect(find.text('Magneto'), findsOneWidget);
-    expect(find.text('版本'), findsOneWidget);
+    expect(find.text('Version'), findsOneWidget);
     expect(find.byType(BottomSheet), findsOneWidget);
   });
 
@@ -264,7 +264,7 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pump();
 
-    expect(find.text('再按一次返回桌面'), findsOneWidget);
+    expect(find.text('Press back again to exit'), findsOneWidget);
   });
 
   testWidgets('编辑工具栏只在输入法稳定显示后贴在其上方', (tester) async {
@@ -306,6 +306,28 @@ void main() {
     await tester.pump();
 
     expect(find.byIcon(Icons.format_bold_rounded), findsOneWidget);
+    final formatBar = tester.widget<GlassButtonGroup>(
+      find.byType(GlassButtonGroup),
+    );
+    expect(formatBar.quality, GlassQuality.premium);
+    expect(formatBar.useOwnLayer, isTrue);
+    final bodyField = tester.widget<TextField>(find.byType(TextField).last);
+    expect(bodyField.scrollController, isNotNull);
+    expect(
+      (bodyField.decoration!.contentPadding! as EdgeInsets).bottom,
+      greaterThan(300),
+    );
+    await tester.enterText(
+      find.byType(TextField).last,
+      List<String>.generate(60, (index) => '第 $index 行正文').join('\n'),
+    );
+    await tester.pump();
+    final bodyScrollController = bodyField.scrollController!;
+    expect(bodyScrollController.position.maxScrollExtent, greaterThan(0));
+    bodyScrollController.jumpTo(0);
+    await tester.drag(find.byType(TextField).last, const Offset(0, -160));
+    await tester.pump();
+    expect(bodyScrollController.offset, greaterThan(0));
     expect(
       tester
           .getBottomLeft(find.byKey(const ValueKey('keyboard-format-dock')))
@@ -957,8 +979,10 @@ void main() {
 
     final title = find.text('可移动文档');
     final kind = find.text('Markdown');
-    final modified = find.textContaining('修改于 2026-08-23 18:30');
+    final modified = find.text('2026-08-23 18:30');
     expect(modified, findsOneWidget);
+    expect(find.byIcon(Icons.calendar_today_outlined), findsOneWidget);
+    expect(find.textContaining('修改于'), findsNothing);
     expect(kind, findsOneWidget);
     expect(
       (tester.getCenter(title).dy - tester.getCenter(kind).dy).abs(),
@@ -969,14 +993,18 @@ void main() {
       greaterThan(tester.getCenter(title).dy),
     );
     expect(
-      find.byWidgetPredicate(
-        (widget) => widget is LongPressDraggable<List<ReadingDocument>>,
+      find.ancestor(
+        of: title,
+        matching: find.byWidgetPredicate(
+          (widget) => widget is LongPressDraggable,
+        ),
       ),
       findsOneWidget,
     );
     expect(
-      find.byWidgetPredicate(
-        (widget) => widget is DragTarget<List<ReadingDocument>>,
+      find.ancestor(
+        of: find.text('目标文件夹'),
+        matching: find.byWidgetPredicate((widget) => widget is DragTarget),
       ),
       findsOneWidget,
     );
@@ -1000,12 +1028,38 @@ void main() {
     expect(find.text('第一章'), findsWidgets);
     expect(find.textContaining('第二节'), findsWidgets);
     expect(find.byType(BottomSheet), findsOneWidget);
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).enableDrag,
+      isFalse,
+    );
     expect(find.byType(ListTile), findsAtLeastNWidgets(2));
     for (final button in tester.widgetList<MoyueGlassIconButton>(
       find.byType(MoyueGlassIconButton),
     )) {
       expect(button.useOwnLayer, isTrue);
     }
+  });
+
+  testWidgets('Markdown 分享会先询问文件、文字或图片', (tester) async {
+    final document = ReadingDocument(
+      id: 'share-doc',
+      title: '分享测试.md',
+      content: '# 分享测试\n\n正文',
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026),
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: ReaderDetailPage(document: document)),
+    );
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('分享文档'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('分享 Markdown'), findsOneWidget);
+    expect(find.text('分享 Markdown 文件'), findsOneWidget);
+    expect(find.text('分享为纯文字'), findsOneWidget);
+    expect(find.text('分享当前阅读页图片'), findsOneWidget);
+    expect(find.bySemanticsLabel('分享文档'), findsNothing);
   });
 
   testWidgets('设置页墨模式开关保持禁用', (tester) async {
@@ -1078,8 +1132,7 @@ void main() {
     ).pop();
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('Web 阅读器'));
-    await tester.pumpAndSettle();
+    await _scrollSettingsUntilVisible(tester, find.text('Web 阅读器'));
     expect(find.text('Web 阅读器'), findsOneWidget);
     expect(display.htmlWebViewEnabled, isFalse);
 
@@ -1106,10 +1159,6 @@ void main() {
     );
     await tester.pump();
     expect(display.htmlWebViewEnabled, isTrue);
-
-    final slider = tester.widget<GlassSlider>(find.byType(GlassSlider));
-    expect(slider.quality, GlassQuality.premium);
-    expect(slider.settings, isNotNull);
   });
 
   testWidgets('设置页文字详情与主页滑杆使用独立触控区', (tester) async {
@@ -1147,7 +1196,7 @@ void main() {
         child: const MaterialApp(home: Scaffold(body: SettingsPage())),
       ),
     );
-    await tester.ensureVisible(find.text('软件字体大小'));
+    await _scrollSettingsUntilVisible(tester, find.text('软件字体大小'));
     await tester.tap(find.text('软件字体大小'));
     await tester.pumpAndSettle();
 
@@ -1206,4 +1255,21 @@ Future<void> _pumpIo(WidgetTester tester) async {
   for (var i = 0; i < 6; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
+}
+
+Future<void> _scrollSettingsUntilVisible(
+  WidgetTester tester,
+  Finder target,
+) async {
+  await tester.scrollUntilVisible(
+    target,
+    180,
+    scrollable: find
+        .descendant(
+          of: find.byType(CustomScrollView),
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
+  await tester.pumpAndSettle();
 }

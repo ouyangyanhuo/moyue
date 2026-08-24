@@ -11,7 +11,12 @@ List<BoxShadow> moyueGlassShadow(double opacity) {
   final shadowOpacity = 0.065 - (opacity.clamp(0.0, 1.0) * 0.025);
   return [
     BoxShadow(
-      color: const Color.fromARGB(255, 0, 0, 0).withValues(alpha: shadowOpacity),
+      color: const Color.fromARGB(
+        255,
+        0,
+        0,
+        0,
+      ).withValues(alpha: shadowOpacity),
       blurRadius: 20,
       spreadRadius: -3,
       offset: const Offset(0, 6),

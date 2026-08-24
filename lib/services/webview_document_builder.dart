@@ -39,7 +39,17 @@ class WebViewDocumentBuilder {
       Element.tag('style')
         ..text =
             '''
-html { background: transparent; }
+html {
+  background: transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
 body {
   box-sizing: border-box;
   padding-top: ${topInset.toStringAsFixed(1)}px !important;

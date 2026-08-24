@@ -2,7 +2,7 @@ name: Build Android Release APKs
 
 # 触发方式：
 # 1. 推送 tag（如 v1.0.1、v1.0.1+3）时自动构建并发布
-# 2. 在 GitHub Actions 页面手动触发，可指定公开版本号和内部版本号
+# 2. 在 GitHub Actions 页面手动触发，可分别指定公开版本号、数字构建号和关于页内部版本号
 on:
   push:
     tags:
@@ -10,12 +10,17 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号，如 1.0.1 或 1.0.1+3；留空则使用 pubspec.yaml 中的版本'
+        description: '公开版本号，如 1.0.1；也兼容 1.0.1+3，留空则使用 pubspec.yaml'
+        required: false
+        default: ''
+        type: string
+      build_number:
+        description: 'Android 数字构建号（versionCode），如 3；留空则取版本号中的 +数字或 pubspec.yaml'
         required: false
         default: ''
         type: string
       internal_version:
-        description: '关于页内部版本号/代号，如 Apple；留空依次使用仓库变量、Android 构建号'
+        description: '关于页括号内的内部版本号，如 Apple（最终显示 1.0.1(Apple)）'
         required: false
         default: ''
         type: string
@@ -54,12 +59,14 @@ jobs:
       # - 手动触发时优先用输入值
       # - push tag 时去掉前缀 v（v1.0.1+3 -> 1.0.1 / build 3）
       # - 其余情况读取 pubspec.yaml
+      # - Android 数字构建号可用 build_number 单独覆盖
       # - 内部版本优先使用手动输入，其次使用仓库变量，最后回退到构建号
       - name: Resolve version info
         id: version
         shell: bash
         env:
           VERSION_INPUT: ${{ inputs.version }}
+          BUILD_NUMBER_INPUT: ${{ inputs.build_number }}
           INTERNAL_VERSION_INPUT: ${{ inputs.internal_version }}
           INTERNAL_VERSION_VARIABLE: ${{ vars.MOYUE_INTERNAL_VERSION }}
         run: |
@@ -75,13 +82,27 @@ jobs:
 
           if [[ "$RAW" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)$ ]]; then
             VERSION="${BASH_REMATCH[1]}"
-            BUILD_NUMBER="${BASH_REMATCH[2]}"
+            VERSION_BUILD_NUMBER="${BASH_REMATCH[2]}"
           elif [[ "$RAW" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             VERSION="$RAW"
-            BUILD_NUMBER=$(grep -E '^version:' pubspec.yaml | grep -oE '\+[0-9]+' | head -n1 | tr -d '+')
-            [ -n "$BUILD_NUMBER" ] || BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+            VERSION_BUILD_NUMBER=""
           else
             echo "::error::无法解析版本号: $RAW（示例：1.0.1 或 1.0.1+3）"
+            exit 1
+          fi
+
+          BUILD_NUMBER_INPUT="$(printf '%s' "$BUILD_NUMBER_INPUT" | tr -d '[:space:]')"
+          if [ -n "$BUILD_NUMBER_INPUT" ]; then
+            BUILD_NUMBER="$BUILD_NUMBER_INPUT"
+          elif [ -n "$VERSION_BUILD_NUMBER" ]; then
+            BUILD_NUMBER="$VERSION_BUILD_NUMBER"
+          else
+            BUILD_NUMBER=$(grep -E '^version:' pubspec.yaml | grep -oE '\+[0-9]+' | head -n1 | tr -d '+')
+            [ -n "$BUILD_NUMBER" ] || BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          fi
+
+          if ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Android 数字构建号必须是大于 0 的整数，当前值: $BUILD_NUMBER"
             exit 1
           fi
 
@@ -123,16 +144,38 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           echo "internal_version=$INTERNAL_VERSION" >> "$GITHUB_OUTPUT"
+          echo "display_version=${VERSION}(${INTERNAL_VERSION})" >> "$GITHUB_OUTPUT"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          echo "解析结果: version=$VERSION build=$BUILD_NUMBER internal=$INTERNAL_VERSION tag=$RELEASE_TAG"
+          echo "解析结果: version=$VERSION build=$BUILD_NUMBER internal=$INTERNAL_VERSION about=${VERSION}(${INTERNAL_VERSION}) tag=$RELEASE_TAG"
+
+      - name: Write version summary
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
+          INTERNAL_VERSION: ${{ steps.version.outputs.internal_version }}
+          DISPLAY_VERSION: ${{ steps.version.outputs.display_version }}
+        run: |
+          {
+            echo "## 本次构建版本"
+            echo ""
+            printf '%s\n' "- 关于页：\`$DISPLAY_VERSION\`"
+            printf '%s\n' "- 公开版本号（versionName）：\`$VERSION\`"
+            printf '%s\n' "- Android 数字构建号（versionCode）：\`$BUILD_NUMBER\`"
+            printf '%s\n' "- 内部版本号：\`$INTERNAL_VERSION\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify About version binding
         env:
+          VERSION: ${{ steps.version.outputs.version }}
           INTERNAL_VERSION: ${{ steps.version.outputs.internal_version }}
+          DISPLAY_VERSION: ${{ steps.version.outputs.display_version }}
         run: >-
           flutter test
           --dart-define=MOYUE_INTERNAL_VERSION="$INTERNAL_VERSION"
           --dart-define=MOYUE_EXPECTED_INTERNAL_VERSION="$INTERNAL_VERSION"
+          --dart-define=MOYUE_EXPECTED_PUBLIC_VERSION="$VERSION"
+          --dart-define=MOYUE_EXPECTED_DISPLAY_VERSION="$DISPLAY_VERSION"
           test/app_version_service_test.dart
 
       # 签名配置（可选）：

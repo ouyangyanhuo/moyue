@@ -5,7 +5,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 import 'package:moyue_application/widgets/moyue_glass_title_pill.dart';
@@ -72,6 +74,8 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   Timer? _autosaveTimer;
   final FocusNode _titleFocus = FocusNode();
   final FocusNode _bodyFocus = FocusNode();
+  final ScrollController _bodyScrollController = ScrollController();
+  final ValueNotifier<double> _settledKeyboardInset = ValueNotifier(0);
   ReadingDocument? _currentDocument;
   bool _importingImage = false;
 
@@ -129,6 +133,8 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     _autosaveTimer?.cancel();
     _titleFocus.dispose();
     _bodyFocus.dispose();
+    _bodyScrollController.dispose();
+    _settledKeyboardInset.dispose();
     _title.value.removeListener(_changed);
     _body.value.removeListener(_changed);
     _title.dispose();
@@ -141,6 +147,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     return PopScope<ReadingDocument?>(
       // 拦截系统返回：与「保存」一致，先落盘、再清理、最后退出，
       // 保证磁盘正文始终包含已插入的图片链接，避免清理误删。
@@ -177,17 +184,19 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                           const SizedBox(width: 7),
                           Text(
                             _saving
-                                ? '正在保存…'
+                                ? l10n.saving
                                 : _dirty.value
-                                ? '草稿已进入恢复队列'
-                                : '已自动保存',
+                                ? l10n.draftQueued
+                                : l10n.autoSaved,
                             style: theme.textTheme.labelSmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
                           const Spacer(),
                           Text(
-                            '${_body.value.text.characters.length} 字',
+                            l10n.characterCount(
+                              _body.value.text.characters.length,
+                            ),
                             style: theme.textTheme.labelSmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
@@ -197,13 +206,18 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                     ),
                     Expanded(
                       child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
+                        duration: moyueMotionDuration(
+                          context,
+                          const Duration(milliseconds: 220),
+                        ),
                         child: _mode.value == 0
                             ? _EditorCanvas(
                                 title: _title.value,
                                 body: _body.value,
                                 titleFocus: _titleFocus,
                                 bodyFocus: _bodyFocus,
+                                bodyScrollController: _bodyScrollController,
+                                keyboardInset: _settledKeyboardInset,
                               )
                             : _PreviewCanvas(body: _body.value.text),
                       ),
@@ -233,7 +247,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                               size: 21,
                             ),
                             onPressed: _exitWithSave,
-                            semanticLabel: '返回',
+                            semanticLabel: l10n.back,
                             size: 44,
                             useOwnLayer: true,
                             settings: moyueGlassSettings(context),
@@ -242,7 +256,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                         MoyueGlassTitlePill(
                           width: 150,
                           title: _title.value.text.trim().isEmpty
-                              ? '新建 Markdown'
+                              ? l10n.newMarkdown
                               : _title.value.text.trim(),
                         ),
                         Align(
@@ -260,7 +274,9 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                                 onPressed: () => setState(() {
                                   _mode.value = _mode.value == 0 ? 1 : 0;
                                 }),
-                                semanticLabel: _mode.value == 0 ? '预览' : '继续编辑',
+                                semanticLabel: _mode.value == 0
+                                    ? l10n.preview
+                                    : l10n.continueEditing,
                                 size: 44,
                                 useOwnLayer: true,
                                 settings: moyueGlassSettings(context),
@@ -279,7 +295,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                                         size: 21,
                                       ),
                                 onPressed: _saving ? null : _save,
-                                semanticLabel: '保存',
+                                semanticLabel: l10n.save,
                                 size: 44,
                                 useOwnLayer: true,
                                 settings: moyueGlassSettings(context),
@@ -297,6 +313,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
               enabled: _mode.value == 0,
               titleFocus: _titleFocus,
               bodyFocus: _bodyFocus,
+              keyboardInset: _settledKeyboardInset,
               child: _FormatBar(
                 onFormat: _applyFormat,
                 onInsertImage: _insertImage,
@@ -351,8 +368,9 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
           document.relativePath == null ||
           document.folderId == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('请先填写标题，保存后再插入图片')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.insertImageNeedsTitle)),
+          );
         }
         return;
       }
@@ -366,7 +384,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
       if (!mounted) return;
       if (bytes.length > 8 * 1024 * 1024) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('图片不能超过 8 MB')));
+            .showSnackBar(SnackBar(content: Text(context.l10n.imageLimit)));
         return;
       }
       final link = await MoyueStorageService.instance.saveDocumentImage(
@@ -377,7 +395,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
       if (!mounted) return;
       if (link == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('仅支持 png/jpg/jpeg/gif/webp/bmp 图片')),
+          SnackBar(content: Text(context.l10n.supportedImageTypes)),
         );
         return;
       }
@@ -392,13 +410,15 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
         selection: TextSelection.collapsed(offset: caret + snippet.length),
       );
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('图片已保存到 $link')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(context.l10n.imageSaved(link))));
       }
     } on Object catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('插入图片失败：$error')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.insertImageFailed('$error'))),
+        );
       }
     } finally {
       if (mounted) setState(() => _importingImage = false);
@@ -415,8 +435,9 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     final title = _title.value.text.trim();
     if (title.isEmpty) {
       if (popAfter && mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('请先填写文稿标题')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(context.l10n.enterDraftTitle)));
       }
       return;
     }
@@ -434,8 +455,9 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
       if (popAfter && mounted) Navigator.pop(context, document);
     } on Object catch (error) {
       if (popAfter && mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存失败：$error')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.saveFailed('$error'))),
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -447,17 +469,17 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
       case _MarkdownFormat.heading:
         _insertAtLineStart('## ');
       case _MarkdownFormat.bold:
-        _wrapSelection('**', '**', '重点文字');
+        _wrapSelection('**', '**', context.l10n.boldPlaceholder);
       case _MarkdownFormat.italic:
-        _wrapSelection('_', '_', '强调文字');
+        _wrapSelection('_', '_', context.l10n.italicPlaceholder);
       case _MarkdownFormat.quote:
         _insertAtLineStart('> ');
       case _MarkdownFormat.list:
         _insertAtLineStart('- ');
       case _MarkdownFormat.link:
-        _wrapSelection('[', '](https://)', '链接文字');
+        _wrapSelection('[', '](https://)', context.l10n.linkPlaceholder);
       case _MarkdownFormat.code:
-        _wrapSelection('`', '`', '代码');
+        _wrapSelection('`', '`', context.l10n.codePlaceholder);
     }
   }
 
@@ -498,15 +520,20 @@ class _EditorCanvas extends StatelessWidget {
     required this.body,
     required this.titleFocus,
     required this.bodyFocus,
+    required this.bodyScrollController,
+    required this.keyboardInset,
   });
   final TextEditingController title;
   final TextEditingController body;
   final FocusNode titleFocus;
   final FocusNode bodyFocus;
+  final ScrollController bodyScrollController;
+  final ValueNotifier<double> keyboardInset;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     return Padding(
       key: const ValueKey('edit'),
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -525,8 +552,8 @@ class _EditorCanvas extends StatelessWidget {
               style: theme.textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
-              decoration: const InputDecoration(
-                hintText: '文稿标题',
+              decoration: InputDecoration(
+                hintText: l10n.draftTitle,
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -535,22 +562,34 @@ class _EditorCanvas extends StatelessWidget {
             ),
             Divider(color: theme.colorScheme.outlineVariant),
             Expanded(
-              child: TextField(
-                controller: body,
-                focusNode: bodyFocus,
-                expands: true,
-                minLines: null,
-                maxLines: null,
-                textAlignVertical: TextAlignVertical.top,
-                keyboardType: TextInputType.multiline,
-                textCapitalization: TextCapitalization.sentences,
-                style: theme.textTheme.bodyLarge?.copyWith(height: 1.7),
-                decoration: const InputDecoration(
-                  hintText: '从这里开始写作…',
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: ValueListenableBuilder<double>(
+                valueListenable: keyboardInset,
+                builder: (context, inset, _) => TextField(
+                  controller: body,
+                  focusNode: bodyFocus,
+                  scrollController: bodyScrollController,
+                  expands: true,
+                  minLines: null,
+                  maxLines: null,
+                  textAlignVertical: TextAlignVertical.top,
+                  keyboardType: TextInputType.multiline,
+                  textCapitalization: TextCapitalization.sentences,
+                  scrollPadding: EdgeInsets.only(
+                    bottom: inset > 0 ? inset + 86 : 24,
+                  ),
+                  style: theme.textTheme.bodyLarge?.copyWith(height: 1.7),
+                  decoration: InputDecoration(
+                    hintText: l10n.startWriting,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.fromLTRB(
+                      20,
+                      16,
+                      20,
+                      inset > 0 ? inset + 86 : 24,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -591,12 +630,14 @@ class _SettledKeyboardDock extends StatefulWidget {
     required this.enabled,
     required this.titleFocus,
     required this.bodyFocus,
+    required this.keyboardInset,
     required this.child,
   });
 
   final bool enabled;
   final FocusNode titleFocus;
   final FocusNode bodyFocus;
+  final ValueNotifier<double> keyboardInset;
   final Widget child;
 
   @override
@@ -657,6 +698,7 @@ class _SettledKeyboardDockState extends State<_SettledKeyboardDock>
     final needsRebuild = _settled || _keyboardInset != 0;
     _settled = false;
     _keyboardInset = 0;
+    widget.keyboardInset.value = 0;
     if (needsRebuild && mounted) setState(() {});
     if (!_visible) return;
     _sampleTimer = Timer(const Duration(milliseconds: 80), _sampleInset);
@@ -685,6 +727,7 @@ class _SettledKeyboardDockState extends State<_SettledKeyboardDock>
         _keyboardInset = inset;
         _settled = true;
       });
+      widget.keyboardInset.value = inset;
       return;
     }
     _sampleTimer = Timer(const Duration(milliseconds: 45), _sampleInset);
@@ -722,36 +765,49 @@ class _FormatBar extends StatelessWidget {
   final VoidCallback onInsertImage;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 560),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: GlassButtonGroup.icons(
-          useOwnLayer: true,
-          settings: moyueGlassSettings(context),
-          items: [
-            _item(Icons.title_rounded, '标题', _MarkdownFormat.heading),
-            _item(Icons.format_bold_rounded, '粗体', _MarkdownFormat.bold),
-            _item(Icons.format_italic_rounded, '斜体', _MarkdownFormat.italic),
-            _item(Icons.format_quote_rounded, '引用', _MarkdownFormat.quote),
-            _item(
-              Icons.format_list_bulleted_rounded,
-              '列表',
-              _MarkdownFormat.list,
-            ),
-            _item(Icons.link_rounded, '链接', _MarkdownFormat.link),
-            _item(Icons.code_rounded, '代码', _MarkdownFormat.code),
-            GlassButtonGroupItem(
-              icon: const Icon(Icons.image_outlined),
-              label: '图片',
-              onTap: onInsertImage,
-            ),
-          ],
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: GlassButtonGroup.icons(
+            useOwnLayer: true,
+            quality: GlassQuality.premium,
+            platformViewBackdrop: false,
+            settings: moyueGlassSettings(context),
+            items: [
+              _item(Icons.title_rounded, l10n.heading, _MarkdownFormat.heading),
+              _item(Icons.format_bold_rounded, l10n.bold, _MarkdownFormat.bold),
+              _item(
+                Icons.format_italic_rounded,
+                l10n.italic,
+                _MarkdownFormat.italic,
+              ),
+              _item(
+                Icons.format_quote_rounded,
+                l10n.quote,
+                _MarkdownFormat.quote,
+              ),
+              _item(
+                Icons.format_list_bulleted_rounded,
+                l10n.list,
+                _MarkdownFormat.list,
+              ),
+              _item(Icons.link_rounded, l10n.link, _MarkdownFormat.link),
+              _item(Icons.code_rounded, l10n.code, _MarkdownFormat.code),
+              GlassButtonGroupItem(
+                icon: const Icon(Icons.image_outlined),
+                label: l10n.image,
+                onTap: onInsertImage,
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   GlassButtonGroupItem _item(
     IconData icon,

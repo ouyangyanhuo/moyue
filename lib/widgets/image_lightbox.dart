@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 
 /// 全屏图片灯箱：双指/双击缩放、拖拽平移，点按空白或关闭按钮退出。
@@ -93,7 +94,7 @@ class _ImageLightboxState extends State<ImageLightbox> {
                 child: IconButton(
                   icon: const Icon(Icons.close_rounded, color: Colors.white),
                   onPressed: () => Navigator.of(context).pop(),
-                  tooltip: '关闭',
+                  tooltip: context.l10n.close,
                 ),
               ),
             ),

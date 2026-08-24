@@ -522,6 +522,81 @@ void main() {
     );
   });
 
+  test('首页根文件夹可整体拖入另一文件夹并保留目录、文档和资源', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'moyue-move-root-folder-',
+    );
+    final store = _IndexedMemoryStore(root);
+    final service = DocumentPackageService(store: store);
+    addTearDown(() async {
+      await service.close();
+      await root.delete(recursive: true);
+    });
+
+    await service.createFolder('来源');
+    await service.createFolder('目标');
+    var folders = await service.loadFolders();
+    var source = folders.singleWhere((folder) => folder.name == '来源');
+    final target = folders.singleWhere((folder) => folder.name == '目标');
+    await service.createSubfolder(
+      rootFolder: source,
+      parentPath: '',
+      name: '空目录',
+    );
+    source = (await service.loadFolders()).singleWhere(
+      (folder) => folder.id == source.id,
+    );
+    var rootDocument = await service.importIntoFolder(
+      folder: source,
+      fileName: '根文档.md',
+      bytes: Uint8List.fromList(utf8.encode('# 根文档')),
+    );
+    await service.importIntoFolder(
+      folder: source,
+      fileName: '章节.html',
+      bytes: Uint8List.fromList(utf8.encode('<h1>章节</h1>')),
+      logicalDirectory: '章节',
+    );
+    final imageLink = await service.saveImageResource(
+      document: rootDocument,
+      fileName: '封面.png',
+      bytes: Uint8List.fromList([9, 7, 5, 3]),
+    );
+    rootDocument = await service.saveMarkdown(
+      title: rootDocument.title,
+      content: '# 根文档\n\n![]($imageLink)',
+      existing: rootDocument,
+    );
+
+    final movedPath = await service.moveRootFolder(
+      sourceRoot: source,
+      targetRoot: target,
+    );
+
+    expect(movedPath, '来源');
+    folders = await service.loadFolders();
+    expect(folders.map((folder) => folder.id), isNot(contains(source.id)));
+    final refreshedTarget = folders.singleWhere(
+      (folder) => folder.id == target.id,
+    );
+    expect(
+      refreshedTarget.subfolderPaths,
+      containsAll(<String>['来源', '来源/章节', '来源/空目录']),
+    );
+    expect(
+      refreshedTarget.documents.map((document) => document.logicalPath),
+      containsAll(<String>['来源/根文档.md', '来源/章节/章节.html']),
+    );
+    final movedDocument = refreshedTarget.documents.singleWhere(
+      (document) => document.title == rootDocument.title,
+    );
+    expect(movedDocument.folderId, target.id);
+    expect(
+      await service.readLinkedResource(movedDocument, imageLink!),
+      Uint8List.fromList([9, 7, 5, 3]),
+    );
+  });
+
   test('ZIP 文档包可导入现有文件夹并保留包内目录与资源', () async {
     final root = await Directory.systemTemp.createTemp('moyue-folder-zip-');
     final store = _IndexedMemoryStore(root);

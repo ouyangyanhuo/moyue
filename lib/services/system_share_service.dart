@@ -80,6 +80,35 @@ class SystemShareService {
     mimeType: 'application/vnd.moyue.package+zip',
   );
 
+  static Future<ShareResult> shareText(
+    BuildContext context, {
+    required String text,
+    required String subject,
+  }) => SharePlus.instance.share(
+    ShareParams(
+      text: text,
+      subject: subject,
+      sharePositionOrigin: _shareOrigin(context),
+    ),
+  );
+
+  static Future<ShareResult> shareMarkdownImage(
+    BuildContext context, {
+    required Uint8List bytes,
+    required String title,
+  }) {
+    var baseName = _safeName(title, fallback: 'moyue');
+    if (baseName.toLowerCase().endsWith('.md')) {
+      baseName = baseName.substring(0, baseName.length - 3);
+    }
+    return shareBytes(
+      context,
+      bytes: bytes,
+      fileName: '$baseName.png',
+      mimeType: 'image/png',
+    );
+  }
+
   static Future<ShareResult> shareBytes(
     BuildContext context, {
     required Uint8List bytes,
