@@ -16,6 +16,7 @@ import 'package:moyue_application/features/editor/editor_page.dart';
 import 'package:moyue_application/features/rss/rss_page.dart';
 import 'package:moyue_application/features/settings/settings_page.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
+import 'package:moyue_application/core/display/moyue_markdown_style.dart';
 import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/models/library_folder.dart';
@@ -412,7 +413,7 @@ void main() {
     );
   });
 
-  testWidgets('编辑工具栏按正文选区排版并保持输入焦点', (tester) async {
+  testWidgets('编辑工具栏格式按钮再次点击会撤销标记并保持焦点', (tester) async {
     tester.view.viewInsets = const FakeViewPadding(bottom: 300);
     addTearDown(tester.view.resetViewInsets);
     final display = MoyueDisplayPreferences();
@@ -443,6 +444,20 @@ void main() {
       body.controller!.selection,
       const TextSelection(baseOffset: 2, extentOffset: 4),
     );
+    await tester.tap(find.byIcon(Icons.format_bold_rounded));
+    await tester.pump();
+    expect(body.controller!.text, '正文');
+    expect(
+      body.controller!.selection,
+      const TextSelection(baseOffset: 0, extentOffset: 2),
+    );
+
+    await tester.tap(find.byIcon(Icons.title_rounded));
+    await tester.pump();
+    expect(body.controller!.text, '## 正文');
+    await tester.tap(find.byIcon(Icons.title_rounded));
+    await tester.pump();
+    expect(body.controller!.text, '正文');
     expect(body.focusNode!.hasFocus, isTrue);
   });
 
@@ -1003,6 +1018,34 @@ void main() {
     );
   });
 
+  testWidgets('WebView 浮动标题栏可按页面背景切换前景色', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: Scaffold(
+          body: FloatingDocumentHeader(
+            title: '白色网页',
+            onBack: () {},
+            actionIcon: Icons.edit_outlined,
+            actionLabel: '编辑',
+            onAction: null,
+            foregroundColor: Colors.black,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<ScrollingTitle>(find.byType(ScrollingTitle)).style?.color,
+      Colors.black,
+    );
+    for (final button in tester.widgetList<MoyueGlassIconButton>(
+      find.byType(MoyueGlassIconButton),
+    )) {
+      expect(button.foregroundColor, Colors.black);
+    }
+  });
+
   testWidgets('HTML 阅读器会按设置切换到 WebView 路径', (tester) async {
     final display = MoyueDisplayPreferences()..setHtmlWebViewEnabled(true);
     addTearDown(display.dispose);
@@ -1426,6 +1469,147 @@ void main() {
     expect(display.useDynamicColor, isFalse);
   });
 
+  testWidgets('Markdown 与代码主题使用 WheelView 并立即应用', (tester) async {
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: const MaterialApp(home: Scaffold(body: SettingsPage())),
+      ),
+    );
+
+    await _scrollSettingsUntilVisible(tester, find.text('Markdown 排版风格'));
+    await tester.tap(find.text('Markdown 排版风格'));
+    await tester.pumpAndSettle();
+    var wheel = find.byKey(const ValueKey('markdown-theme-wheel'));
+    expect(wheel, findsOneWidget);
+    expect(
+      find.descendant(of: wheel, matching: find.text('墨阅自适应')),
+      findsOneWidget,
+    );
+    await tester.drag(wheel, const Offset(0, -56));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.widgetWithText(FilledButton, '应用'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(display.markdownThemeId, 'paper-warm');
+
+    await _scrollSettingsUntilVisible(tester, find.text('代码块外观'));
+    await tester.tap(find.text('代码块外观'));
+    await tester.pumpAndSettle();
+    wheel = find.byKey(const ValueKey('code-highlight-theme-wheel'));
+    expect(wheel, findsOneWidget);
+    expect(
+      find.descendant(of: wheel, matching: find.text('VS Code 自动')),
+      findsOneWidget,
+    );
+    await tester.drag(wheel, const Offset(0, -112));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.widgetWithText(FilledButton, '应用'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(display.codeThemeId, 'vscode-dark-plus');
+  });
+
+  testWidgets('Markdown 阅读器应用独立的正文配色和代码高亮主题', (tester) async {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (_) async => null,
+    );
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    final display = MoyueDisplayPreferences()
+      ..setMarkdownThemeId('github-dark')
+      ..setCodeThemeId('monokai');
+    addTearDown(display.dispose);
+    final document = ReadingDocument(
+      id: 'styled-markdown',
+      title: '排版测试.md',
+      content:
+          '# 标题\n\n正文\n\n```dart\nvoid main() {}\n```\n\n```\nplain code\n```',
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026),
+    );
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: MaterialApp(home: ReaderDetailPage(document: document)),
+      ),
+    );
+    await tester.pump();
+
+    final markdown = tester.widget<Markdown>(find.byType(Markdown));
+    expect(markdown.styleSheet?.blockSpacing, 16);
+    expect(markdown.styleSheet?.p?.color, const Color(0xFFE6EDF3));
+    final codeDecoration =
+        markdown.styleSheet?.codeblockDecoration as BoxDecoration;
+    expect(codeDecoration.color, Colors.transparent);
+    final codeBlock = tester.widget<MoyueCodeBlock>(
+      find.byType(MoyueCodeBlock).first,
+    );
+    expect(
+      ThemeData.estimateBrightnessForColor(codeBlock.palette.background),
+      Brightness.dark,
+    );
+    expect(codeBlock.palette.background, isNot(const Color(0xFF0D1117)));
+    expect(find.text('Dart'), findsOneWidget);
+    expect(find.text('1 行'), findsNWidgets(2));
+    expect(find.byTooltip('复制代码'), findsNWidgets(2));
+    await tester.tap(find.byIcon(Icons.content_copy_rounded).first);
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.pump(const Duration(milliseconds: 180));
+    expect(find.byIcon(Icons.check_rounded), findsNothing);
+    final codeCard = tester.widget<Container>(
+      find.byKey(const ValueKey('moyue-code-block')).first,
+    );
+    final cardDecoration = codeCard.decoration as BoxDecoration;
+    expect(cardDecoration.gradient, isNotNull);
+    expect(cardDecoration.borderRadius, BorderRadius.circular(16));
+    expect(
+      tester
+          .widgetList<MoyueGlassIconButton>(find.byType(MoyueGlassIconButton))
+          .map((button) => button.foregroundColor),
+      everyElement(Colors.white),
+    );
+    expect(
+      tester.widget<ScrollingTitle>(find.byType(ScrollingTitle)).style?.color,
+      Colors.white,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is RichText &&
+            widget.text.toPlainText().contains('void main() {}'),
+      ),
+      findsOneWidget,
+    );
+    await tester.drag(find.byType(Markdown), const Offset(0, -260));
+    await tester.pump();
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is RichText &&
+            widget.text.toPlainText().contains('plain code'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('清空数据与缓存位于存储区且危险操作使用警告对话框', (tester) async {
     final display = MoyueDisplayPreferences();
     addTearDown(display.dispose);
@@ -1503,6 +1687,7 @@ void main() {
     );
 
     final sliderArea = find.byKey(const ValueKey('contrast-slider-touch-area'));
+    await _scrollSettingsUntilVisible(tester, sliderArea);
     final sliderRect = tester.getRect(sliderArea);
     await tester.tapAt(
       Offset(sliderRect.left + sliderRect.width * 0.86, sliderRect.top + 4),
@@ -1511,7 +1696,12 @@ void main() {
     expect(display.contrast, greaterThan(0.8));
     expect(find.byKey(const ValueKey('对比度-setting-detail')), findsNothing);
 
-    await tester.tap(find.text('对比度'));
+    final contrastDetailsButton = find.descendant(
+      of: find.byKey(const ValueKey('contrast-setting-row-touch-area')),
+      matching: find.byType(InkWell),
+    );
+    await _scrollSettingsUntilVisible(tester, contrastDetailsButton);
+    await tester.tap(contrastDetailsButton);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('对比度-setting-detail')), findsOneWidget);
     expect(find.textContaining('明暗差异'), findsOneWidget);
@@ -1527,17 +1717,20 @@ void main() {
         child: const MaterialApp(home: Scaffold(body: SettingsPage())),
       ),
     );
-    await _scrollSettingsUntilVisible(tester, find.text('软件字体大小'));
-    await tester.tap(find.text('软件字体大小'));
+    await _scrollSettingsUntilVisible(tester, find.text('字体大小'));
+    await tester.tap(find.text('字体大小'));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('app-font-size-wheel')), findsOneWidget);
-    await tester.drag(
-      find.byKey(const ValueKey('app-font-size-wheel')),
-      const Offset(0, -70),
-    );
+    final wheel = find.byKey(const ValueKey('app-font-size-wheel'));
+    expect(wheel, findsOneWidget);
+    await tester.drag(wheel, const Offset(0, -56));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('应用'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.widgetWithText(FilledButton, '应用'),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('需要重启墨阅'), findsOneWidget);

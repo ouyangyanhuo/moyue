@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/core/display/moyue_markdown_style.dart';
 import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
@@ -522,28 +524,54 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     _bodyFocus.requestFocus();
     switch (format) {
       case _MarkdownFormat.heading:
-        _insertAtLineStart('## ');
+        _toggleLineMarker('## ');
       case _MarkdownFormat.bold:
-        _wrapSelection('**', '**', context.l10n.boldPlaceholder);
+        _toggleWrappedSelection('**', '**', context.l10n.boldPlaceholder);
       case _MarkdownFormat.italic:
-        _wrapSelection('_', '_', context.l10n.italicPlaceholder);
+        _toggleWrappedSelection('_', '_', context.l10n.italicPlaceholder);
       case _MarkdownFormat.quote:
-        _insertAtLineStart('> ');
+        _toggleLineMarker('> ');
       case _MarkdownFormat.list:
-        _insertAtLineStart('- ');
+        _toggleLineMarker('- ');
       case _MarkdownFormat.link:
-        _wrapSelection('[', '](https://)', context.l10n.linkPlaceholder);
+        _toggleWrappedSelection(
+          '[',
+          '](https://)',
+          context.l10n.linkPlaceholder,
+        );
       case _MarkdownFormat.code:
-        _wrapSelection('`', '`', context.l10n.codePlaceholder);
+        _toggleWrappedSelection('`', '`', context.l10n.codePlaceholder);
     }
   }
 
-  void _wrapSelection(String before, String after, String placeholder) {
+  void _toggleWrappedSelection(
+    String before,
+    String after,
+    String placeholder,
+  ) {
     final controller = _body.value;
-    final selection = controller.selection;
     final text = controller.text;
-    final start = selection.isValid ? selection.start : text.length;
-    final end = selection.isValid ? selection.end : text.length;
+    final selection = _clampSelection(controller.selection, text.length);
+    final start = selection.start;
+    final end = selection.end;
+
+    final wrappedStart = start - before.length;
+    final wrappedEnd = end + after.length;
+    if (wrappedStart >= 0 &&
+        wrappedEnd <= text.length &&
+        text.substring(wrappedStart, start) == before &&
+        text.substring(end, wrappedEnd) == after) {
+      final selected = text.substring(start, end);
+      controller.value = TextEditingValue(
+        text: text.replaceRange(wrappedStart, wrappedEnd, selected),
+        selection: TextSelection(
+          baseOffset: wrappedStart,
+          extentOffset: wrappedStart + selected.length,
+        ),
+      );
+      return;
+    }
+
     final selected = start == end ? placeholder : text.substring(start, end);
     controller.value = TextEditingValue(
       text: text.replaceRange(start, end, '$before$selected$after'),
@@ -554,17 +582,38 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     );
   }
 
-  void _insertAtLineStart(String marker) {
+  void _toggleLineMarker(String marker) {
     final controller = _body.value;
     final text = controller.text;
-    final caret = controller.selection.isValid
-        ? controller.selection.start
-        : text.length;
+    final selection = _clampSelection(controller.selection, text.length);
+    final caret = selection.start;
     final lineStart = caret == 0 ? -1 : text.lastIndexOf('\n', caret - 1);
     final offset = lineStart < 0 ? 0 : lineStart + 1;
+    if (text.startsWith(marker, offset)) {
+      int adjustedOffset(int value) {
+        if (value <= offset) return value;
+        return math.max(offset, value - marker.length);
+      }
+
+      controller.value = TextEditingValue(
+        text: text.replaceRange(offset, offset + marker.length, ''),
+        selection: TextSelection(
+          baseOffset: adjustedOffset(selection.baseOffset),
+          extentOffset: adjustedOffset(selection.extentOffset),
+          affinity: selection.affinity,
+          isDirectional: selection.isDirectional,
+        ),
+      );
+      return;
+    }
     controller.value = TextEditingValue(
       text: text.replaceRange(offset, offset, marker),
-      selection: TextSelection.collapsed(offset: caret + marker.length),
+      selection: TextSelection(
+        baseOffset: selection.baseOffset + marker.length,
+        extentOffset: selection.extentOffset + marker.length,
+        affinity: selection.affinity,
+        isDirectional: selection.isDirectional,
+      ),
     );
   }
 }
@@ -665,18 +714,16 @@ class _PreviewCanvas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Markdown(
-      key: const ValueKey('preview'),
-      data: body,
-      selectable: true,
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 36),
-      styleSheet: MarkdownStyleSheet(
-        p: theme.textTheme.bodyLarge,
-        h1: theme.textTheme.headlineLarge,
-        h2: theme.textTheme.headlineMedium,
-        h3: theme.textTheme.titleLarge,
-        code: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace'),
+    final palette = moyueMarkdownPaletteOf(context);
+    return ColoredBox(
+      color: palette.surface,
+      child: Markdown(
+        key: const ValueKey('preview'),
+        data: body,
+        selectable: true,
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 36),
+        builders: {'pre': buildMoyueCodeBlockBuilder(context)},
+        styleSheet: buildMoyueMarkdownStyleSheet(context),
       ),
     );
   }

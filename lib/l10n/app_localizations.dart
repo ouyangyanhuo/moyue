@@ -341,7 +341,7 @@ abstract class AppLocalizations {
   /// No description provided for @sansSerifFont.
   ///
   /// In en, this message translates to:
-  /// **'Interface font'**
+  /// **'Font style'**
   String get sansSerifFont;
 
   /// No description provided for @systemSans.
@@ -365,8 +365,26 @@ abstract class AppLocalizations {
   /// No description provided for @chooseSansSerif.
   ///
   /// In en, this message translates to:
-  /// **'Choose the app typeface, including a Claude-style serif option'**
+  /// **'Choose Moyue\'s global font style'**
   String get chooseSansSerif;
+
+  /// No description provided for @systemFontDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow the system typeface for the best compatibility'**
+  String get systemFontDescription;
+
+  /// No description provided for @serifFontDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'A more expressive and aesthetically refined bookish serif typeface'**
+  String get serifFontDescription;
+
+  /// No description provided for @roundedFontDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'A soft, modern rounded sans-serif typeface'**
+  String get roundedFontDescription;
 
   /// No description provided for @inkMode.
   ///
@@ -401,7 +419,7 @@ abstract class AppLocalizations {
   /// No description provided for @softwareFontSize.
   ///
   /// In en, this message translates to:
-  /// **'App font size'**
+  /// **'Font size'**
   String get softwareFontSize;
 
   /// No description provided for @fontSizeDescription.
@@ -409,6 +427,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Adjust the interface text size across Moyue. The current choice is {percent}%, and applying it requires a restart.'**
   String fontSizeDescription(int percent);
+
+  /// No description provided for @fontSizeOptionDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'{percent}% global interface text; applying it requires a restart'**
+  String fontSizeOptionDescription(int percent);
 
   /// No description provided for @restartRequired.
   ///
@@ -517,6 +541,162 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Markdown and HTML'**
   String get markdownAndHtml;
+
+  /// No description provided for @markdownRenderingStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Markdown color theme'**
+  String get markdownRenderingStyle;
+
+  /// No description provided for @moyueAdaptiveMarkdownTheme.
+  ///
+  /// In en, this message translates to:
+  /// **'Moyue adaptive'**
+  String get moyueAdaptiveMarkdownTheme;
+
+  /// No description provided for @moyueAdaptiveMarkdownThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow the app appearance and active color scheme for a unified reading surface'**
+  String get moyueAdaptiveMarkdownThemeDescription;
+
+  /// No description provided for @warmPaperMarkdownTheme.
+  ///
+  /// In en, this message translates to:
+  /// **'Warm paper'**
+  String get warmPaperMarkdownTheme;
+
+  /// No description provided for @warmPaperMarkdownThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'A low-glare warm paper surface with brown-black body text'**
+  String get warmPaperMarkdownThemeDescription;
+
+  /// No description provided for @githubLightMarkdownThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'A clear and restrained light technical-document palette'**
+  String get githubLightMarkdownThemeDescription;
+
+  /// No description provided for @githubDarkMarkdownThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'A low-luminance dark surface with crisp blue links'**
+  String get githubDarkMarkdownThemeDescription;
+
+  /// No description provided for @solarizedLightMarkdownThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'The classic warm Solarized light reading palette'**
+  String get solarizedLightMarkdownThemeDescription;
+
+  /// No description provided for @solarizedDarkMarkdownThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'The classic deep-cyan, low-contrast Solarized dark palette'**
+  String get solarizedDarkMarkdownThemeDescription;
+
+  /// No description provided for @codeBlockAppearance.
+  ///
+  /// In en, this message translates to:
+  /// **'Code highlighting theme'**
+  String get codeBlockAppearance;
+
+  /// No description provided for @vscodeAutomaticTheme.
+  ///
+  /// In en, this message translates to:
+  /// **'VS Code automatic'**
+  String get vscodeAutomaticTheme;
+
+  /// No description provided for @vscodeAutomaticThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Use VS Code Light+ or Dark+ with the app appearance'**
+  String get vscodeAutomaticThemeDescription;
+
+  /// No description provided for @vscodeLightThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Classic light VS Code syntax highlighting'**
+  String get vscodeLightThemeDescription;
+
+  /// No description provided for @vscodeDarkThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Classic dark VS Code syntax highlighting'**
+  String get vscodeDarkThemeDescription;
+
+  /// No description provided for @vscodeModernThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Modern token colors from the VS Code Modern family'**
+  String get vscodeModernThemeDescription;
+
+  /// No description provided for @monokaiThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'The highly recognizable dark Monokai token palette'**
+  String get monokaiThemeDescription;
+
+  /// No description provided for @monokaiDimmedThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'A lower-luminance, less intense Monokai variant'**
+  String get monokaiDimmedThemeDescription;
+
+  /// No description provided for @solarizedCodeThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Low-contrast, eye-friendly Solarized syntax colors'**
+  String get solarizedCodeThemeDescription;
+
+  /// No description provided for @kimbieThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark syntax highlighting built on warm brown tones'**
+  String get kimbieThemeDescription;
+
+  /// No description provided for @tomorrowThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Classic high-contrast tokens on a deep blue surface'**
+  String get tomorrowThemeDescription;
+
+  /// No description provided for @highContrastCodeThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Strong token-to-background separation for accessibility'**
+  String get highContrastCodeThemeDescription;
+
+  /// No description provided for @communityCodeThemeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'The {themeName} syntax palette from the editor theme ecosystem'**
+  String communityCodeThemeDescription(String themeName);
+
+  /// No description provided for @copyCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy code'**
+  String get copyCode;
+
+  /// No description provided for @codeCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get codeCopied;
+
+  /// No description provided for @plainTextCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Plain text'**
+  String get plainTextCode;
+
+  /// No description provided for @codeLineCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 line} other{{count} lines}}'**
+  String codeLineCount(int count);
 
   /// No description provided for @fpsDisplay.
   ///

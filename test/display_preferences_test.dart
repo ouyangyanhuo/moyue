@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
+import 'package:moyue_application/core/display/moyue_code_theme_registry.dart';
+import 'package:moyue_application/core/display/moyue_markdown_theme_registry.dart';
 import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
@@ -63,7 +65,7 @@ void main() {
     restored.dispose();
   });
 
-  test('主题、语言、界面字体和自定义颜色会持久化', () async {
+  test('主题、语言、字体风格、Markdown 外观和自定义颜色会持久化', () async {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
     final first = MoyueDisplayPreferences();
@@ -71,6 +73,8 @@ void main() {
       ..setThemePreference(MoyueThemePreference.dark)
       ..setLocalePreference(MoyueLocalePreference.english)
       ..setAppFontFamily(MoyueFontFamily.claude)
+      ..setMarkdownThemeId('paper-warm')
+      ..setCodeThemeId('monokai')
       ..setCustomSeedArgb(0xFF356A91);
     await Future<void>.delayed(Duration.zero);
 
@@ -81,11 +85,63 @@ void main() {
     expect(restored.localePreference, MoyueLocalePreference.english);
     expect(restored.locale, const Locale('en'));
     expect(restored.appFontFamily, MoyueFontFamily.claude);
+    expect(restored.markdownThemeId, 'paper-warm');
+    expect(restored.codeThemeId, 'monokai');
     expect(restored.useDynamicColor, isFalse);
     expect(restored.customSeedArgb, 0xFF356A91);
     expect(restored.effectiveSeedArgb, 0xFF356A91);
     first.dispose();
     restored.dispose();
+  });
+
+  test('Markdown 与代码主题注册表允许独立侧载扩展', () {
+    const markdownId = 'test-reader-palette';
+    const codeId = 'test-token-palette';
+    addTearDown(() {
+      MoyueMarkdownThemeRegistry.unregister(markdownId);
+      MoyueCodeThemeRegistry.unregister(codeId);
+    });
+
+    MoyueMarkdownThemeRegistry.register(
+      MoyueMarkdownThemeDefinition(
+        id: markdownId,
+        labelBuilder: (_) => 'Reader palette',
+        descriptionBuilder: (_) => 'Sideloaded reader palette',
+        paletteBuilder: (_) => const MoyueMarkdownPalette(
+          surface: Colors.white,
+          foreground: Colors.black,
+          mutedForeground: Colors.black54,
+          heading: Colors.black,
+          link: Colors.blue,
+          accent: Colors.blue,
+          blockquoteSurface: Color(0xFFF5F5F5),
+          inlineCodeSurface: Color(0xFFF0F0F0),
+          tableHeaderSurface: Color(0xFFF5F5F5),
+          outline: Colors.black26,
+        ),
+      ),
+    );
+    MoyueCodeThemeRegistry.register(
+      MoyueCodeThemeDefinition(
+        id: codeId,
+        labelBuilder: (_) => 'Token palette',
+        descriptionBuilder: (_) => 'Sideloaded token palette',
+        paletteBuilder: (_) => const {
+          'root': TextStyle(color: Colors.white, backgroundColor: Colors.black),
+        },
+      ),
+    );
+
+    expect(MoyueMarkdownThemeRegistry.resolve(markdownId).id, markdownId);
+    expect(MoyueCodeThemeRegistry.resolve(codeId).id, codeId);
+    expect(
+      MoyueMarkdownThemeRegistry.resolve('missing').id,
+      MoyueMarkdownThemeRegistry.defaultThemeId,
+    );
+    expect(
+      MoyueCodeThemeRegistry.resolve('missing').id,
+      MoyueCodeThemeRegistry.defaultThemeId,
+    );
   });
 
   test('莫奈取色默认关闭，用户开启后使用系统种子色', () async {

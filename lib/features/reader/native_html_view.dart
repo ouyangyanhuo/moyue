@@ -20,12 +20,14 @@ class NativeHtmlView extends StatefulWidget {
     required this.data,
     this.resourceLoader,
     this.resourceCacheKey,
+    this.imageCache,
     super.key,
   });
 
   final String data;
   final Future<Uint8List?> Function(String source)? resourceLoader;
   final Object? resourceCacheKey;
+  final ReaderImageSessionCache? imageCache;
 
   @override
   State<NativeHtmlView> createState() => NativeHtmlViewState();
@@ -581,6 +583,7 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
     final declaredHeight = double.tryParse(element.attributes['height'] ?? '');
     final image = StableReaderImage(
       cacheKey: '${widget.resourceCacheKey}:$source',
+      sessionCache: widget.imageCache,
       loader: () => _loadResource(source),
       width: avatar ? 84 : declaredWidth,
       height: avatar ? 84 : declaredHeight,

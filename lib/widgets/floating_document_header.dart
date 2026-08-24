@@ -14,6 +14,7 @@ class FloatingDocumentHeader extends StatelessWidget {
     this.actionColor,
     this.onTitleTap,
     this.useOwnLayer = true,
+    this.foregroundColor,
     super.key,
   });
 
@@ -25,6 +26,7 @@ class FloatingDocumentHeader extends StatelessWidget {
   final Color? actionColor;
   final VoidCallback? onTitleTap;
   final bool useOwnLayer;
+  final Color? foregroundColor;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -36,6 +38,7 @@ class FloatingDocumentHeader extends StatelessWidget {
         size: 44,
         useOwnLayer: useOwnLayer,
         settings: moyueGlassSettings(context),
+        foregroundColor: foregroundColor,
       ),
       const SizedBox(width: 8),
       Expanded(
@@ -44,6 +47,7 @@ class FloatingDocumentHeader extends StatelessWidget {
           onTap: onTitleTap,
           semanticLabel: context.l10n.renameFolder,
           useOwnLayer: useOwnLayer,
+          foregroundColor: foregroundColor,
         ),
       ),
       const SizedBox(width: 8),
@@ -54,6 +58,7 @@ class FloatingDocumentHeader extends StatelessWidget {
         useOwnLayer: useOwnLayer,
         settings: moyueGlassSettings(context),
         size: 44,
+        foregroundColor: foregroundColor,
       ),
     ],
   );

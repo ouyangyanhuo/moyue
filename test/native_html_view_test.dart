@@ -7,12 +7,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:moyue_application/features/reader/native_html_view.dart';
+import 'package:moyue_application/features/reader/webview_html_view.dart';
 import 'package:moyue_application/services/native_html_preprocessor.dart';
 import 'package:moyue_application/services/webview_document_builder.dart';
 import 'package:moyue_application/services/text_decoder.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  test('WebView 顶部背景亮度带迟滞切换，避免标题颜色反复闪动', () {
+    expect(webViewSurfaceBrightness(0.9), Brightness.light);
+    expect(webViewSurfaceBrightness(0.1), Brightness.dark);
+    expect(
+      webViewSurfaceBrightness(0.48, previous: Brightness.light),
+      Brightness.light,
+    );
+    expect(
+      webViewSurfaceBrightness(0.52, previous: Brightness.dark),
+      Brightness.dark,
+    );
+    expect(
+      webViewSurfaceBrightness(0.4, previous: Brightness.light),
+      Brightness.dark,
+    );
+    expect(
+      webViewSurfaceBrightness(0.6, previous: Brightness.dark),
+      Brightness.light,
+    );
+  });
+
   testWidgets('HTML 由 Flutter 文本和区块组件直接渲染', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(

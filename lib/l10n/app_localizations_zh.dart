@@ -135,7 +135,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get english => 'English';
 
   @override
-  String get sansSerifFont => '界面字体';
+  String get sansSerifFont => '字体风格';
 
   @override
   String get systemSans => '系统字体';
@@ -147,7 +147,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get roundedSans => '无衬线';
 
   @override
-  String get chooseSansSerif => '选择应用界面字体，可切换衬线字形';
+  String get chooseSansSerif => '选择墨阅的全局字体风格';
+
+  @override
+  String get systemFontDescription => '跟随系统默认字体，兼容性最佳';
+
+  @override
+  String get serifFontDescription => '更富有灵动与美感的衬线书面字体';
+
+  @override
+  String get roundedFontDescription => '柔和、现代的圆角无衬线字体';
 
   @override
   String get inkMode => '墨模式';
@@ -165,7 +174,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get contrastDescription => '调整纸张背景与文字、图标之间的明暗差异。数值越高，前景与背景的区分越明显。';
 
   @override
-  String get softwareFontSize => '软件字体大小';
+  String get softwareFontSize => '字体大小';
 
   @override
   String fontSizeDescription(int percent) {
@@ -173,10 +182,15 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String fontSizeOptionDescription(int percent) {
+    return '$percent% 全局界面字号，应用后需要重启';
+  }
+
+  @override
   String get restartRequired => '需要重启墨阅';
 
   @override
-  String get restartRequiredDescription => '应用新的软件字体大小后，墨阅会立即重启，以确保所有页面同步生效。';
+  String get restartRequiredDescription => '应用新的字体大小后，墨阅会立即重启，以确保所有页面同步生效。';
 
   @override
   String get fontSavedRestartManually => '字号已保存，请手动重新打开墨阅以完全生效';
@@ -230,6 +244,89 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get markdownAndHtml => 'Markdown 与 HTML';
+
+  @override
+  String get markdownRenderingStyle => 'Markdown 排版风格';
+
+  @override
+  String get moyueAdaptiveMarkdownTheme => '墨阅自适应';
+
+  @override
+  String get moyueAdaptiveMarkdownThemeDescription => '跟随应用亮暗模式与当前配色，保持统一的阅读观感';
+
+  @override
+  String get warmPaperMarkdownTheme => '暖纸';
+
+  @override
+  String get warmPaperMarkdownThemeDescription => '低刺激的暖白纸张与棕黑正文，适合长时间阅读';
+
+  @override
+  String get githubLightMarkdownThemeDescription => '清晰克制的浅色技术文档配色';
+
+  @override
+  String get githubDarkMarkdownThemeDescription => '低亮度深色背景与清晰的蓝色链接';
+
+  @override
+  String get solarizedLightMarkdownThemeDescription => 'Solarized 经典暖色浅底阅读配色';
+
+  @override
+  String get solarizedDarkMarkdownThemeDescription => 'Solarized 经典深青色低对比阅读配色';
+
+  @override
+  String get codeBlockAppearance => '代码块外观';
+
+  @override
+  String get vscodeAutomaticTheme => 'VS Code 自动';
+
+  @override
+  String get vscodeAutomaticThemeDescription =>
+      '根据应用亮暗模式自动使用 VS Code Light+ 或 Dark+';
+
+  @override
+  String get vscodeLightThemeDescription => 'VS Code 经典浅色语法高亮';
+
+  @override
+  String get vscodeDarkThemeDescription => 'VS Code 经典深色语法高亮';
+
+  @override
+  String get vscodeModernThemeDescription => 'VS Code Modern 系列的现代化 Token 配色';
+
+  @override
+  String get monokaiThemeDescription => '高辨识度的 Monokai 深色语法配色';
+
+  @override
+  String get monokaiDimmedThemeDescription => '降低亮度与刺激感的 Monokai 变体';
+
+  @override
+  String get solarizedCodeThemeDescription => 'Solarized 的低对比、护眼语法配色';
+
+  @override
+  String get kimbieThemeDescription => '温暖棕色基调的深色语法高亮';
+
+  @override
+  String get tomorrowThemeDescription => '以深蓝背景承载高对比 Token 的经典主题';
+
+  @override
+  String get highContrastCodeThemeDescription => '强化 Token 与背景区分的高对比主题';
+
+  @override
+  String communityCodeThemeDescription(String themeName) {
+    return '来自编辑器生态的 $themeName 高亮配色';
+  }
+
+  @override
+  String get copyCode => '复制代码';
+
+  @override
+  String get codeCopied => '已复制';
+
+  @override
+  String get plainTextCode => '纯文本';
+
+  @override
+  String codeLineCount(int count) {
+    return '$count 行';
+  }
 
   @override
   String get fpsDisplay => '帧率显示';

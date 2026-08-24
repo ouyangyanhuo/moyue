@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:moyue_application/core/display/moyue_code_theme_registry.dart';
+import 'package:moyue_application/core/display/moyue_markdown_theme_registry.dart';
 import 'package:moyue_application/services/system_appearance_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -24,6 +26,8 @@ abstract interface class DisplayModeController implements Listenable {
   MoyueThemePreference get themePreference;
   MoyueLocalePreference get localePreference;
   MoyueFontFamily get appFontFamily;
+  String get markdownThemeId;
+  String get codeThemeId;
   bool get dynamicColorSupported;
   bool get useDynamicColor;
   int get effectiveSeedArgb;
@@ -38,6 +42,8 @@ abstract interface class DisplayModeController implements Listenable {
   void setThemePreference(MoyueThemePreference value);
   void setLocalePreference(MoyueLocalePreference value);
   void setAppFontFamily(MoyueFontFamily value);
+  void setMarkdownThemeId(String value);
+  void setCodeThemeId(String value);
   void setUseDynamicColor(bool value);
   void setCustomSeedArgb(int value);
 }
@@ -53,6 +59,8 @@ class MoyueDisplayPreferences extends ChangeNotifier
   MoyueThemePreference _themePreference = MoyueThemePreference.system;
   MoyueLocalePreference _localePreference = MoyueLocalePreference.system;
   MoyueFontFamily _appFontFamily = MoyueFontFamily.system;
+  String _markdownThemeId = MoyueMarkdownThemeRegistry.defaultThemeId;
+  String _codeThemeId = MoyueCodeThemeRegistry.defaultThemeId;
   bool _dynamicColorSupported = false;
   bool _useDynamicColor = false;
   int? _dynamicSeedArgb;
@@ -65,6 +73,8 @@ class MoyueDisplayPreferences extends ChangeNotifier
   static const _themePreferenceKey = 'display.theme_preference';
   static const _localePreferenceKey = 'i18n.locale_preference';
   static const _fontFamilyKey = 'display.app_font_family';
+  static const _markdownStyleKey = 'reader.markdown_style';
+  static const _codeBlockStyleKey = 'reader.code_block_style';
   static const _useDynamicColorKey = 'display.use_dynamic_color';
   static const _customSeedArgbKey = 'display.custom_seed_argb';
 
@@ -88,6 +98,10 @@ class MoyueDisplayPreferences extends ChangeNotifier
   MoyueLocalePreference get localePreference => _localePreference;
   @override
   MoyueFontFamily get appFontFamily => _appFontFamily;
+  @override
+  String get markdownThemeId => _markdownThemeId;
+  @override
+  String get codeThemeId => _codeThemeId;
   @override
   bool get dynamicColorSupported => _dynamicColorSupported;
   @override
@@ -130,6 +144,12 @@ class MoyueDisplayPreferences extends ChangeNotifier
         await preferences.getString(_fontFamilyKey),
         MoyueFontFamily.system,
       );
+      final markdownThemeValue = MoyueMarkdownThemeRegistry.migrateLegacyId(
+        await preferences.getString(_markdownStyleKey),
+      );
+      final codeThemeValue = MoyueCodeThemeRegistry.migrateLegacyId(
+        await preferences.getString(_codeBlockStyleKey),
+      );
       final useDynamicValue =
           await preferences.getBool(_useDynamicColorKey) ?? false;
       final customSeedValue =
@@ -144,6 +164,8 @@ class MoyueDisplayPreferences extends ChangeNotifier
           _themePreference != themeValue ||
           _localePreference != localeValue ||
           _appFontFamily != familyValue ||
+          _markdownThemeId != markdownThemeValue ||
+          _codeThemeId != codeThemeValue ||
           _useDynamicColor != useDynamicValue ||
           _customSeedArgb != customSeedValue ||
           _dynamicColorSupported != appearance.dynamicColorSupported ||
@@ -155,6 +177,8 @@ class MoyueDisplayPreferences extends ChangeNotifier
       _themePreference = themeValue;
       _localePreference = localeValue;
       _appFontFamily = familyValue;
+      _markdownThemeId = markdownThemeValue;
+      _codeThemeId = codeThemeValue;
       _useDynamicColor = useDynamicValue;
       _customSeedArgb = customSeedValue;
       _dynamicColorSupported = appearance.dynamicColorSupported;
@@ -239,6 +263,24 @@ class MoyueDisplayPreferences extends ChangeNotifier
     _appFontFamily = value;
     notifyListeners();
     unawaited(_saveString(_fontFamilyKey, value.name));
+  }
+
+  @override
+  void setMarkdownThemeId(String value) {
+    final next = value.trim();
+    if (next.isEmpty || _markdownThemeId == next) return;
+    _markdownThemeId = next;
+    notifyListeners();
+    unawaited(_saveString(_markdownStyleKey, next));
+  }
+
+  @override
+  void setCodeThemeId(String value) {
+    final next = value.trim();
+    if (next.isEmpty || _codeThemeId == next) return;
+    _codeThemeId = next;
+    notifyListeners();
+    unawaited(_saveString(_codeBlockStyleKey, next));
   }
 
   @override

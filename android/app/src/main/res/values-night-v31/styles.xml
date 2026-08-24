@@ -16,5 +16,6 @@
          此主题仅从 Flutter Android 嵌入版本 V2 开始使用。 -->
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 </resources>

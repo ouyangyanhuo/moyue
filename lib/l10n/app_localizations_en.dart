@@ -137,7 +137,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get english => 'English';
 
   @override
-  String get sansSerifFont => 'Interface font';
+  String get sansSerifFont => 'Font style';
 
   @override
   String get systemSans => 'System font';
@@ -149,8 +149,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get roundedSans => 'Rounded sans-serif';
 
   @override
-  String get chooseSansSerif =>
-      'Choose the app typeface, including a Claude-style serif option';
+  String get chooseSansSerif => 'Choose Moyue\'s global font style';
+
+  @override
+  String get systemFontDescription =>
+      'Follow the system typeface for the best compatibility';
+
+  @override
+  String get serifFontDescription =>
+      'A more expressive and aesthetically refined bookish serif typeface';
+
+  @override
+  String get roundedFontDescription =>
+      'A soft, modern rounded sans-serif typeface';
 
   @override
   String get inkMode => 'Ink mode';
@@ -170,11 +181,16 @@ class AppLocalizationsEn extends AppLocalizations {
       'Adjust the difference between the paper background and foreground text and icons. Higher values make them easier to distinguish.';
 
   @override
-  String get softwareFontSize => 'App font size';
+  String get softwareFontSize => 'Font size';
 
   @override
   String fontSizeDescription(int percent) {
     return 'Adjust the interface text size across Moyue. The current choice is $percent%, and applying it requires a restart.';
+  }
+
+  @override
+  String fontSizeOptionDescription(int percent) {
+    return '$percent% global interface text; applying it requires a restart';
   }
 
   @override
@@ -237,6 +253,110 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get markdownAndHtml => 'Markdown and HTML';
+
+  @override
+  String get markdownRenderingStyle => 'Markdown color theme';
+
+  @override
+  String get moyueAdaptiveMarkdownTheme => 'Moyue adaptive';
+
+  @override
+  String get moyueAdaptiveMarkdownThemeDescription =>
+      'Follow the app appearance and active color scheme for a unified reading surface';
+
+  @override
+  String get warmPaperMarkdownTheme => 'Warm paper';
+
+  @override
+  String get warmPaperMarkdownThemeDescription =>
+      'A low-glare warm paper surface with brown-black body text';
+
+  @override
+  String get githubLightMarkdownThemeDescription =>
+      'A clear and restrained light technical-document palette';
+
+  @override
+  String get githubDarkMarkdownThemeDescription =>
+      'A low-luminance dark surface with crisp blue links';
+
+  @override
+  String get solarizedLightMarkdownThemeDescription =>
+      'The classic warm Solarized light reading palette';
+
+  @override
+  String get solarizedDarkMarkdownThemeDescription =>
+      'The classic deep-cyan, low-contrast Solarized dark palette';
+
+  @override
+  String get codeBlockAppearance => 'Code highlighting theme';
+
+  @override
+  String get vscodeAutomaticTheme => 'VS Code automatic';
+
+  @override
+  String get vscodeAutomaticThemeDescription =>
+      'Use VS Code Light+ or Dark+ with the app appearance';
+
+  @override
+  String get vscodeLightThemeDescription =>
+      'Classic light VS Code syntax highlighting';
+
+  @override
+  String get vscodeDarkThemeDescription =>
+      'Classic dark VS Code syntax highlighting';
+
+  @override
+  String get vscodeModernThemeDescription =>
+      'Modern token colors from the VS Code Modern family';
+
+  @override
+  String get monokaiThemeDescription =>
+      'The highly recognizable dark Monokai token palette';
+
+  @override
+  String get monokaiDimmedThemeDescription =>
+      'A lower-luminance, less intense Monokai variant';
+
+  @override
+  String get solarizedCodeThemeDescription =>
+      'Low-contrast, eye-friendly Solarized syntax colors';
+
+  @override
+  String get kimbieThemeDescription =>
+      'Dark syntax highlighting built on warm brown tones';
+
+  @override
+  String get tomorrowThemeDescription =>
+      'Classic high-contrast tokens on a deep blue surface';
+
+  @override
+  String get highContrastCodeThemeDescription =>
+      'Strong token-to-background separation for accessibility';
+
+  @override
+  String communityCodeThemeDescription(String themeName) {
+    return 'The $themeName syntax palette from the editor theme ecosystem';
+  }
+
+  @override
+  String get copyCode => 'Copy code';
+
+  @override
+  String get codeCopied => 'Copied';
+
+  @override
+  String get plainTextCode => 'Plain text';
+
+  @override
+  String codeLineCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get fpsDisplay => 'FPS display';

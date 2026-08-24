@@ -35,6 +35,8 @@ dependencies:
   liquid_glass_widgets: ^0.29.6
   file_picker: ^12.0.0
   flutter_markdown_plus: ^1.0.12
+  flutter_highlighting: ^0.9.0+11.8.0
+  highlighting: ^0.9.0+11.8.0
   markdown: ^7.3.0
   flutter_widget_from_html_core: ^0.17.2
   webview_flutter: ^4.14.1

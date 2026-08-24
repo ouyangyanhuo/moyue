@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/features/settings/settings_page.dart';
 import 'package:moyue_application/services/app_restart_service.dart';
@@ -9,7 +8,7 @@ import 'package:shared_preferences_platform_interface/in_memory_shared_preferenc
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 void main() {
-  testWidgets('字号 WheelView 使用明确的 Material 选中态', (tester) async {
+  testWidgets('字体大小使用带 Material 选中态的 WheelView', (tester) async {
     final display = MoyueDisplayPreferences();
     addTearDown(display.dispose);
 
@@ -19,28 +18,26 @@ void main() {
         child: const MaterialApp(home: Scaffold(body: SettingsPage())),
       ),
     );
-    await _scrollSettingsUntilVisible(tester, find.text('软件字体大小'));
-    await tester.tap(find.text('软件字体大小'));
+    await _scrollSettingsUntilVisible(tester, find.text('字体大小'));
+    await tester.tap(find.text('字体大小'));
     await tester.pumpAndSettle();
 
     final wheel = find.byKey(const ValueKey('app-font-size-wheel'));
-    final selected = find.byKey(
-      const ValueKey('app-font-size-selected-option'),
-    );
     expect(wheel, findsOneWidget);
-    expect(selected, findsOneWidget);
+    expect(find.byType(ListWheelScrollView), findsOneWidget);
     expect(
-      find.descendant(of: wheel, matching: find.byType(GlassContainer)),
+      find.descendant(of: wheel, matching: find.text('100%')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: wheel,
+        matching: find.byIcon(Icons.check_circle_rounded),
+      ),
       findsNothing,
     );
-
-    final selectedMaterial = tester.widget<Material>(selected);
     expect(
-      selectedMaterial.color,
-      Theme.of(tester.element(selected)).colorScheme.secondaryContainer,
-    );
-    expect(
-      find.descendant(of: selected, matching: find.byIcon(Icons.check_rounded)),
+      find.descendant(of: wheel, matching: find.byIcon(Icons.check_rounded)),
       findsOneWidget,
     );
   });
@@ -66,15 +63,18 @@ void main() {
         child: const MaterialApp(home: Scaffold(body: SettingsPage())),
       ),
     );
-    await _scrollSettingsUntilVisible(tester, find.text('软件字体大小'));
-    await tester.tap(find.text('软件字体大小'));
+    await _scrollSettingsUntilVisible(tester, find.text('字体大小'));
+    await tester.tap(find.text('字体大小'));
     await tester.pumpAndSettle();
-    await tester.drag(
-      find.byKey(const ValueKey('app-font-size-wheel')),
-      const Offset(0, -70),
+    final wheel = find.byKey(const ValueKey('app-font-size-wheel'));
+    await tester.drag(wheel, const Offset(0, -56));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.widgetWithText(FilledButton, '应用'),
+      ),
     );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('应用'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('应用并重启'));
     await tester.pumpAndSettle();
@@ -84,7 +84,7 @@ void main() {
     expect(calls.single.method, 'restartApp');
   });
 
-  testWidgets('界面字体使用 WheelView 并可切换 Claude 衬线字体栈', (tester) async {
+  testWidgets('字体风格使用与夜间模式一致的选项组件并可切换衬线体', (tester) async {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
     final display = MoyueDisplayPreferences();
@@ -96,19 +96,22 @@ void main() {
       ),
     );
 
-    await _scrollSettingsUntilVisible(tester, find.text('界面字体'));
-    await tester.tap(find.text('界面字体'));
+    await _scrollSettingsUntilVisible(tester, find.text('字体风格'));
+    await tester.tap(find.text('字体风格'));
     await tester.pumpAndSettle();
 
-    final wheel = find.byKey(const ValueKey('app-font-family-wheel'));
-    expect(wheel, findsOneWidget);
+    expect(find.byType(ListWheelScrollView), findsNothing);
+    final sheet = find.byType(BottomSheet);
     expect(
-      find.descendant(of: wheel, matching: find.byType(GlassContainer)),
-      findsNothing,
+      find.descendant(of: sheet, matching: find.text('系统字体')),
+      findsOneWidget,
     );
-    await tester.drag(wheel, const Offset(0, -70));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('应用'));
+    expect(find.text('更富有灵动与美感的衬线书面字体'), findsOneWidget);
+    final serifOption = find.descendant(
+      of: sheet,
+      matching: find.widgetWithText(ListTile, '衬线体'),
+    );
+    await tester.tap(serifOption);
     await tester.pumpAndSettle();
 
     expect(display.appFontFamily, MoyueFontFamily.claude);

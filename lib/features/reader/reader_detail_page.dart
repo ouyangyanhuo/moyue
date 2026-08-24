@@ -9,10 +9,12 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/core/display/moyue_markdown_style.dart';
 import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/features/editor/editor_page.dart';
 import 'package:moyue_application/features/reader/native_html_view.dart';
+import 'package:moyue_application/features/reader/reader_overlay_tone_sampler.dart';
 import 'package:moyue_application/features/reader/webview_html_view.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
@@ -51,9 +53,11 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
   final GlobalKey<WebViewHtmlViewState> _webViewKey =
       GlobalKey<WebViewHtmlViewState>();
   final Map<int, GlobalKey> _markdownHeadingKeys = {};
+  final ReaderImageSessionCache _imageCache = ReaderImageSessionCache();
   bool _readerMenuVisible = false;
   String? _readerMessage;
   Timer? _readerMessageTimer;
+  ReaderOverlayTone? _overlayTone;
 
   @override
   void initState() {
@@ -67,6 +71,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
     MoyueStorageService.instance.removeListener(_reloadDocument);
     _readerMessageTimer?.cancel();
     _scrollController.dispose();
+    _imageCache.clear();
     super.dispose();
   }
 
@@ -79,56 +84,81 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
     final useWebView =
         _document.kind == DocumentKind.html &&
         (display?.htmlWebViewEnabled ?? false);
+    final readerSurface = _document.kind == DocumentKind.markdown
+        ? moyueMarkdownPaletteOf(context).surface
+        : theme.colorScheme.surface;
+    final fallbackBrightness = ThemeData.estimateBrightnessForColor(
+      readerSurface,
+    );
+    final headerForeground = _overlayForeground(
+      _overlayTone?.top ?? fallbackBrightness,
+    );
+    final toolbarForeground = _overlayForeground(
+      _overlayTone?.bottom ?? fallbackBrightness,
+    );
+    final mediaQuery = MediaQuery.of(context);
+    final readerContent = MediaQuery(
+      data: mediaQuery.copyWith(textScaler: TextScaler.linear(_textScale)),
+      child: _document.kind == DocumentKind.markdown
+          ? _MarkdownDocument(
+              data: _document.content,
+              document: _document,
+              topInset: readerTopInset,
+              controller: _scrollController,
+              headingKeys: _markdownHeadingKeys,
+              bottomInset: readerBottomInset,
+              imageCache: _imageCache,
+            )
+          : useWebView
+          ? WebViewHtmlView(
+              key: _webViewKey,
+              data: _document.content,
+              resourceLoader: (source) => MoyueStorageService.instance
+                  .readLinkedResource(_document, source),
+              topInset: readerTopInset,
+              bottomInset: readerBottomInset,
+              textScale: _textScale,
+              fallbackSurfaceColor: readerSurface,
+              onOverlayBrightnessChanged: _updateOverlayTone,
+            )
+          : SingleChildScrollView(
+              controller: _scrollController,
+              padding: EdgeInsets.fromLTRB(
+                24,
+                readerTopInset,
+                24,
+                readerBottomInset,
+              ),
+              child: NativeHtmlView(
+                key: _htmlKey,
+                data: _document.content,
+                resourceCacheKey: _document.id,
+                imageCache: _imageCache,
+                resourceLoader: (source) => MoyueStorageService.instance
+                    .readLinkedResource(_document, source),
+              ),
+            ),
+    );
     for (final heading in _headings) {
       _markdownHeadingKeys.putIfAbsent(heading.index, GlobalKey.new);
     }
     return RepaintBoundary(
       child: Scaffold(
-        backgroundColor: theme.colorScheme.surface,
+        backgroundColor: readerSurface,
         body: Stack(
           fit: StackFit.expand,
           children: [
             Positioned.fill(
-              child: MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(_textScale)),
-                child: _document.kind == DocumentKind.markdown
-                    ? _MarkdownDocument(
-                        data: _document.content,
-                        document: _document,
-                        topInset: readerTopInset,
-                        controller: _scrollController,
-                        headingKeys: _markdownHeadingKeys,
-                        bottomInset: readerBottomInset,
-                      )
-                    : useWebView
-                    ? WebViewHtmlView(
-                        key: _webViewKey,
-                        data: _document.content,
-                        resourceLoader: (source) => MoyueStorageService.instance
-                            .readLinkedResource(_document, source),
-                        topInset: readerTopInset,
-                        bottomInset: readerBottomInset,
-                        textScale: _textScale,
-                      )
-                    : SingleChildScrollView(
-                        controller: _scrollController,
-                        padding: EdgeInsets.fromLTRB(
-                          24,
-                          readerTopInset,
-                          24,
-                          readerBottomInset,
-                        ),
-                        child: NativeHtmlView(
-                          key: _htmlKey,
-                          data: _document.content,
-                          resourceCacheKey: _document.id,
-                          resourceLoader: (source) => MoyueStorageService
-                              .instance
-                              .readLinkedResource(_document, source),
-                        ),
-                      ),
-              ),
+              child: useWebView
+                  ? ColoredBox(color: readerSurface, child: readerContent)
+                  : ReaderOverlayToneSampler(
+                      backgroundColor: readerSurface,
+                      topSampleY: readerTopInset - 43,
+                      bottomSampleY:
+                          mediaQuery.size.height - readerBottomInset + 48,
+                      onChanged: _updateOverlayTone,
+                      child: readerContent,
+                    ),
             ),
             Positioned(
               top: 0,
@@ -146,6 +176,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                     onAction: _document.kind == DocumentKind.markdown
                         ? _editDocument
                         : null,
+                    foregroundColor: headerForeground,
                   ),
                 ),
               ),
@@ -166,6 +197,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                     () => _textScale = (_textScale + 0.1).clamp(0.8, 1.4),
                   ),
                   onShare: _shareDocument,
+                  foregroundColor: toolbarForeground,
                 ),
               ),
             Positioned.fill(
@@ -179,6 +211,18 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
         ),
       ),
     );
+  }
+
+  Color _overlayForeground(Brightness background) =>
+      background == Brightness.dark ? Colors.white : Colors.black;
+
+  void _updateOverlayTone(ReaderOverlayTone tone) {
+    if (!mounted ||
+        (_overlayTone?.top == tone.top &&
+            _overlayTone?.bottom == tone.bottom)) {
+      return;
+    }
+    setState(() => _overlayTone = tone);
   }
 
   void _editDocument() {
@@ -199,7 +243,12 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
       (item) => item.filePath == _document.filePath,
     );
     if (mounted && matches.isNotEmpty) {
-      setState(() => _document = matches.first);
+      final next = matches.first;
+      if (next.content != _document.content ||
+          next.updatedAt != _document.updatedAt) {
+        _imageCache.clear();
+      }
+      setState(() => _document = next);
     }
   }
 
@@ -433,7 +482,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
                     data: MediaQuery.of(context)
                         .copyWith(textScaler: TextScaler.linear(_textScale)),
                     child: Material(
-                      color: Theme.of(context).colorScheme.surface,
+                      color: moyueMarkdownPaletteOf(context).surface,
                       child: SizedBox(
                         width: captureWidth,
                         child: _MarkdownShareCanvas(
@@ -584,6 +633,7 @@ class _ReaderToolbar extends StatelessWidget {
     required this.onDecreaseText,
     required this.onIncreaseText,
     required this.onShare,
+    required this.foregroundColor,
   });
 
   final bool showTextControls;
@@ -591,6 +641,7 @@ class _ReaderToolbar extends StatelessWidget {
   final VoidCallback onDecreaseText;
   final VoidCallback onIncreaseText;
   final VoidCallback onShare;
+  final Color foregroundColor;
 
   @override
   Widget build(BuildContext context) {
@@ -605,6 +656,7 @@ class _ReaderToolbar extends StatelessWidget {
             icon: Icons.format_list_bulleted_rounded,
             label: l10n.tableOfContents,
             onPressed: onTableOfContents,
+            foregroundColor: foregroundColor,
           ),
           if (showTextControls) ...[
             const SizedBox(width: 8),
@@ -613,6 +665,7 @@ class _ReaderToolbar extends StatelessWidget {
               icon: Icons.text_decrease_rounded,
               label: l10n.decreaseFontSize,
               onPressed: onDecreaseText,
+              foregroundColor: foregroundColor,
             ),
             const SizedBox(width: 8),
             _button(
@@ -620,6 +673,7 @@ class _ReaderToolbar extends StatelessWidget {
               icon: Icons.text_increase_rounded,
               label: l10n.increaseFontSize,
               onPressed: onIncreaseText,
+              foregroundColor: foregroundColor,
             ),
           ],
           const SizedBox(width: 8),
@@ -628,6 +682,7 @@ class _ReaderToolbar extends StatelessWidget {
             icon: Icons.ios_share_rounded,
             label: l10n.shareDocument,
             onPressed: onShare,
+            foregroundColor: foregroundColor,
           ),
         ],
       ),
@@ -639,10 +694,12 @@ class _ReaderToolbar extends StatelessWidget {
     required IconData icon,
     required String label,
     required VoidCallback onPressed,
+    required Color foregroundColor,
   }) => MoyueGlassIconButton(
     icon: Icon(icon),
     onPressed: onPressed,
     semanticLabel: label,
+    foregroundColor: foregroundColor,
     size: 48,
     useOwnLayer: true,
     settings: moyueGlassSettings(context),
@@ -657,6 +714,7 @@ class _MarkdownDocument extends StatelessWidget {
     required this.controller,
     required this.headingKeys,
     required this.bottomInset,
+    required this.imageCache,
   });
   final String data;
   final ReadingDocument document;
@@ -664,6 +722,7 @@ class _MarkdownDocument extends StatelessWidget {
   final ScrollController controller;
   final Map<int, GlobalKey> headingKeys;
   final double bottomInset;
+  final ReaderImageSessionCache imageCache;
 
   @override
   Widget build(BuildContext context) {
@@ -674,6 +733,7 @@ class _MarkdownDocument extends StatelessWidget {
       selectable: true,
       padding: EdgeInsets.fromLTRB(24, topInset, 24, bottomInset),
       builders: {
+        'pre': buildMoyueCodeBlockBuilder(context),
         for (final tag in const ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
           tag: _MarkdownHeadingBuilder(headingAllocator),
       },
@@ -681,6 +741,7 @@ class _MarkdownDocument extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: StableReaderImage(
           cacheKey: '${document.id}:${uri.toString()}',
+          sessionCache: imageCache,
           loader: () => MoyueStorageService.instance.readLinkedResource(
             document,
             uri.toString(),
@@ -696,7 +757,7 @@ class _MarkdownDocument extends StatelessWidget {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
         }
       },
-      styleSheet: _markdownStyleSheet(context),
+      styleSheet: buildMoyueMarkdownStyleSheet(context),
     );
   }
 }
@@ -713,7 +774,8 @@ class _MarkdownShareCanvas extends StatelessWidget {
     child: MarkdownBody(
       data: data,
       selectable: false,
-      styleSheet: _markdownStyleSheet(context),
+      builders: {'pre': buildMoyueCodeBlockBuilder(context)},
+      styleSheet: buildMoyueMarkdownStyleSheet(context),
       imageBuilder: (uri, title, alt) {
         final image = images[uri.toString()];
         if (image == null) {
@@ -732,45 +794,6 @@ class _MarkdownShareCanvas extends StatelessWidget {
           child: RawImage(image: image, fit: BoxFit.contain),
         );
       },
-    ),
-  );
-}
-
-MarkdownStyleSheet _markdownStyleSheet(BuildContext context) {
-  final theme = Theme.of(context);
-  final body = theme.textTheme.bodyLarge!;
-  return MarkdownStyleSheet(
-    p: body,
-    h1: theme.textTheme.headlineLarge?.copyWith(height: 1.35),
-    h2: theme.textTheme.headlineMedium?.copyWith(height: 1.4),
-    h3: theme.textTheme.titleLarge?.copyWith(height: 1.4),
-    h4: theme.textTheme.titleMedium,
-    blockquote: body.copyWith(color: theme.colorScheme.onSurfaceVariant),
-    blockquotePadding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
-    blockquoteDecoration: BoxDecoration(
-      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
-      border: Border(
-        left: BorderSide(color: theme.colorScheme.primary, width: 3),
-      ),
-      borderRadius: BorderRadius.circular(12),
-    ),
-    code: theme.textTheme.bodyMedium?.copyWith(
-      fontFamily: 'monospace',
-      backgroundColor: theme.colorScheme.surfaceContainerHighest,
-    ),
-    codeblockPadding: const EdgeInsets.all(16),
-    codeblockDecoration: BoxDecoration(
-      color: theme.colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: theme.colorScheme.outlineVariant),
-    ),
-    listBullet: body.copyWith(color: theme.colorScheme.primary),
-    a: body.copyWith(
-      color: theme.colorScheme.primary,
-      decoration: TextDecoration.underline,
-    ),
-    horizontalRuleDecoration: BoxDecoration(
-      border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
     ),
   );
 }
@@ -795,9 +818,8 @@ class _MarkdownHeadingBuilder extends MarkdownElementBuilder {
     md.Element element,
     TextStyle? preferredStyle,
     TextStyle? parentStyle,
-  ) => Padding(
+  ) => KeyedSubtree(
     key: allocator.take(),
-    padding: const EdgeInsets.only(top: 8, bottom: 4),
     child: Text(element.textContent, style: preferredStyle),
   );
 }

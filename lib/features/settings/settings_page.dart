@@ -2,8 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:moyue_application/core/display/moyue_code_theme_registry.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/core/display/moyue_markdown_theme_registry.dart';
 import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/services/app_restart_service.dart';
 import 'package:moyue_application/services/app_storage_maintenance_service.dart';
@@ -154,9 +156,18 @@ class SettingsPageState extends State<SettingsPage> {
       showDragHandle: true,
       useSafeArea: true,
       sheetAnimationStyle: _sheetAnimationStyle,
-      builder: (sheetContext) => _FontScalePickerSheet(
-        scales: _fontScales,
+      builder: (sheetContext) => _WheelPickerSheet<double>(
+        title: l10n.softwareFontSize,
+        wheelKey: const ValueKey('app-font-size-wheel'),
         initialIndex: initialIndex,
+        options: [
+          for (final scale in _fontScales)
+            _WheelPickerOption(
+              value: scale,
+              title: '${(scale * 100).round()}%',
+              description: l10n.fontSizeDescription((scale * 100).round()),
+            ),
+        ],
       ),
     );
     if (selected == null || selected == display.appFontScale || !mounted) {
@@ -259,15 +270,94 @@ class SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _chooseFontFamily(DisplayModeController display) async {
+    final l10n = context.l10n;
     final selected = await showModalBottomSheet<MoyueFontFamily>(
       context: context,
       showDragHandle: true,
       useSafeArea: true,
       sheetAnimationStyle: _sheetAnimationStyle,
-      builder: (sheetContext) =>
-          _FontFamilyPickerSheet(initialValue: display.appFontFamily),
+      builder: (sheetContext) => _OptionPickerSheet<MoyueFontFamily>(
+        title: l10n.sansSerifFont,
+        selected: display.appFontFamily,
+        options: [
+          _PickerOption(
+            value: MoyueFontFamily.system,
+            icon: Icons.smartphone_rounded,
+            title: l10n.systemSans,
+            subtitle: l10n.systemFontDescription,
+          ),
+          _PickerOption(
+            value: MoyueFontFamily.claude,
+            icon: Icons.menu_book_rounded,
+            title: l10n.claudeStyleSans,
+            subtitle: l10n.serifFontDescription,
+          ),
+          _PickerOption(
+            value: MoyueFontFamily.rounded,
+            icon: Icons.rounded_corner_rounded,
+            title: l10n.roundedSans,
+            subtitle: l10n.roundedFontDescription,
+          ),
+        ],
+      ),
     );
     if (selected != null) display.setAppFontFamily(selected);
+  }
+
+  Future<void> _chooseMarkdownStyle(DisplayModeController display) async {
+    final l10n = context.l10n;
+    final themes = MoyueMarkdownThemeRegistry.themes;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      sheetAnimationStyle: _sheetAnimationStyle,
+      builder: (sheetContext) => _WheelPickerSheet<String>(
+        title: l10n.markdownRenderingStyle,
+        wheelKey: const ValueKey('markdown-theme-wheel'),
+        initialIndex: math.max(
+          0,
+          themes.indexWhere((theme) => theme.id == display.markdownThemeId),
+        ),
+        options: [
+          for (final theme in themes)
+            _WheelPickerOption(
+              value: theme.id,
+              title: theme.label(sheetContext),
+              description: theme.description(sheetContext),
+            ),
+        ],
+      ),
+    );
+    if (selected != null) display.setMarkdownThemeId(selected);
+  }
+
+  Future<void> _chooseCodeBlockStyle(DisplayModeController display) async {
+    final l10n = context.l10n;
+    final themes = MoyueCodeThemeRegistry.themes;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      sheetAnimationStyle: _sheetAnimationStyle,
+      builder: (sheetContext) => _WheelPickerSheet<String>(
+        title: l10n.codeBlockAppearance,
+        wheelKey: const ValueKey('code-highlight-theme-wheel'),
+        initialIndex: math.max(
+          0,
+          themes.indexWhere((theme) => theme.id == display.codeThemeId),
+        ),
+        options: [
+          for (final theme in themes)
+            _WheelPickerOption(
+              value: theme.id,
+              title: theme.label(sheetContext),
+              description: theme.description(sheetContext),
+            ),
+        ],
+      ),
+    );
+    if (selected != null) display.setCodeThemeId(selected);
   }
 
   Future<void> _showColorSettings(DisplayModeController display) =>
@@ -457,6 +547,12 @@ class SettingsPageState extends State<SettingsPage> {
         MoyueFontFamily.rounded => context.l10n.roundedSans,
       };
 
+  String _markdownThemeLabel(BuildContext context, String id) =>
+      MoyueMarkdownThemeRegistry.resolve(id).label(context);
+
+  String _codeThemeLabel(BuildContext context, String id) =>
+      MoyueCodeThemeRegistry.resolve(id).label(context);
+
   int _nearestFontScaleIndex(double value) {
     var result = 0;
     var distance = double.infinity;
@@ -496,8 +592,10 @@ class SettingsPageState extends State<SettingsPage> {
       l10n.english,
     ].join(' ').toLowerCase();
     final readingTerms = [
-      '阅读动画翻页动效HTML WebView网页原生预见性返回手势',
+      '阅读动画翻页动效HTML WebView网页原生预见性返回手势Markdown排版代码块外观',
       l10n.readingSection,
+      l10n.markdownRenderingStyle,
+      l10n.codeBlockAppearance,
       l10n.reduceMotion,
       l10n.predictiveBack,
       l10n.webReader,
@@ -571,6 +669,13 @@ class SettingsPageState extends State<SettingsPage> {
                       onTap: () => _chooseFontFamily(display),
                     ),
                     const Divider(indent: 56),
+                    _SettingSummaryTile(
+                      icon: Icons.text_fields_rounded,
+                      title: l10n.softwareFontSize,
+                      status: '${(display.appFontScale * 100).round()}%',
+                      onTap: () => _chooseFontSize(display),
+                    ),
+                    const Divider(indent: 56),
                     _GlassSwitchTile(
                       value: false,
                       onChanged: null,
@@ -594,13 +699,6 @@ class SettingsPageState extends State<SettingsPage> {
                       value: display.contrast,
                       onChanged: display.setContrast,
                       onDetails: () => _showContrastDetail(display),
-                    ),
-                    const Divider(indent: 56),
-                    _SettingSummaryTile(
-                      icon: Icons.text_fields_rounded,
-                      title: l10n.softwareFontSize,
-                      status: '${(display.appFontScale * 100).round()}%',
-                      onTap: () => _chooseFontSize(display),
                     ),
                   ],
                 ),
@@ -629,6 +727,23 @@ class SettingsPageState extends State<SettingsPage> {
               SliverToBoxAdapter(
                 child: _SettingsCard(
                   children: [
+                    _SettingSummaryTile(
+                      icon: Icons.auto_stories_rounded,
+                      title: l10n.markdownRenderingStyle,
+                      status: _markdownThemeLabel(
+                        context,
+                        display.markdownThemeId,
+                      ),
+                      onTap: () => _chooseMarkdownStyle(display),
+                    ),
+                    const Divider(indent: 56),
+                    _SettingSummaryTile(
+                      icon: Icons.code_rounded,
+                      title: l10n.codeBlockAppearance,
+                      status: _codeThemeLabel(context, display.codeThemeId),
+                      onTap: () => _chooseCodeBlockStyle(display),
+                    ),
+                    const Divider(indent: 56),
                     _GlassSwitchTile(
                       value: display.reduceMotion,
                       onChanged: display.setReduceMotion,
@@ -896,27 +1011,57 @@ class _SettingDetailSheet extends StatelessWidget {
   }
 }
 
-class _FontScalePickerSheet extends StatefulWidget {
-  const _FontScalePickerSheet({
-    required this.scales,
-    required this.initialIndex,
+class _PickerOption<T> {
+  const _PickerOption({
+    required this.value,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
   });
 
-  final List<double> scales;
-  final int initialIndex;
-
-  @override
-  State<_FontScalePickerSheet> createState() => _FontScalePickerSheetState();
+  final T value;
+  final IconData icon;
+  final String title;
+  final String subtitle;
 }
 
-class _FontScalePickerSheetState extends State<_FontScalePickerSheet> {
+class _WheelPickerOption<T> {
+  const _WheelPickerOption({
+    required this.value,
+    required this.title,
+    required this.description,
+  });
+
+  final T value;
+  final String title;
+  final String description;
+}
+
+class _WheelPickerSheet<T> extends StatefulWidget {
+  const _WheelPickerSheet({
+    required this.title,
+    required this.wheelKey,
+    required this.initialIndex,
+    required this.options,
+  });
+
+  final String title;
+  final Key wheelKey;
+  final int initialIndex;
+  final List<_WheelPickerOption<T>> options;
+
+  @override
+  State<_WheelPickerSheet<T>> createState() => _WheelPickerSheetState<T>();
+}
+
+class _WheelPickerSheetState<T> extends State<_WheelPickerSheet<T>> {
   late final FixedExtentScrollController _controller;
   late int _selectedIndex;
 
   @override
   void initState() {
     super.initState();
-    _selectedIndex = widget.initialIndex;
+    _selectedIndex = widget.initialIndex.clamp(0, widget.options.length - 1);
     _controller = FixedExtentScrollController(initialItem: _selectedIndex);
   }
 
@@ -930,92 +1075,101 @@ class _FontScalePickerSheetState extends State<_FontScalePickerSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final l10n = context.l10n;
+    final selected = widget.options[_selectedIndex];
     return SizedBox(
-      height: 380,
+      height: 400,
       child: Column(
         children: [
-          Text(l10n.softwareFontSize, style: theme.textTheme.titleLarge),
+          Text(widget.title, style: theme.textTheme.titleLarge),
           const SizedBox(height: 6),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Text(
-              l10n.fontSizeDescription(
-                (widget.scales[_selectedIndex] * 100).round(),
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: AnimatedSwitcher(
+              duration: moyueMotionDuration(
+                context,
+                const Duration(milliseconds: 160),
               ),
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-                height: 1.35,
+              child: Text(
+                selected.description,
+                key: ValueKey(selected.value),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  height: 1.35,
+                ),
               ),
             ),
           ),
           const SizedBox(height: 6),
           Expanded(
             child: ListWheelScrollView.useDelegate(
-              key: const ValueKey('app-font-size-wheel'),
+              key: widget.wheelKey,
               controller: _controller,
-              itemExtent: 54,
+              itemExtent: 56,
               physics: const FixedExtentScrollPhysics(),
-              diameterRatio: 1.5,
-              overAndUnderCenterOpacity: 0.48,
+              diameterRatio: 1.55,
+              overAndUnderCenterOpacity: 0.44,
               onSelectedItemChanged: (value) {
-                if (_selectedIndex == value) return;
-                setState(() => _selectedIndex = value);
+                if (_selectedIndex != value) {
+                  setState(() => _selectedIndex = value);
+                }
               },
               childDelegate: ListWheelChildBuilderDelegate(
-                childCount: widget.scales.length,
+                childCount: widget.options.length,
                 builder: (context, index) {
-                  final selected = index == _selectedIndex;
-                  final label = '${(widget.scales[index] * 100).round()}%';
+                  final option = widget.options[index];
+                  final isSelected = index == _selectedIndex;
                   return Center(
                     child: Semantics(
-                      selected: selected,
-                      label: label,
+                      selected: isSelected,
+                      label: option.title,
                       child: Material(
-                        key: selected
-                            ? const ValueKey('app-font-size-selected-option')
-                            : ValueKey('app-font-size-option-$index'),
-                        color: selected
+                        key: isSelected
+                            ? ValueKey('${widget.wheelKey}-selected')
+                            : ValueKey('${widget.wheelKey}-option-$index'),
+                        color: isSelected
                             ? colors.secondaryContainer
                             : Colors.transparent,
                         surfaceTintColor: Colors.transparent,
-                        elevation: selected ? 1 : 0,
-                        shadowColor: colors.shadow.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(18),
-                        child: AnimatedSize(
+                        child: AnimatedContainer(
                           duration: moyueMotionDuration(
                             context,
                             const Duration(milliseconds: 160),
                           ),
-                          curve: Curves.easeOutCubic,
-                          child: SizedBox(
-                            width: selected ? 156 : 112,
-                            height: 44,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  label,
+                          width: isSelected ? 216 : 168,
+                          height: 46,
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  option.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.titleMedium?.copyWith(
-                                    color: selected
+                                    color: isSelected
                                         ? colors.onSecondaryContainer
                                         : colors.onSurfaceVariant,
-                                    fontWeight: selected
+                                    fontWeight: isSelected
                                         ? FontWeight.w700
                                         : FontWeight.w500,
                                   ),
                                 ),
-                                if (selected) ...[
-                                  const SizedBox(width: 8),
-                                  Icon(
-                                    Icons.check_rounded,
-                                    size: 18,
-                                    color: colors.onSecondaryContainer,
-                                  ),
-                                ],
+                              ),
+                              if (isSelected) ...[
+                                const SizedBox(width: 8),
+                                Icon(
+                                  Icons.check_rounded,
+                                  size: 18,
+                                  color: colors.onSecondaryContainer,
+                                ),
                               ],
-                            ),
+                            ],
                           ),
                         ),
                       ),
@@ -1030,9 +1184,8 @@ class _FontScalePickerSheetState extends State<_FontScalePickerSheet> {
             child: SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: () =>
-                    Navigator.pop(context, widget.scales[_selectedIndex]),
-                child: Text(l10n.apply),
+                onPressed: () => Navigator.pop(context, selected.value),
+                child: Text(context.l10n.apply),
               ),
             ),
           ),
@@ -1040,20 +1193,6 @@ class _FontScalePickerSheetState extends State<_FontScalePickerSheet> {
       ),
     );
   }
-}
-
-class _PickerOption<T> {
-  const _PickerOption({
-    required this.value,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final T value;
-  final IconData icon;
-  final String title;
-  final String subtitle;
 }
 
 class _OptionPickerSheet<T> extends StatelessWidget {
@@ -1070,176 +1209,56 @@ class _OptionPickerSheet<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 2, 18, 22),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(6, 0, 6, 12),
-            child: Text(title, style: Theme.of(context).textTheme.titleLarge),
-          ),
-          for (final option in options)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Material(
-                color: option.value == selected
-                    ? colors.secondaryContainer
-                    : colors.surfaceContainer,
-                borderRadius: BorderRadius.circular(18),
-                child: ListTile(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  leading: Icon(option.icon),
-                  title: Text(option.title),
-                  subtitle: Text(option.subtitle),
-                  trailing: option.value == selected
-                      ? Icon(Icons.check_circle_rounded, color: colors.primary)
-                      : null,
-                  onTap: () => Navigator.pop(context, option.value),
-                ),
-              ),
-            ),
-        ],
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.76,
       ),
-    );
-  }
-}
-
-class _FontFamilyPickerSheet extends StatefulWidget {
-  const _FontFamilyPickerSheet({required this.initialValue});
-
-  final MoyueFontFamily initialValue;
-
-  @override
-  State<_FontFamilyPickerSheet> createState() => _FontFamilyPickerSheetState();
-}
-
-class _FontFamilyPickerSheetState extends State<_FontFamilyPickerSheet> {
-  late final FixedExtentScrollController _controller;
-  late int _selectedIndex;
-
-  static const _values = MoyueFontFamily.values;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedIndex = _values.indexOf(widget.initialValue);
-    _controller = FixedExtentScrollController(initialItem: _selectedIndex);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  String _label(BuildContext context, MoyueFontFamily value) => switch (value) {
-    MoyueFontFamily.system => context.l10n.systemSans,
-    MoyueFontFamily.claude => context.l10n.claudeStyleSans,
-    MoyueFontFamily.rounded => context.l10n.roundedSans,
-  };
-
-  String? _previewFamily(MoyueFontFamily value) => switch (value) {
-    MoyueFontFamily.system => null,
-    MoyueFontFamily.claude => 'serif',
-    MoyueFontFamily.rounded => 'sans-serif-rounded',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    final l10n = context.l10n;
-    return SizedBox(
-      height: 380,
-      child: Column(
-        children: [
-          Text(l10n.sansSerifFont, style: theme.textTheme.titleLarge),
-          const SizedBox(height: 6),
-          Text(
-            l10n.chooseSansSerif,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colors.onSurfaceVariant,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 2, 18, 14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 0, 6, 12),
+              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
             ),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: ListWheelScrollView.useDelegate(
-              key: const ValueKey('app-font-family-wheel'),
-              controller: _controller,
-              itemExtent: 58,
-              physics: const FixedExtentScrollPhysics(),
-              diameterRatio: 1.5,
-              overAndUnderCenterOpacity: 0.45,
-              onSelectedItemChanged: (value) {
-                if (_selectedIndex != value) {
-                  setState(() => _selectedIndex = value);
-                }
-              },
-              childDelegate: ListWheelChildBuilderDelegate(
-                childCount: _values.length,
-                builder: (context, index) {
-                  final value = _values[index];
-                  final selected = index == _selectedIndex;
-                  return Center(
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final option = options[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
                     child: Material(
-                      key: selected
-                          ? const ValueKey('app-font-family-selected-option')
-                          : ValueKey('app-font-family-option-$index'),
-                      color: selected
+                      color: option.value == selected
                           ? colors.secondaryContainer
-                          : Colors.transparent,
+                          : colors.surfaceContainer,
                       borderRadius: BorderRadius.circular(18),
-                      child: SizedBox(
-                        width: selected ? 250 : 220,
-                        height: 46,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              _label(context, value),
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontFamily: _previewFamily(value),
-                                color: selected
-                                    ? colors.onSecondaryContainer
-                                    : colors.onSurfaceVariant,
-                                fontWeight: selected
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
-                              ),
-                            ),
-                            if (selected) ...[
-                              const SizedBox(width: 8),
-                              Icon(
-                                Icons.check_rounded,
-                                size: 18,
-                                color: colors.onSecondaryContainer,
-                              ),
-                            ],
-                          ],
+                      child: ListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
                         ),
+                        leading: Icon(option.icon),
+                        title: Text(option.title),
+                        subtitle: Text(option.subtitle),
+                        trailing: option.value == selected
+                            ? Icon(
+                                Icons.check_circle_rounded,
+                                color: colors.primary,
+                              )
+                            : null,
+                        onTap: () => Navigator.pop(context, option.value),
                       ),
                     ),
                   );
                 },
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () =>
-                    Navigator.pop(context, _values[_selectedIndex]),
-                child: Text(l10n.apply),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

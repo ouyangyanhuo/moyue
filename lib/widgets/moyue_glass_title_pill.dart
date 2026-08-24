@@ -16,6 +16,7 @@ class MoyueGlassTitlePill extends StatelessWidget {
     this.onTap,
     this.semanticLabel,
     this.useOwnLayer = true,
+    this.foregroundColor,
     super.key,
   });
 
@@ -28,6 +29,7 @@ class MoyueGlassTitlePill extends StatelessWidget {
   final VoidCallback? onTap;
   final String? semanticLabel;
   final bool useOwnLayer;
+  final Color? foregroundColor;
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +51,8 @@ class MoyueGlassTitlePill extends StatelessWidget {
         title,
         autoScroll: true,
         textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.labelLarge,
+        style: Theme.of(context).textTheme.labelLarge
+            ?.copyWith(color: foregroundColor),
       ),
     );
     if (onTap == null) return pill;

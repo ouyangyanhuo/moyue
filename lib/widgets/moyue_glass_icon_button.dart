@@ -21,6 +21,7 @@ class MoyueGlassIconButton extends StatelessWidget {
     this.size = 44,
     this.useOwnLayer = true,
     this.settings,
+    this.foregroundColor,
     super.key,
   });
 
@@ -30,13 +31,17 @@ class MoyueGlassIconButton extends StatelessWidget {
   final double size;
   final bool useOwnLayer;
   final LiquidGlassSettings? settings;
+  final Color? foregroundColor;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
+    final resolvedForeground =
+        foregroundColor ?? CupertinoColors.label.resolveFrom(context);
     final iconColor = enabled
-        ? CupertinoColors.label.resolveFrom(context)
-        : CupertinoColors.tertiaryLabel.resolveFrom(context);
+        ? resolvedForeground
+        : foregroundColor?.withValues(alpha: 0.38) ??
+              CupertinoColors.tertiaryLabel.resolveFrom(context);
     // Premium's inverse-clipped custom shadow can leave a dark cached circle
     // while an own-layer button moves inside a scrolling viewport. Keep the
     // high-quality refraction, but let only the glass shape deform in place and
