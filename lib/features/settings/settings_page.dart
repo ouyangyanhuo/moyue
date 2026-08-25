@@ -757,8 +757,11 @@ class SettingsPageState extends State<SettingsPage> {
                     const Divider(indent: 56),
                     _GlassSwitchTile(
                       value: display.isInkMode,
-                      onChanged: (value) =>
-                          _requestInkModeChange(display, value),
+                      // 墨模式暂不开放：未开启时禁用入口；已经开启的用户
+                      // 仍然可以关闭，避免持久化状态将用户困在墨模式中。
+                      onChanged: display.isInkMode
+                          ? (value) => _requestInkModeChange(display, value)
+                          : null,
                       icon: Icons.water_drop_outlined,
                       title: l10n.inkMode,
                       subtitle: display.isInkMode
@@ -770,8 +773,9 @@ class SettingsPageState extends State<SettingsPage> {
                         title: l10n.inkMode,
                         description: l10n.inkModeDescription,
                         value: () => display.isInkMode,
-                        onChanged: (value) =>
-                            _requestInkModeChange(display, value),
+                        onChanged: display.isInkMode
+                            ? (value) => _requestInkModeChange(display, value)
+                            : null,
                       ),
                     ),
                     const Divider(indent: 56),

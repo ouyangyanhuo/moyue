@@ -1326,7 +1326,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('设置页墨模式开关可用并保留扩大触控区', (tester) async {
+  testWidgets('设置页墨模式开关禁止开启并保留扩大触控区', (tester) async {
     final display = MoyueDisplayPreferences();
     addTearDown(display.dispose);
     await tester.pumpWidget(
@@ -1370,7 +1370,7 @@ void main() {
           )
           .first,
     );
-    expect(switchPointer.ignoring, isFalse);
+    expect(switchPointer.ignoring, isTrue);
     expect(find.text('已关闭'), findsOneWidget);
     final inkTitle = tester.widget<Text>(find.text('墨模式'));
     expect(
@@ -1404,11 +1404,7 @@ void main() {
     ).pop();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('墨模式-switch-touch-area')));
-    await tester.pumpAndSettle();
-    expect(find.text('需要重启墨阅'), findsOneWidget);
-    await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
+    expect(find.text('需要重启墨阅'), findsNothing);
     expect(display.isInkMode, isFalse);
 
     await _scrollSettingsUntilVisible(tester, find.text('Web 阅读器'));
