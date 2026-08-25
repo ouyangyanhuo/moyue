@@ -1,8 +1,11 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/core/navigation/moyue_page_route.dart';
+import 'package:moyue_application/services/ink_image_processor.dart';
 
 /// 全屏图片灯箱：双指/双击缩放、拖拽平移，点按空白或关闭按钮退出。
 class ImageLightbox extends StatefulWidget {
@@ -31,10 +34,43 @@ class _ImageLightboxState extends State<ImageLightbox> {
 
   final TransformationController _transform = TransformationController();
   TapDownDetails? _doubleTapDetails;
+  Future<ui.Image?>? _inkFuture;
+  ui.Image? _inkImage;
+  bool? _inkDark;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final display = DisplayPreferencesScope.maybeOf(context);
+    if (!(display?.isInkMode ?? false)) return;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    if (_inkFuture != null && _inkDark == dark) return;
+    _inkImage?.dispose();
+    _inkImage = null;
+    _inkDark = dark;
+    final size = MediaQuery.sizeOf(context);
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    _inkFuture =
+        InkImageProcessor.process(
+          widget.bytes,
+          dark: dark,
+          maximumDimension: 2048,
+          targetPixelWidth: (size.width * pixelRatio).ceil().clamp(1, 2048),
+          targetPixelHeight: (size.height * pixelRatio).ceil().clamp(1, 2048),
+        ).then((image) {
+          if (!mounted) {
+            image?.dispose();
+          } else {
+            _inkImage = image;
+          }
+          return image;
+        });
+  }
 
   @override
   void dispose() {
     _transform.dispose();
+    _inkImage?.dispose();
     super.dispose();
   }
 
@@ -62,8 +98,11 @@ class _ImageLightboxState extends State<ImageLightbox> {
 
   @override
   Widget build(BuildContext context) {
+    final inkMode =
+        DisplayPreferencesScope.maybeOf(context)?.isInkMode ?? false;
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: inkMode ? colors.surface : Colors.black,
       body: Stack(
         children: [
           Positioned.fill(
@@ -74,15 +113,7 @@ class _ImageLightboxState extends State<ImageLightbox> {
               child: InteractiveViewer(
                 transformationController: _transform,
                 maxScale: _maxScale,
-                child: Center(
-                  child: RepaintBoundary(
-                    child: Image.memory(
-                      widget.bytes,
-                      fit: BoxFit.contain,
-                      gaplessPlayback: true,
-                    ),
-                  ),
-                ),
+                child: Center(child: RepaintBoundary(child: _image(inkMode))),
               ),
             ),
           ),
@@ -92,7 +123,10 @@ class _ImageLightboxState extends State<ImageLightbox> {
               child: Padding(
                 padding: const EdgeInsets.all(8),
                 child: IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Colors.white),
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: inkMode ? colors.onSurface : Colors.white,
+                  ),
                   onPressed: () => Navigator.of(context).pop(),
                   tooltip: context.l10n.close,
                 ),
@@ -101,6 +135,26 @@ class _ImageLightboxState extends State<ImageLightbox> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _image(bool inkMode) {
+    if (!inkMode) {
+      return Image.memory(
+        widget.bytes,
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+      );
+    }
+    return FutureBuilder<ui.Image?>(
+      future: _inkFuture,
+      builder: (context, snapshot) {
+        final image = snapshot.data;
+        if (image == null) {
+          return const Center(child: CircularProgressIndicator.adaptive());
+        }
+        return RawImage(image: image, fit: BoxFit.contain);
+      },
     );
   }
 }

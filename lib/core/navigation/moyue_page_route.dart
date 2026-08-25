@@ -8,6 +8,7 @@ class MoyueMaterialPageRoute<T> extends MaterialPageRoute<T> {
     required super.builder,
     required this.predictiveBackEnabled,
     required this.reduceMotion,
+    required this.inkMode,
     super.settings,
     super.allowSnapshotting,
     super.maintainState,
@@ -16,14 +17,21 @@ class MoyueMaterialPageRoute<T> extends MaterialPageRoute<T> {
 
   final bool predictiveBackEnabled;
   final bool reduceMotion;
+  final bool inkMode;
 
   @override
-  Duration get transitionDuration =>
-      reduceMotion ? Duration.zero : super.transitionDuration;
+  Duration get transitionDuration => reduceMotion
+      ? Duration.zero
+      : inkMode
+      ? super.transitionDuration + const Duration(milliseconds: 75)
+      : super.transitionDuration;
 
   @override
-  Duration get reverseTransitionDuration =>
-      reduceMotion ? Duration.zero : super.reverseTransitionDuration;
+  Duration get reverseTransitionDuration => reduceMotion
+      ? Duration.zero
+      : inkMode
+      ? super.reverseTransitionDuration + const Duration(milliseconds: 75)
+      : super.reverseTransitionDuration;
 
   @override
   bool get popGestureEnabled =>
@@ -40,4 +48,5 @@ MoyueMaterialPageRoute<T> moyuePageRoute<T>({
   predictiveBackEnabled:
       DisplayPreferencesScope.maybeOf(context)?.predictiveBackEnabled ?? true,
   reduceMotion: DisplayPreferencesScope.maybeOf(context)?.reduceMotion ?? false,
+  inkMode: DisplayPreferencesScope.maybeOf(context)?.isInkMode ?? false,
 );

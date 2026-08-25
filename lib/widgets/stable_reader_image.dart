@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
+import 'package:moyue_application/services/ink_image_processor.dart';
 
 /// Keeps images that have already entered the viewport alive for the lifetime
 /// of one reader page. The cache owns both encoded bytes and intrinsic size,
@@ -34,7 +35,12 @@ class ReaderImageSessionCache {
 
   int get length => _entries.length;
 
-  void clear() => _entries.clear();
+  void clear() {
+    for (final entry in _entries.values) {
+      entry.data?.dispose();
+    }
+    _entries.clear();
+  }
 }
 
 /// Loads a reader image without letting its first decoded frame change layout.
@@ -125,6 +131,7 @@ class _StableReaderImageState extends State<StableReaderImage>
   @override
   void dispose() {
     _scrollPosition?.removeListener(_scheduleVisibilityCheck);
+    if (widget.sessionCache == null) _resolvedData?.dispose();
     super.dispose();
   }
 
@@ -260,32 +267,25 @@ class _StableReaderImageState extends State<StableReaderImage>
       LayoutBuilder(
         builder: (context, constraints) {
           final size = _displaySize(constraints, data);
-          final image = Image.memory(
-            data.bytes,
-            width: size.width,
-            height: size.height,
-            fit: widget.fit,
-            alignment: widget.alignment,
-            gaplessPlayback: true,
-            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-              if (frame != null || wasSynchronouslyLoaded) _scheduleReveal();
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  _placeholder(context),
-                  AnimatedOpacity(
-                    key: const ValueKey('stable-reader-image-content'),
-                    opacity: _reveal ? 1 : 0,
-                    duration: moyueMotionDuration(
-                      context,
-                      const Duration(milliseconds: 120),
-                    ),
-                    child: child,
-                  ),
-                ],
-              );
-            },
-          );
+          final display = DisplayPreferencesScope.maybeOf(context);
+          final inkMode = display?.isInkMode ?? false;
+          final image = inkMode
+              ? _buildInkImage(context, data, size)
+              : Image.memory(
+                  data.bytes,
+                  width: size.width,
+                  height: size.height,
+                  fit: widget.fit,
+                  alignment: widget.alignment,
+                  gaplessPlayback: true,
+                  frameBuilder:
+                      (context, child, frame, wasSynchronouslyLoaded) {
+                        if (frame != null || wasSynchronouslyLoaded) {
+                          _scheduleReveal();
+                        }
+                        return _revealStack(context, child);
+                      },
+                );
           final result = SizedBox(
             width: size.width,
             height: size.height,
@@ -304,6 +304,56 @@ class _StableReaderImageState extends State<StableReaderImage>
           );
         },
       );
+
+  Widget _buildInkImage(
+    BuildContext context,
+    _ReaderImageData data,
+    Size size,
+  ) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    int bucket(double logical) =>
+        (((logical * pixelRatio).ceil() + 63) ~/ 64 * 64).clamp(64, 1280);
+    return FutureBuilder<ui.Image?>(
+      future: data.inkImage(
+        dark: dark,
+        targetPixelWidth: bucket(size.width),
+        targetPixelHeight: bucket(size.height),
+      ),
+      builder: (context, snapshot) {
+        final image = snapshot.data;
+        if (image == null) return _placeholder(context);
+        _scheduleReveal();
+        return _revealStack(
+          context,
+          RawImage(
+            image: image,
+            width: size.width,
+            height: size.height,
+            fit: widget.fit,
+            alignment: widget.alignment,
+            filterQuality: FilterQuality.medium,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _revealStack(BuildContext context, Widget child) => Stack(
+    fit: StackFit.expand,
+    children: [
+      _placeholder(context),
+      AnimatedOpacity(
+        key: const ValueKey('stable-reader-image-content'),
+        opacity: _reveal ? 1 : 0,
+        duration: moyueMotionDuration(
+          context,
+          const Duration(milliseconds: 120),
+        ),
+        child: child,
+      ),
+    ],
+  );
 
   Size _displaySize(BoxConstraints constraints, _ReaderImageData data) {
     final ratio = data.pixelWidth / data.pixelHeight;
@@ -359,7 +409,7 @@ class _StableReaderImageState extends State<StableReaderImage>
 }
 
 class _ReaderImageData {
-  const _ReaderImageData({
+  _ReaderImageData({
     required this.bytes,
     required this.pixelWidth,
     required this.pixelHeight,
@@ -368,6 +418,44 @@ class _ReaderImageData {
   final Uint8List bytes;
   final int pixelWidth;
   final int pixelHeight;
+  final Map<String, Future<ui.Image?>> _inkImages = {};
+  final Set<ui.Image> _resolvedInkImages = {};
+  bool _disposed = false;
+
+  Future<ui.Image?> inkImage({
+    required bool dark,
+    required int targetPixelWidth,
+    required int targetPixelHeight,
+  }) {
+    final key = '$dark:$targetPixelWidth:$targetPixelHeight';
+    final existing = _inkImages[key];
+    if (existing != null) return existing;
+    final future =
+        InkImageProcessor.process(
+          bytes,
+          dark: dark,
+          targetPixelWidth: targetPixelWidth,
+          targetPixelHeight: targetPixelHeight,
+        ).then((image) {
+          if (_disposed) {
+            image?.dispose();
+            return null;
+          }
+          if (image != null) _resolvedInkImages.add(image);
+          return image;
+        });
+    _inkImages[key] = future;
+    return future;
+  }
+
+  void dispose() {
+    _disposed = true;
+    for (final image in _resolvedInkImages) {
+      image.dispose();
+    }
+    _resolvedInkImages.clear();
+    _inkImages.clear();
+  }
 }
 
 class _ReaderImageCacheEntry {

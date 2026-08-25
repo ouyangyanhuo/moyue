@@ -27,6 +27,38 @@ void main() {
     restored.dispose();
   });
 
+  test('墨模式持久化并只覆盖有效显示值，不破坏原偏好', () async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    final first = MoyueDisplayPreferences()
+      ..setAppFontFamily(MoyueFontFamily.rounded)
+      ..setMarkdownThemeId('github-dark')
+      ..setCodeThemeId('dracula');
+    await first.setAppFontScale(1.3);
+    await first.setMode(ReadingDisplayMode.ink);
+
+    expect(first.isInkMode, isTrue);
+    expect(first.appFontFamily, MoyueFontFamily.rounded);
+    expect(first.appFontScale, 1.3);
+    expect(first.markdownThemeId, 'github-dark');
+    expect(first.codeThemeId, 'dracula');
+    expect(first.effectiveAppFontFamily, MoyueFontFamily.ink);
+    expect(first.effectiveAppFontScale, 1);
+    expect(first.effectiveMarkdownThemeId, 'moyue-ink');
+    expect(first.effectiveCodeThemeId, 'moyue-ink');
+
+    final restored = MoyueDisplayPreferences();
+    await restored.load();
+    expect(restored.mode, ReadingDisplayMode.ink);
+    await restored.setMode(ReadingDisplayMode.paper);
+    expect(restored.effectiveAppFontFamily, MoyueFontFamily.rounded);
+    expect(restored.effectiveAppFontScale, 1.3);
+    expect(restored.effectiveMarkdownThemeId, 'github-dark');
+    expect(restored.effectiveCodeThemeId, 'dracula');
+    first.dispose();
+    restored.dispose();
+  });
+
   test('字体大小与预见性返回开关会持久化', () async {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
@@ -56,6 +88,7 @@ void main() {
       builder: (_) => const SizedBox.shrink(),
       predictiveBackEnabled: true,
       reduceMotion: restored.reduceMotion,
+      inkMode: false,
     );
 
     expect(restored.reduceMotion, isTrue);

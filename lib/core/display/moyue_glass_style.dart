@@ -27,19 +27,21 @@ List<BoxShadow> moyueGlassShadow(double opacity) {
 /// The interaction glow and native meniscus absorption remain enabled while
 /// the custom outside shadow avoids the package's tighter contact shadow.
 LiquidGlassSettings moyueGlassSettings(BuildContext context) {
-  final opacity = DisplayPreferencesScope.maybeOf(context)?.glassOpacity ?? 0;
+  final display = DisplayPreferencesScope.maybeOf(context);
+  final opacity = display?.glassOpacity ?? 0;
+  final inkMode = display?.isInkMode ?? false;
   return LiquidGlassSettings(
     ambientRim: 0.18,
     thickness: 20,
-    blur: 5,
-    chromaticAberration: 0.025,
-    lightIntensity: 0.34,
+    blur: inkMode ? 1 : 5,
+    chromaticAberration: inkMode ? 0 : 0.025,
+    lightIntensity: inkMode ? 0.26 : 0.34,
     refractiveIndex: 1.32,
-    saturation: 1.05,
-    ambientStrength: 0.12,
-    fresnelStrength: 0.12,
+    saturation: inkMode ? 0 : 1.05,
+    ambientStrength: inkMode ? 0.04 : 0.12,
+    fresnelStrength: inkMode ? 0.08 : 0.12,
     lightAngle: 2.356,
-    glowIntensity: 0.35,
+    glowIntensity: inkMode ? 0 : 0.35,
     shadowElevation: 0,
     edgeAbsorption: 0.06,
     shadow: moyueGlassShadow(opacity),

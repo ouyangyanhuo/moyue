@@ -21,7 +21,9 @@ MoyueMarkdownThemeDefinition moyueMarkdownThemeOf(BuildContext context) {
 }
 
 MoyueMarkdownPalette moyueMarkdownPaletteOf(BuildContext context) =>
-    moyueMarkdownThemeOf(context).palette(Theme.of(context).colorScheme);
+    (DisplayPreferencesScope.maybeOf(context)?.isInkMode ?? false)
+    ? _inkMarkdownPalette(Theme.of(context))
+    : moyueMarkdownThemeOf(context).palette(Theme.of(context).colorScheme);
 
 MoyueCodeThemeDefinition moyueCodeThemeOf(BuildContext context) {
   final id =
@@ -31,7 +33,58 @@ MoyueCodeThemeDefinition moyueCodeThemeOf(BuildContext context) {
 }
 
 Map<String, TextStyle> moyueCodePaletteOf(BuildContext context) =>
-    moyueCodeThemeOf(context).palette(Theme.of(context).brightness);
+    (DisplayPreferencesScope.maybeOf(context)?.isInkMode ?? false)
+    ? _inkCodePalette(Theme.of(context))
+    : moyueCodeThemeOf(context).palette(Theme.of(context).brightness);
+
+MoyueMarkdownPalette _inkMarkdownPalette(ThemeData theme) {
+  final colors = theme.colorScheme;
+  return MoyueMarkdownPalette(
+    surface: colors.surface,
+    foreground: colors.onSurface,
+    mutedForeground: colors.onSurfaceVariant,
+    heading: colors.onSurface,
+    link: colors.primary,
+    accent: colors.primary,
+    blockquoteSurface: colors.surfaceContainerHigh,
+    inlineCodeSurface: colors.surfaceContainerHighest,
+    tableHeaderSurface: colors.surfaceContainerHigh,
+    outline: colors.outlineVariant,
+    inlineCodeForeground: colors.onSurface,
+  ).normalized();
+}
+
+Map<String, TextStyle> _inkCodePalette(ThemeData theme) {
+  final colors = theme.colorScheme;
+  final foreground = colors.onSurface;
+  final muted = colors.onSurfaceVariant;
+  final accent = colors.primary;
+  return <String, TextStyle>{
+    'root': TextStyle(
+      color: foreground,
+      backgroundColor: colors.surfaceContainerHigh,
+    ),
+    'comment': TextStyle(color: muted, fontStyle: FontStyle.italic),
+    'quote': TextStyle(color: muted),
+    'keyword': TextStyle(color: foreground, fontWeight: FontWeight.w800),
+    'selector-tag': TextStyle(color: foreground, fontWeight: FontWeight.w800),
+    'literal': TextStyle(color: accent, fontWeight: FontWeight.w700),
+    'number': TextStyle(color: accent),
+    'string': TextStyle(color: colors.onSurfaceVariant),
+    'doctag': TextStyle(color: colors.onSurfaceVariant),
+    'title': TextStyle(color: foreground, fontWeight: FontWeight.w700),
+    'section': TextStyle(color: foreground, fontWeight: FontWeight.w700),
+    'type': TextStyle(color: accent, fontWeight: FontWeight.w600),
+    'name': TextStyle(color: foreground),
+    'attribute': TextStyle(color: accent),
+    'variable': TextStyle(color: colors.onSurfaceVariant),
+    'params': TextStyle(color: foreground),
+    'meta': TextStyle(color: muted),
+    'built_in': TextStyle(color: accent, fontWeight: FontWeight.w600),
+    'symbol': TextStyle(color: accent),
+    'bullet': TextStyle(color: foreground, fontWeight: FontWeight.w700),
+  };
+}
 
 @immutable
 class MoyueCodeBlockPalette {
@@ -135,13 +188,14 @@ MoyueCodeBlockPalette normalizeMoyueCodeBlockPalette({
 MarkdownStyleSheet buildMoyueMarkdownStyleSheet(BuildContext context) {
   final theme = Theme.of(context);
   final palette = moyueMarkdownPaletteOf(context);
+  final inkMode = DisplayPreferencesScope.maybeOf(context)?.isInkMode ?? false;
   final body = theme.textTheme.bodyLarge!.copyWith(
-    height: 1.76,
+    height: inkMode ? 1.9 : 1.76,
     color: palette.foreground,
-    letterSpacing: 0.05,
+    letterSpacing: inkMode ? 0.15 : 0.05,
   );
   final secondaryBody = theme.textTheme.bodyMedium!.copyWith(
-    height: 1.68,
+    height: inkMode ? 1.82 : 1.68,
     color: palette.foreground,
   );
   final readerIsDark =
@@ -150,7 +204,7 @@ MarkdownStyleSheet buildMoyueMarkdownStyleSheet(BuildContext context) {
   return MarkdownStyleSheet(
     p: body,
     pPadding: const EdgeInsets.only(bottom: 1),
-    blockSpacing: 16,
+    blockSpacing: inkMode ? 18 : 16,
     h1: theme.textTheme.headlineLarge?.copyWith(
       color: palette.heading,
       height: 1.2,
@@ -220,13 +274,17 @@ MarkdownStyleSheet buildMoyueMarkdownStyleSheet(BuildContext context) {
     codeblockDecoration: BoxDecoration(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(16),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: readerIsDark ? 0.2 : 0.065),
-          blurRadius: 17,
-          offset: const Offset(0, 6),
-        ),
-      ],
+      boxShadow: inkMode
+          ? const []
+          : [
+              BoxShadow(
+                color: Colors.black.withValues(
+                  alpha: readerIsDark ? 0.2 : 0.065,
+                ),
+                blurRadius: 17,
+                offset: const Offset(0, 6),
+              ),
+            ],
     ),
     listIndent: 27,
     listBullet: body.copyWith(

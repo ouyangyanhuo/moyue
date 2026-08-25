@@ -141,14 +141,16 @@ void main() {
     expect(tester.getTopLeft(title).dy, greaterThanOrEqualTo(32));
 
     await tester.drag(scroll, const Offset(0, -160));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 700));
     expect(tester.getTopLeft(title).dy, lessThan(32));
   });
 
   testWidgets('首页 Dock 边缘渐变会随系统亮暗模式切换', (tester) async {
     tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
     addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
-    await tester.pumpWidget(const MoyueApp());
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    await tester.pumpWidget(MoyueApp(display: display));
     await _pumpIo(tester);
 
     LinearGradient gradient() =>
@@ -167,7 +169,8 @@ void main() {
 
     tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
     tester.platformDispatcher.onPlatformBrightnessChanged?.call();
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
     expect(
       ThemeData.estimateBrightnessForColor(gradient().colors.last),
       Brightness.light,
@@ -1323,7 +1326,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('设置页墨模式开关保持禁用', (tester) async {
+  testWidgets('设置页墨模式开关可用并保留扩大触控区', (tester) async {
     final display = MoyueDisplayPreferences();
     addTearDown(display.dispose);
     await tester.pumpWidget(
@@ -1359,7 +1362,7 @@ void main() {
           .height,
       80,
     );
-    final disabledPointer = tester.widget<IgnorePointer>(
+    final switchPointer = tester.widget<IgnorePointer>(
       find
           .ancestor(
             of: find.byType(GlassSwitch).first,
@@ -1367,8 +1370,8 @@ void main() {
           )
           .first,
     );
-    expect(disabledPointer.ignoring, isTrue);
-    expect(find.text('暂未开放'), findsOneWidget);
+    expect(switchPointer.ignoring, isFalse);
+    expect(find.text('已关闭'), findsOneWidget);
     final inkTitle = tester.widget<Text>(find.text('墨模式'));
     expect(
       inkTitle.style?.fontSize,
@@ -1389,7 +1392,7 @@ void main() {
     await tester.tap(find.text('墨模式'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('墨模式-setting-detail')), findsOneWidget);
-    expect(find.textContaining('电子墨水屏'), findsOneWidget);
+    expect(find.textContaining('16级灰阶'), findsOneWidget);
     expect(
       tester.getSize(
         find.byKey(const ValueKey('墨模式-detail-switch-touch-area')),
@@ -1400,6 +1403,13 @@ void main() {
       tester.element(find.byKey(const ValueKey('墨模式-setting-detail'))),
     ).pop();
     await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('墨模式-switch-touch-area')));
+    await tester.pumpAndSettle();
+    expect(find.text('需要重启墨阅'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(display.isInkMode, isFalse);
 
     await _scrollSettingsUntilVisible(tester, find.text('Web 阅读器'));
     expect(find.text('Web 阅读器'), findsOneWidget);

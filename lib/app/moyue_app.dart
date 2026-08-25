@@ -18,16 +18,21 @@ import 'package:moyue_application/services/debug_service.dart';
 import 'package:moyue_application/services/incoming_file_service.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
+import 'package:moyue_application/widgets/ink_refresh_overlay.dart';
 
 class MoyueApp extends StatefulWidget {
-  const MoyueApp({super.key});
+  const MoyueApp({this.display, super.key});
+
+  final MoyueDisplayPreferences? display;
 
   @override
   State<MoyueApp> createState() => _MoyueAppState();
 }
 
 class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
-  final MoyueDisplayPreferences _display = MoyueDisplayPreferences();
+  late final MoyueDisplayPreferences _display =
+      widget.display ?? MoyueDisplayPreferences();
+  late final bool _ownsDisplay = widget.display == null;
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   final _incomingFiles = IncomingFileService.instance;
   final _dynamicColorKey = GlobalKey<DynamicColorBuilderState>();
@@ -40,7 +45,7 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _incomingFiles.addListener(_handleIncomingFile);
     unawaited(DebugService.instance.refresh());
-    unawaited(_display.load());
+    if (widget.display == null) unawaited(_display.load());
     unawaited(_incomingFiles.initialize());
   }
 
@@ -49,7 +54,7 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _incomingFiles.removeListener(_handleIncomingFile);
     _appearanceRefreshTimer?.cancel();
-    _display.dispose();
+    if (_ownsDisplay) _display.dispose();
     super.dispose();
   }
 
@@ -118,7 +123,7 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
                 inkMode: _display.isInkMode,
                 brightness: Brightness.light,
                 seedColor: seedColor,
-                fontFamily: _display.appFontFamily,
+                fontFamily: _display.effectiveAppFontFamily,
                 dynamicColorScheme: useMonet ? lightDynamic : null,
                 reduceMotion: _display.reduceMotion,
               ),
@@ -126,7 +131,7 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
                 inkMode: _display.isInkMode,
                 brightness: Brightness.dark,
                 seedColor: seedColor,
-                fontFamily: _display.appFontFamily,
+                fontFamily: _display.effectiveAppFontFamily,
                 dynamicColorScheme: useMonet ? darkDynamic : null,
                 reduceMotion: _display.reduceMotion,
               ),
@@ -135,73 +140,140 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
               restorationScopeId: 'moyue_app',
-              builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context).copyWith(
-                  textScaler: TextScaler.linear(_display.appFontScale),
-                  disableAnimations:
-                      MediaQuery.disableAnimationsOf(context) ||
-                      _display.reduceMotion,
-                  accessibleNavigation:
-                      MediaQuery.accessibleNavigationOf(context) ||
-                      _display.reduceMotion,
-                ),
-                child: GlassTheme(
-                  data: GlassThemeData(
-                    light: GlassThemeVariant.light.copyWith(
-                      settings: GlassThemeVariant.light.settings?.copyWith(
-                        glassColor: Colors.white.withValues(
-                          alpha: _display.glassOpacity,
-                        ),
-                        lightIntensity: 0.28,
-                        ambientStrength: 0,
-                        fresnelStrength: 0,
-                        edgeAbsorption: 0.06,
-                      ),
+              builder: (context, child) =>
+                  AnnotatedRegion<SystemUiOverlayStyle>(
+                    value: SystemUiOverlayStyle(
+                      statusBarColor: Colors.transparent,
+                      statusBarIconBrightness:
+                          Theme.of(context).brightness == Brightness.dark
+                          ? Brightness.light
+                          : Brightness.dark,
+                      systemNavigationBarColor: Theme.of(context)
+                          .colorScheme
+                          .surface,
+                      systemNavigationBarIconBrightness:
+                          Theme.of(context).brightness == Brightness.dark
+                          ? Brightness.light
+                          : Brightness.dark,
+                      systemNavigationBarDividerColor: Colors.transparent,
                     ),
-                    dark: GlassThemeVariant.dark.copyWith(
-                      settings: GlassThemeVariant.dark.settings?.copyWith(
-                        glassColor: Colors.white.withValues(
-                          alpha: _display.glassOpacity,
+                    child: MediaQuery(
+                      data: MediaQuery.of(context).copyWith(
+                        textScaler: TextScaler.linear(
+                          _display.effectiveAppFontScale,
                         ),
-                        lightIntensity: 0.22,
-                        ambientStrength: 0,
-                        fresnelStrength: 0,
-                        edgeAbsorption: 0.09,
+                        disableAnimations:
+                            MediaQuery.disableAnimationsOf(context) ||
+                            _display.reduceMotion,
+                        accessibleNavigation:
+                            MediaQuery.accessibleNavigationOf(context) ||
+                            _display.reduceMotion,
                       ),
-                    ),
-                    interaction: const GlassInteractionSettings(stretch: 0.18),
-                  ),
-                  // 全局调试浮层挂在 Navigator 之上的最外层，
-                  // 这样阅读页、文件夹页、编辑页等被推入的完整路由也能覆盖到。
-                  child: Stack(
-                    children: [
-                      ?child,
-                      ListenableBuilder(
-                        listenable: DebugService.instance,
-                        builder: (context, _) {
-                          final debug = DebugService.instance;
-                          if (!debug.enabled || !debug.fpsBadgeVisible) {
-                            return const SizedBox.shrink();
-                          }
-                          // 右上角、页面操作按钮行之下，避免遮挡玻璃控件。
-                          return Positioned(
-                            top: MediaQuery.paddingOf(context).top + 58,
-                            right: 12,
-                            child: const IgnorePointer(
-                              child: DebugFpsOverlay(),
+                      child: GlassTheme(
+                        data: GlassThemeData(
+                          light: GlassThemeVariant.light.copyWith(
+                            settings: GlassThemeVariant.light.settings
+                                ?.copyWith(
+                                  glassColor: Colors.white.withValues(
+                                    alpha: _display.glassOpacity,
+                                  ),
+                                  lightIntensity: _display.isInkMode
+                                      ? 0.22
+                                      : 0.28,
+                                  ambientStrength: 0,
+                                  fresnelStrength: _display.isInkMode
+                                      ? 0.08
+                                      : 0,
+                                  edgeAbsorption: 0.06,
+                                  saturation: _display.isInkMode ? 0 : null,
+                                  chromaticAberration: _display.isInkMode
+                                      ? 0
+                                      : null,
+                                ),
+                          ),
+                          dark: GlassThemeVariant.dark.copyWith(
+                            settings: GlassThemeVariant.dark.settings?.copyWith(
+                              glassColor: Colors.white.withValues(
+                                alpha: _display.glassOpacity,
+                              ),
+                              lightIntensity: _display.isInkMode ? 0.18 : 0.22,
+                              ambientStrength: 0,
+                              fresnelStrength: _display.isInkMode ? 0.08 : 0,
+                              edgeAbsorption: 0.09,
+                              saturation: _display.isInkMode ? 0 : null,
+                              chromaticAberration: _display.isInkMode
+                                  ? 0
+                                  : null,
                             ),
-                          );
-                        },
+                          ),
+                          interaction: GlassInteractionSettings(
+                            stretch: _display.isInkMode ? 0 : 0.18,
+                          ),
+                        ),
+                        // 全局调试浮层挂在 Navigator 之上的最外层，
+                        // 这样阅读页、文件夹页、编辑页等被推入的完整路由也能覆盖到。
+                        child: _InkGlassQualityBoundary(
+                          enabled: _display.isInkMode,
+                          child: InkRefreshOverlay(
+                            enabled: _display.isInkMode,
+                            reduceMotion: _display.reduceMotion,
+                            child: Stack(
+                              children: [
+                                ?child,
+                                ListenableBuilder(
+                                  listenable: DebugService.instance,
+                                  builder: (context, _) {
+                                    final debug = DebugService.instance;
+                                    if (!debug.enabled ||
+                                        !debug.fpsBadgeVisible) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    // 右上角、页面操作按钮行之下，避免遮挡玻璃控件。
+                                    return Positioned(
+                                      top:
+                                          MediaQuery.paddingOf(context).top +
+                                          58,
+                                      right: 12,
+                                      child: const IgnorePointer(
+                                        child: DebugFpsOverlay(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
               home: const MoyueShell(),
             );
           },
         ),
       ),
+    );
+  }
+}
+
+class _InkGlassQualityBoundary extends StatelessWidget {
+  const _InkGlassQualityBoundary({required this.enabled, required this.child});
+
+  final bool enabled;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!enabled) return child;
+    // The package marks adaptive scoping experimental, but pinning both bounds
+    // to standard is the only supported way to cap explicit premium children.
+    // ignore: experimental_member_use
+    return GlassAdaptiveScope(
+      minQuality: GlassQuality.standard,
+      maxQuality: GlassQuality.standard,
+      initialQuality: GlassQuality.standard,
+      allowStepUp: false,
+      child: child,
     );
   }
 }
@@ -268,18 +340,19 @@ class _MoyueShellState extends State<MoyueShell> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final display = DisplayPreferencesScope.of(context);
+    final inkMode = display.isInkMode;
     final dockSettings = LiquidGlassSettings(
       ambientRim: 1,
       thickness: 30,
-      blur: 3,
-      chromaticAberration: 0.45,
-      lightIntensity: 0.4,
+      blur: inkMode ? 1 : 3,
+      chromaticAberration: inkMode ? 0 : 0.45,
+      lightIntensity: inkMode ? 0.28 : 0.4,
       refractiveIndex: 1.59,
-      saturation: 0.7,
-      ambientStrength: 1,
-      fresnelStrength: 1,
+      saturation: inkMode ? 0 : 0.7,
+      ambientStrength: inkMode ? 0.06 : 1,
+      fresnelStrength: inkMode ? 0.12 : 1,
       lightAngle: 2.356,
-      glowIntensity: 0.75,
+      glowIntensity: inkMode ? 0 : 0.75,
       shadowElevation: 0,
       edgeAbsorption: 0.06,
       shadow: moyueGlassShadow(display.glassOpacity),
@@ -359,11 +432,16 @@ class _MoyueShellState extends State<MoyueShell> {
                     ),
                   ],
                   selectedIndex: _selectedIndex,
-                  onTabSelected: (index) =>
-                      setState(() => _selectedIndex = index),
+                  onTabSelected: (index) {
+                    if (index == _selectedIndex) return;
+                    setState(() => _selectedIndex = index);
+                    unawaited(InkRefreshOverlay.maybeOf(context)?.refresh());
+                  },
                   settings: dockSettings,
-                  quality: GlassQuality.premium,
-                  glowDuration: display.reduceMotion
+                  quality: inkMode
+                      ? GlassQuality.standard
+                      : GlassQuality.premium,
+                  glowDuration: display.reduceMotion || inkMode
                       ? Duration.zero
                       : const Duration(milliseconds: 300),
                   extraButton: GlassTabBarExtraButton(

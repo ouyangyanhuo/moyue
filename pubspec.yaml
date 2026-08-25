@@ -90,6 +90,9 @@ flutter:
   # 这样就可以使用 material Icons 类中的图标。
   uses-material-design: true
 
+  assets:
+    - assets/textures/ink_paper_fibers.png
+
   # 如需向应用程序添加资源，请像下面这样添加 assets 部分：
   # assets:
   #   - images/a_dot_burr.jpeg

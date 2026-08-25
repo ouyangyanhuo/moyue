@@ -171,7 +171,31 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inkModeDescription =>
-      'An e-ink-inspired reading mode that removes most animation. Its interface is reserved but not available in this version.';
+      'A global e-paper presentation with 16 gray levels, paper texture, a dedicated serif face, and deliberate refresh rhythm. Switching requires a restart.';
+
+  @override
+  String get inkModeRestartDescription =>
+      'Switching ink mode restarts Moyue. Your font, size, color, and reader-style preferences are preserved and return when ink mode is disabled.';
+
+  @override
+  String get inkModeSavedRestartManually =>
+      'Ink mode was saved. Reopen Moyue to apply it everywhere.';
+
+  @override
+  String get managedByInkMode => 'Managed by ink mode';
+
+  @override
+  String get managedByInkModeDescription =>
+      'Ink mode is using its dedicated green display palette, system serif typeface, fixed size, and reader style. Your saved choices remain intact and return after ink mode is disabled.';
+
+  @override
+  String get inkTypeface => 'System serif';
+
+  @override
+  String get inkPaperPalette => '16-level ink palette';
+
+  @override
+  String get inkReaderStyle => 'Ink reader style';
 
   @override
   String get contrast => 'Contrast';
@@ -711,6 +735,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get documentHasNoHeadings => 'This document has no heading outline';
+
+  @override
+  String get inkPageTurnHint => 'Tap either edge or swipe to turn the page';
 
   @override
   String get tableOfContents => 'Table of contents';

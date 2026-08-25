@@ -35,10 +35,17 @@ class SettingsPageState extends State<SettingsPage> {
   String _query = '';
   final _searchKey = GlobalKey<ExpandableGlassSearchState>();
 
-  AnimationStyle? get _sheetAnimationStyle =>
-      DisplayPreferencesScope.maybeOf(context)?.reduceMotion ?? false
-      ? AnimationStyle.noAnimation
-      : null;
+  AnimationStyle? get _sheetAnimationStyle {
+    final display = DisplayPreferencesScope.maybeOf(context);
+    if (display?.reduceMotion ?? false) return AnimationStyle.noAnimation;
+    if (display?.isInkMode ?? false) {
+      return const AnimationStyle(
+        duration: Duration(milliseconds: 375),
+        reverseDuration: Duration(milliseconds: 300),
+      );
+    }
+    return null;
+  }
 
   void openSearch() => _searchKey.currentState?.open();
 
@@ -147,6 +154,54 @@ class SettingsPageState extends State<SettingsPage> {
           );
         },
       );
+
+  Future<void> _showInkManagedDetail({
+    required IconData icon,
+    required String title,
+  }) => _showSettingDetail(
+    contentBuilder: (context) => _SettingDetailSheet(
+      icon: icon,
+      title: title,
+      description: context.l10n.managedByInkModeDescription,
+      status: context.l10n.managedByInkMode,
+    ),
+  );
+
+  Future<void> _requestInkModeChange(
+    DisplayModeController display,
+    bool enabled,
+  ) async {
+    final l10n = context.l10n;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.water_drop_outlined),
+        title: Text(dialogContext.l10n.restartRequired),
+        content: Text(dialogContext.l10n.inkModeRestartDescription),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(dialogContext.l10n.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(dialogContext.l10n.applyAndRestart),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await display.setMode(
+      enabled ? ReadingDisplayMode.ink : ReadingDisplayMode.paper,
+    );
+    final restarted = await AppRestartService.restart();
+    if (!restarted && mounted) {
+      await _showStorageResult(
+        succeeded: true,
+        message: l10n.inkModeSavedRestartManually,
+      );
+    }
+  }
 
   Future<void> _chooseFontSize(DisplayModeController display) async {
     final l10n = context.l10n;
@@ -545,6 +600,7 @@ class SettingsPageState extends State<SettingsPage> {
         MoyueFontFamily.system => context.l10n.systemSans,
         MoyueFontFamily.claude => context.l10n.claudeStyleSans,
         MoyueFontFamily.rounded => context.l10n.roundedSans,
+        MoyueFontFamily.ink => context.l10n.inkTypeface,
       };
 
   String _markdownThemeLabel(BuildContext context, String id) =>
@@ -644,12 +700,19 @@ class SettingsPageState extends State<SettingsPage> {
                     _SettingSummaryTile(
                       icon: Icons.palette_outlined,
                       title: l10n.appColors,
-                      status:
-                          display.useDynamicColor &&
-                              display.dynamicColorSupported
+                      status: display.isInkMode
+                          ? l10n.inkPaperPalette
+                          : display.useDynamicColor &&
+                                display.dynamicColorSupported
                           ? l10n.monetColors
                           : l10n.customColor,
-                      onTap: () => _showColorSettings(display),
+                      managed: display.isInkMode,
+                      onTap: () => display.isInkMode
+                          ? _showInkManagedDetail(
+                              icon: Icons.palette_outlined,
+                              title: l10n.appColors,
+                            )
+                          : _showColorSettings(display),
                     ),
                     const Divider(indent: 56),
                     _SettingSummaryTile(
@@ -665,31 +728,50 @@ class SettingsPageState extends State<SettingsPage> {
                     _SettingSummaryTile(
                       icon: Icons.font_download_outlined,
                       title: l10n.sansSerifFont,
-                      status: _fontFamilyLabel(context, display.appFontFamily),
-                      onTap: () => _chooseFontFamily(display),
+                      status: display.isInkMode
+                          ? l10n.inkTypeface
+                          : _fontFamilyLabel(context, display.appFontFamily),
+                      managed: display.isInkMode,
+                      onTap: () => display.isInkMode
+                          ? _showInkManagedDetail(
+                              icon: Icons.font_download_outlined,
+                              title: l10n.sansSerifFont,
+                            )
+                          : _chooseFontFamily(display),
                     ),
                     const Divider(indent: 56),
                     _SettingSummaryTile(
                       icon: Icons.text_fields_rounded,
                       title: l10n.softwareFontSize,
-                      status: '${(display.appFontScale * 100).round()}%',
-                      onTap: () => _chooseFontSize(display),
+                      status: display.isInkMode
+                          ? l10n.managedByInkMode
+                          : '${(display.appFontScale * 100).round()}%',
+                      managed: display.isInkMode,
+                      onTap: () => display.isInkMode
+                          ? _showInkManagedDetail(
+                              icon: Icons.text_fields_rounded,
+                              title: l10n.softwareFontSize,
+                            )
+                          : _chooseFontSize(display),
                     ),
                     const Divider(indent: 56),
                     _GlassSwitchTile(
-                      value: false,
-                      onChanged: null,
+                      value: display.isInkMode,
+                      onChanged: (value) =>
+                          _requestInkModeChange(display, value),
                       icon: Icons.water_drop_outlined,
                       title: l10n.inkMode,
-                      subtitle: l10n.unavailable,
+                      subtitle: display.isInkMode
+                          ? l10n.enabled
+                          : l10n.disabled,
                       onDetails: () => _showSwitchDetail(
                         listenable: display,
                         icon: Icons.water_drop_outlined,
                         title: l10n.inkMode,
                         description: l10n.inkModeDescription,
-                        value: () => false,
-                        onChanged: null,
-                        statusBuilder: (_) => l10n.unavailable,
+                        value: () => display.isInkMode,
+                        onChanged: (value) =>
+                            _requestInkModeChange(display, value),
                       ),
                     ),
                     const Divider(indent: 56),
@@ -697,8 +779,14 @@ class SettingsPageState extends State<SettingsPage> {
                       icon: Icons.contrast_rounded,
                       title: l10n.contrast,
                       value: display.contrast,
-                      onChanged: display.setContrast,
-                      onDetails: () => _showContrastDetail(display),
+                      onChanged: display.isInkMode ? null : display.setContrast,
+                      managed: display.isInkMode,
+                      onDetails: () => display.isInkMode
+                          ? _showInkManagedDetail(
+                              icon: Icons.contrast_rounded,
+                              title: l10n.contrast,
+                            )
+                          : _showContrastDetail(display),
                     ),
                   ],
                 ),
@@ -730,18 +818,34 @@ class SettingsPageState extends State<SettingsPage> {
                     _SettingSummaryTile(
                       icon: Icons.auto_stories_rounded,
                       title: l10n.markdownRenderingStyle,
-                      status: _markdownThemeLabel(
-                        context,
-                        display.markdownThemeId,
-                      ),
-                      onTap: () => _chooseMarkdownStyle(display),
+                      status: display.isInkMode
+                          ? l10n.inkReaderStyle
+                          : _markdownThemeLabel(
+                              context,
+                              display.markdownThemeId,
+                            ),
+                      managed: display.isInkMode,
+                      onTap: () => display.isInkMode
+                          ? _showInkManagedDetail(
+                              icon: Icons.auto_stories_rounded,
+                              title: l10n.markdownRenderingStyle,
+                            )
+                          : _chooseMarkdownStyle(display),
                     ),
                     const Divider(indent: 56),
                     _SettingSummaryTile(
                       icon: Icons.code_rounded,
                       title: l10n.codeBlockAppearance,
-                      status: _codeThemeLabel(context, display.codeThemeId),
-                      onTap: () => _chooseCodeBlockStyle(display),
+                      status: display.isInkMode
+                          ? l10n.inkReaderStyle
+                          : _codeThemeLabel(context, display.codeThemeId),
+                      managed: display.isInkMode,
+                      onTap: () => display.isInkMode
+                          ? _showInkManagedDetail(
+                              icon: Icons.code_rounded,
+                              title: l10n.codeBlockAppearance,
+                            )
+                          : _chooseCodeBlockStyle(display),
                     ),
                     const Divider(indent: 56),
                     _GlassSwitchTile(
@@ -1527,12 +1631,14 @@ class _SettingSummaryTile extends StatelessWidget {
     required this.title,
     required this.status,
     required this.onTap,
+    this.managed = false,
   });
 
   final IconData icon;
   final String title;
   final String status;
   final VoidCallback onTap;
+  final bool managed;
 
   @override
   Widget build(BuildContext context) {
@@ -1555,7 +1661,10 @@ class _SettingSummaryTile extends StatelessWidget {
           color: theme.colorScheme.onSurfaceVariant,
         ),
       ),
-      trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+      trailing: Icon(
+        managed ? Icons.lock_outline_rounded : Icons.chevron_right_rounded,
+        size: 20,
+      ),
       onTap: onTap,
     );
   }
@@ -1690,13 +1799,15 @@ class _ContrastSettingTile extends StatelessWidget {
     required this.value,
     required this.onChanged,
     required this.onDetails,
+    this.managed = false,
   });
 
   final IconData icon;
   final String title;
   final double value;
-  final ValueChanged<double> onChanged;
+  final ValueChanged<double>? onChanged;
   final VoidCallback onDetails;
+  final bool managed;
 
   @override
   Widget build(BuildContext context) {
@@ -1742,7 +1853,9 @@ class _ContrastSettingTile extends StatelessWidget {
                           ),
                           const Spacer(),
                           Text(
-                            '${(value * 100).round()}%',
+                            managed
+                                ? context.l10n.managedByInkMode
+                                : '${(value * 100).round()}%',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
@@ -1832,7 +1945,7 @@ class _ExpandedGlassSlider extends StatelessWidget {
 
   final Key touchAreaKey;
   final double value;
-  final ValueChanged<double> onChanged;
+  final ValueChanged<double>? onChanged;
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -1844,10 +1957,14 @@ class _ExpandedGlassSlider extends StatelessWidget {
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTapDown: (details) =>
-                  _update(details.localPosition.dx, constraints.maxWidth),
-              onHorizontalDragUpdate: (details) =>
-                  _update(details.localPosition.dx, constraints.maxWidth),
+              onTapDown: onChanged == null
+                  ? null
+                  : (details) =>
+                        _update(details.localPosition.dx, constraints.maxWidth),
+              onHorizontalDragUpdate: onChanged == null
+                  ? null
+                  : (details) =>
+                        _update(details.localPosition.dx, constraints.maxWidth),
             ),
           ),
           Positioned(
@@ -1870,7 +1987,7 @@ class _ExpandedGlassSlider extends StatelessWidget {
 
   void _update(double dx, double width) {
     if (width <= 0) return;
-    onChanged((dx / width).clamp(0.0, 1.0));
+    onChanged?.call((dx / width).clamp(0.0, 1.0));
   }
 }
 

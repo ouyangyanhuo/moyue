@@ -10,7 +10,7 @@ class MoyueBackdrop extends StatelessWidget {
     final theme = Theme.of(context);
     final display = DisplayPreferencesScope.of(context);
     final isInk = display.mode == ReadingDisplayMode.ink;
-    if (isInk) return const ColoredBox(color: MoyuePalette.eInkPaper);
+    if (isInk) return const _InkPaperBackdrop();
 
     if (theme.brightness == Brightness.dark) {
       final accent = theme.colorScheme.primary;
@@ -63,6 +63,43 @@ class MoyueBackdrop extends StatelessWidget {
             child: _SoftCircle(size: 320, color: accent),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _InkPaperBackdrop extends StatelessWidget {
+  const _InkPaperBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final ink = theme.extension<MoyueInkTheme>()!;
+    return RepaintBoundary(
+      child: ColoredBox(color: ink.paper, child: const MoyueInkPaperTexture()),
+    );
+  }
+}
+
+class MoyueInkPaperTexture extends StatelessWidget {
+  const MoyueInkPaperTexture({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = Theme.of(context).extension<MoyueInkTheme>();
+    if (ink == null || !ink.enabled) return const SizedBox.expand();
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return IgnorePointer(
+      child: RepaintBoundary(
+        child: Image.asset(
+          'assets/textures/ink_paper_fibers.png',
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.low,
+          color: dark ? ink.grayRamp[14] : ink.grayRamp[0],
+          colorBlendMode: BlendMode.srcIn,
+          opacity: AlwaysStoppedAnimation<double>(ink.textureOpacity),
+          gaplessPlayback: true,
+        ),
       ),
     );
   }

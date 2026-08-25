@@ -17,6 +17,8 @@ import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
 import 'package:moyue_application/widgets/moyue_transient_message.dart';
+import 'package:moyue_application/widgets/image_lightbox.dart';
+import 'package:moyue_application/widgets/stable_reader_image.dart';
 
 Route<ReadingDocument?> markdownEditorRoute(
   BuildContext context,
@@ -83,6 +85,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   bool _importingImage = false;
   String? _editorMessage;
   Timer? _editorMessageTimer;
+  final ReaderImageSessionCache _previewImageCache = ReaderImageSessionCache();
 
   @override
   String? get restorationId =>
@@ -141,6 +144,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     _bodyFocus.dispose();
     _bodyScrollController.dispose();
     _settledKeyboardInset.dispose();
+    _previewImageCache.clear();
     _title.value.removeListener(_changed);
     _body.value.removeListener(_changed);
     _title.dispose();
@@ -225,7 +229,11 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                                 bodyScrollController: _bodyScrollController,
                                 keyboardInset: _settledKeyboardInset,
                               )
-                            : _PreviewCanvas(body: _body.value.text),
+                            : _PreviewCanvas(
+                                body: _body.value.text,
+                                document: _currentDocument,
+                                imageCache: _previewImageCache,
+                              ),
                       ),
                     ),
                   ],
@@ -709,8 +717,14 @@ class _EditorCanvas extends StatelessWidget {
 }
 
 class _PreviewCanvas extends StatelessWidget {
-  const _PreviewCanvas({required this.body});
+  const _PreviewCanvas({
+    required this.body,
+    required this.document,
+    required this.imageCache,
+  });
   final String body;
+  final ReadingDocument? document;
+  final ReaderImageSessionCache imageCache;
 
   @override
   Widget build(BuildContext context) {
@@ -723,6 +737,23 @@ class _PreviewCanvas extends StatelessWidget {
         selectable: true,
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 36),
         builders: {'pre': buildMoyueCodeBlockBuilder(context)},
+        imageBuilder: (uri, title, alt) {
+          final current = document;
+          if (current == null) return const SizedBox.shrink();
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: StableReaderImage(
+              cacheKey: 'editor:${current.id}:${uri.toString()}',
+              sessionCache: imageCache,
+              loader: () => MoyueStorageService.instance.readLinkedResource(
+                current,
+                uri.toString(),
+              ),
+              semanticLabel: alt,
+              onTap: (bytes) => unawaited(ImageLightbox.show(context, bytes)),
+            ),
+          );
+        },
         styleSheet: buildMoyueMarkdownStyleSheet(context),
       ),
     );

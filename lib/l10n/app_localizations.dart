@@ -401,8 +401,50 @@ abstract class AppLocalizations {
   /// No description provided for @inkModeDescription.
   ///
   /// In en, this message translates to:
-  /// **'An e-ink-inspired reading mode that removes most animation. Its interface is reserved but not available in this version.'**
+  /// **'A global e-paper presentation with 16 gray levels, paper texture, a dedicated serif face, and deliberate refresh rhythm. Switching requires a restart.'**
   String get inkModeDescription;
+
+  /// No description provided for @inkModeRestartDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Switching ink mode restarts Moyue. Your font, size, color, and reader-style preferences are preserved and return when ink mode is disabled.'**
+  String get inkModeRestartDescription;
+
+  /// No description provided for @inkModeSavedRestartManually.
+  ///
+  /// In en, this message translates to:
+  /// **'Ink mode was saved. Reopen Moyue to apply it everywhere.'**
+  String get inkModeSavedRestartManually;
+
+  /// No description provided for @managedByInkMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Managed by ink mode'**
+  String get managedByInkMode;
+
+  /// No description provided for @managedByInkModeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Ink mode is using its dedicated green display palette, system serif typeface, fixed size, and reader style. Your saved choices remain intact and return after ink mode is disabled.'**
+  String get managedByInkModeDescription;
+
+  /// No description provided for @inkTypeface.
+  ///
+  /// In en, this message translates to:
+  /// **'System serif'**
+  String get inkTypeface;
+
+  /// No description provided for @inkPaperPalette.
+  ///
+  /// In en, this message translates to:
+  /// **'16-level ink palette'**
+  String get inkPaperPalette;
+
+  /// No description provided for @inkReaderStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ink reader style'**
+  String get inkReaderStyle;
 
   /// No description provided for @contrast.
   ///
@@ -1309,6 +1351,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This document has no heading outline'**
   String get documentHasNoHeadings;
+
+  /// No description provided for @inkPageTurnHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap either edge or swipe to turn the page'**
+  String get inkPageTurnHint;
 
   /// No description provided for @tableOfContents.
   ///

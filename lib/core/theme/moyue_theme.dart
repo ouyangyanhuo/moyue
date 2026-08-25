@@ -10,9 +10,9 @@ abstract final class MoyuePalette {
   static const mutedInk = Color(0xFF697068);
   static const moss = Color(0xFF6D7967);
   static const hairline = Color(0xFFD9D4C8);
-  static const eInkPaper = Color(0xFFF2F2EF);
-  static const eInkSurface = Color(0xFFE7E7E3);
-  static const eInk = Color(0xFF181A18);
+  static const eInkPaper = Color(0xFFF1EFE6);
+  static const eInkSurface = Color(0xFFE5E3DA);
+  static const eInk = Color(0xFF292A27);
   static const nightPaper = Color(0xFF171A18);
   static const nightSurface = Color(0xFF202420);
   static const nightSurfaceStrong = Color(0xFF2A2F2A);
@@ -20,6 +20,74 @@ abstract final class MoyuePalette {
   static const nightMutedInk = Color(0xFFB8BFB7);
   static const nightHairline = Color(0xFF424941);
 }
+
+@immutable
+class MoyueInkTheme extends ThemeExtension<MoyueInkTheme> {
+  const MoyueInkTheme({
+    required this.enabled,
+    required this.paper,
+    required this.ink,
+    required this.mutedInk,
+    required this.grayRamp,
+    required this.textureOpacity,
+  });
+
+  final bool enabled;
+  final Color paper;
+  final Color ink;
+  final Color mutedInk;
+  final List<Color> grayRamp;
+  final double textureOpacity;
+
+  static const disabled = MoyueInkTheme(
+    enabled: false,
+    paper: Colors.transparent,
+    ink: Colors.transparent,
+    mutedInk: Colors.transparent,
+    grayRamp: <Color>[],
+    textureOpacity: 0,
+  );
+
+  @override
+  MoyueInkTheme copyWith({
+    bool? enabled,
+    Color? paper,
+    Color? ink,
+    Color? mutedInk,
+    List<Color>? grayRamp,
+    double? textureOpacity,
+  }) => MoyueInkTheme(
+    enabled: enabled ?? this.enabled,
+    paper: paper ?? this.paper,
+    ink: ink ?? this.ink,
+    mutedInk: mutedInk ?? this.mutedInk,
+    grayRamp: grayRamp ?? this.grayRamp,
+    textureOpacity: textureOpacity ?? this.textureOpacity,
+  );
+
+  @override
+  MoyueInkTheme lerp(covariant MoyueInkTheme? other, double t) =>
+      other == null || t < 0.5 ? this : other;
+}
+
+const _inkGreenRamp = <Color>[
+  Color(0xFF223020),
+  Color(0xFF2D3B28),
+  Color(0xFF384631),
+  Color(0xFF425039),
+  Color(0xFF4D5B42),
+  Color(0xFF58664A),
+  Color(0xFF637153),
+  Color(0xFF6E7C5B),
+  Color(0xFF788664),
+  Color(0xFF83916C),
+  Color(0xFF8E9C75),
+  Color(0xFF99A77D),
+  Color(0xFFA4B286),
+  Color(0xFFAEBC8E),
+  Color(0xFFB9C797),
+  Color(0xFFC4D29F),
+];
 
 ThemeData buildMoyueTheme({
   required bool inkMode,
@@ -30,16 +98,18 @@ ThemeData buildMoyueTheme({
   bool reduceMotion = false,
 }) {
   final dark = brightness == Brightness.dark;
+  final inkSurface = dark ? _inkGreenRamp[1] : _inkGreenRamp[15];
   final surface = inkMode
-      ? MoyuePalette.eInkPaper
+      ? inkSurface
       : dark
       ? MoyuePalette.nightPaper
       : MoyuePalette.paper;
-  final generatedScheme =
-      !inkMode && dynamicColorScheme?.brightness == brightness
+  final generatedScheme = inkMode
+      ? _buildInkColorScheme(brightness)
+      : dynamicColorScheme?.brightness == brightness
       ? dynamicColorScheme!
       : ColorScheme.fromSeed(
-          seedColor: inkMode ? const Color(0xFF3F423E) : seedColor,
+          seedColor: seedColor,
           brightness: brightness,
           surface: surface,
         );
@@ -47,32 +117,36 @@ ThemeData buildMoyueTheme({
   // the paper/surface roles that define the reader's eye-friendly canvas;
   // primary, secondary, tertiary and their containers stay system-derived.
   final scheme = generatedScheme.copyWith(
-    primary: inkMode ? const Color(0xFF323531) : null,
-    onPrimary: inkMode ? Colors.white : null,
+    primary: inkMode ? (dark ? _inkGreenRamp[13] : _inkGreenRamp[3]) : null,
+    onPrimary: inkMode ? (dark ? _inkGreenRamp[1] : _inkGreenRamp[15]) : null,
     surface: surface,
     onSurface: inkMode
-        ? MoyuePalette.eInk
+        ? (dark ? _inkGreenRamp[14] : _inkGreenRamp[0])
         : dark
         ? MoyuePalette.nightInk
         : MoyuePalette.ink,
     surfaceContainer: inkMode
-        ? MoyuePalette.eInkSurface
+        ? (dark ? _inkGreenRamp[2] : _inkGreenRamp[14])
         : dark
         ? MoyuePalette.nightSurface
         : MoyuePalette.surface,
     surfaceContainerHighest: inkMode
-        ? const Color(0xFFDADAD6)
+        ? (dark ? _inkGreenRamp[3] : _inkGreenRamp[13])
         : dark
         ? MoyuePalette.nightSurfaceStrong
         : MoyuePalette.paperStrong,
-    onSurfaceVariant: dark ? MoyuePalette.nightMutedInk : MoyuePalette.mutedInk,
+    onSurfaceVariant: inkMode
+        ? (dark ? _inkGreenRamp[10] : _inkGreenRamp[5])
+        : dark
+        ? MoyuePalette.nightMutedInk
+        : MoyuePalette.mutedInk,
     outline: inkMode
-        ? const Color(0xFF8B8D88)
+        ? _inkGreenRamp[7]
         : dark
         ? MoyuePalette.nightHairline
         : MoyuePalette.hairline,
     outlineVariant: inkMode
-        ? const Color(0xFFC4C5C1)
+        ? (dark ? _inkGreenRamp[5] : _inkGreenRamp[11])
         : dark
         ? MoyuePalette.nightHairline
         : MoyuePalette.hairline,
@@ -121,7 +195,6 @@ ThemeData buildMoyueTheme({
         ),
       )
       .apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface);
-
   return ThemeData(
     brightness: brightness,
     useMaterial3: true,
@@ -130,6 +203,19 @@ ThemeData buildMoyueTheme({
     colorScheme: scheme,
     scaffoldBackgroundColor: scheme.surface,
     textTheme: textTheme,
+    extensions: [
+      if (inkMode)
+        MoyueInkTheme(
+          enabled: true,
+          paper: scheme.surface,
+          ink: scheme.onSurface,
+          mutedInk: scheme.onSurfaceVariant,
+          grayRamp: _inkGreenRamp,
+          textureOpacity: dark ? 0.16 : 0.2,
+        )
+      else
+        MoyueInkTheme.disabled,
+    ],
     splashFactory: inkMode || reduceMotion
         ? NoSplash.splashFactory
         : InkSparkle.splashFactory,
@@ -191,6 +277,12 @@ String? _fontFamilyName(MoyueFontFamily family) => switch (family) {
     TargetPlatform.linux => 'Ubuntu',
     TargetPlatform.fuchsia => 'Roboto',
   },
+  MoyueFontFamily.ink => switch (defaultTargetPlatform) {
+    TargetPlatform.android || TargetPlatform.fuchsia => 'serif',
+    TargetPlatform.iOS || TargetPlatform.macOS => 'Songti SC',
+    TargetPlatform.windows => 'SimSun',
+    TargetPlatform.linux => 'Noto Serif CJK SC',
+  },
 };
 
 List<String> _fontFamilyFallback(MoyueFontFamily family) => switch (family) {
@@ -209,4 +301,71 @@ List<String> _fontFamilyFallback(MoyueFontFamily family) => switch (family) {
     'Noto Sans CJK SC',
     'Noto Sans SC',
   ],
+  MoyueFontFamily.ink => const [
+    'Noto Serif CJK SC',
+    'Noto Serif SC',
+    'Songti SC',
+    'STSong',
+    'Noto Sans CJK SC',
+    'Noto Sans SC',
+    'serif',
+  ],
 };
+
+ColorScheme _buildInkColorScheme(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  Color tone(int lightIndex, int darkIndex) =>
+      _inkGreenRamp[dark ? darkIndex : lightIndex];
+  return ColorScheme.fromSeed(
+    seedColor: tone(3, 13),
+    brightness: brightness,
+    surface: tone(15, 1),
+  ).copyWith(
+    primary: tone(3, 13),
+    onPrimary: tone(15, 1),
+    primaryContainer: tone(12, 4),
+    onPrimaryContainer: tone(1, 14),
+    primaryFixed: tone(12, 4),
+    primaryFixedDim: tone(10, 6),
+    onPrimaryFixed: tone(1, 14),
+    onPrimaryFixedVariant: tone(4, 11),
+    secondary: tone(4, 12),
+    onSecondary: tone(15, 1),
+    secondaryContainer: tone(13, 3),
+    onSecondaryContainer: tone(1, 14),
+    secondaryFixed: tone(13, 3),
+    secondaryFixedDim: tone(11, 5),
+    onSecondaryFixed: tone(1, 14),
+    onSecondaryFixedVariant: tone(5, 10),
+    tertiary: tone(5, 11),
+    onTertiary: tone(15, 1),
+    tertiaryContainer: tone(12, 4),
+    onTertiaryContainer: tone(1, 14),
+    tertiaryFixed: tone(12, 4),
+    tertiaryFixedDim: tone(10, 6),
+    onTertiaryFixed: tone(1, 14),
+    onTertiaryFixedVariant: tone(5, 10),
+    error: tone(2, 13),
+    onError: tone(15, 1),
+    errorContainer: tone(12, 4),
+    onErrorContainer: tone(1, 14),
+    surface: tone(15, 1),
+    onSurface: tone(0, 14),
+    surfaceDim: tone(13, 2),
+    surfaceBright: tone(15, 3),
+    surfaceContainerLowest: tone(15, 0),
+    surfaceContainerLow: tone(14, 2),
+    surfaceContainer: tone(14, 2),
+    surfaceContainerHigh: tone(13, 3),
+    surfaceContainerHighest: tone(12, 4),
+    onSurfaceVariant: tone(5, 10),
+    outline: tone(7, 8),
+    outlineVariant: tone(11, 5),
+    inverseSurface: tone(1, 14),
+    onInverseSurface: tone(14, 1),
+    inversePrimary: tone(12, 4),
+    surfaceTint: tone(3, 13),
+    shadow: tone(0, 0),
+    scrim: tone(0, 0),
+  );
+}

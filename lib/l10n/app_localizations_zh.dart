@@ -165,7 +165,31 @@ class AppLocalizationsZh extends AppLocalizations {
   String get unavailable => '暂未开放';
 
   @override
-  String get inkModeDescription => '模仿电子墨水屏并减少各类动画的纯粹阅读模式。接口已经预留，当前版本暂未开放。';
+  String get inkModeDescription =>
+      '把应用重塑为带有16级灰阶、纸张纹理、专属宋体和电子纸刷新节奏的全局阅读模式。切换需要重启墨阅。';
+
+  @override
+  String get inkModeRestartDescription =>
+      '切换墨模式需要重启墨阅。原来的字体、字号、配色和阅读器风格会保留，并在关闭墨模式后恢复。';
+
+  @override
+  String get inkModeSavedRestartManually => '墨模式已保存，请手动重新打开墨阅以完全生效';
+
+  @override
+  String get managedByInkMode => '由墨模式接管';
+
+  @override
+  String get managedByInkModeDescription =>
+      '墨模式正在使用专属的绿色墨屏配色、系统衬线字体、固定字号与阅读风格。这里保存的原设置不会丢失，关闭墨模式后会自动恢复。';
+
+  @override
+  String get inkTypeface => '系统衬线字体';
+
+  @override
+  String get inkPaperPalette => '16级墨纸灰阶';
+
+  @override
+  String get inkReaderStyle => '墨模式专属风格';
 
   @override
   String get contrast => '对比度';
@@ -664,6 +688,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get documentHasNoHeadings => '当前文档没有标题目录';
+
+  @override
+  String get inkPageTurnHint => '点按屏幕两侧或左右滑动翻页';
 
   @override
   String get tableOfContents => '目录';

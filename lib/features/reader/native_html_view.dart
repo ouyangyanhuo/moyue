@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:moyue_application/core/i18n/moyue_i18n.dart';
+import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
@@ -207,23 +208,8 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
         _weightSet,
         _authorIndex,
       ],
-      customStylesBuilder: (element) {
-        switch (element.localName) {
-          case 'body':
-            return {'margin': '0', 'padding': '0'};
-          case 'img':
-            return {'max-width': '100%', 'height': 'auto'};
-          case 'pre':
-            return {
-              'overflow': 'auto',
-              'padding': '14px',
-              'border-radius': '12px',
-            };
-          case 'table':
-            return {'width': '100%', 'border-collapse': 'collapse'};
-        }
-        return null;
-      },
+      customStylesBuilder: (element) =>
+          _elementStyles(context, element.localName),
       customWidgetBuilder: (element) => _customElement(context, element),
       onTapUrl: (url) async {
         final uri = Uri.tryParse(url);
@@ -263,8 +249,8 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
       case 'multiplierValue':
         return Text(
           _authorMultiplier(_authorIndex).toStringAsFixed(4),
-          style: const TextStyle(
-            color: Color(0xffd1410c),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.primary,
             fontSize: 56,
             fontWeight: FontWeight.w700,
           ),
@@ -272,7 +258,7 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
       case 'sequence':
         return _authorSequence(context);
       case 'dotGrid':
-        return _dotGrid();
+        return _dotGrid(context);
       case 'weightList':
         return _weightList(context);
       case 'replyBar':
@@ -292,7 +278,7 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
       case 'retweetPct':
         return Text(_percent(_stats.retweet));
     }
-    if (element.classes.contains('bar')) return _compositionBar();
+    if (element.classes.contains('bar')) return _compositionBar(context);
     if (element.classes.contains('profile')) {
       return _profileRow(context, element);
     }
@@ -346,25 +332,33 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
     onSelectionChanged: (value) => setState(() => _weightSet = value.single),
   );
 
-  Widget _compositionBar() {
+  Widget _compositionBar(BuildContext context) {
     final stats = _stats;
+    final colors = Theme.of(context).colorScheme;
+    final ink = DisplayPreferencesScope.maybeOf(context)?.isInkMode ?? false;
     return SizedBox(
       height: 42,
       child: Row(
         children: [
           Expanded(
             flex: stats.reply,
-            child: const ColoredBox(color: Color(0xff343337)),
+            child: ColoredBox(
+              color: ink ? colors.onSurface : const Color(0xff343337),
+            ),
           ),
           const SizedBox(width: 3),
           Expanded(
             flex: stats.creator,
-            child: const ColoredBox(color: Color(0xffd1410c)),
+            child: ColoredBox(
+              color: ink ? colors.primary : const Color(0xffd1410c),
+            ),
           ),
           const SizedBox(width: 3),
           Expanded(
             flex: stats.retweet,
-            child: const ColoredBox(color: Color(0xffbdbab5)),
+            child: ColoredBox(
+              color: ink ? colors.onSurfaceVariant : const Color(0xffbdbab5),
+            ),
           ),
         ],
       ),
@@ -373,6 +367,8 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
 
   Widget _weightList(BuildContext context) {
     final values = _weights;
+    final colors = Theme.of(context).colorScheme;
+    final ink = DisplayPreferencesScope.maybeOf(context)?.isInkMode ?? false;
     final maximum = values
         .map((entry) => entry.$2.abs())
         .reduce((a, b) => a > b ? a : b);
@@ -391,7 +387,11 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
                       child: Container(
                         height: 5,
                         width: constraints.maxWidth * entry.$2.abs() / maximum,
-                        color: entry.$2 < 0
+                        color: ink
+                            ? (entry.$2 < 0
+                                  ? colors.onSurfaceVariant
+                                  : colors.onSurface)
+                            : entry.$2 < 0
                             ? const Color(0xff3a4a6b)
                             : const Color(0xff343337),
                       ),
@@ -425,8 +425,8 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
           decoration: BoxDecoration(
             border: Border.all(
               color: index == _authorIndex
-                  ? const Color(0xffd1410c)
-                  : const Color(0xffdedbd5),
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.outlineVariant,
             ),
           ),
           child: Column(
@@ -436,7 +436,9 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
               Text(
                 _authorMultiplier(index).toStringAsFixed(3),
                 style: TextStyle(
-                  color: index == _authorIndex ? const Color(0xffd1410c) : null,
+                  color: index == _authorIndex
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -446,8 +448,10 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
     ],
   );
 
-  Widget _dotGrid() => LayoutBuilder(
+  Widget _dotGrid(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
+      final colors = Theme.of(context).colorScheme;
+      final ink = DisplayPreferencesScope.maybeOf(context)?.isInkMode ?? false;
       const columns = 20;
       const gap = 5.0;
       final size = ((constraints.maxWidth - gap * (columns - 1)) / columns)
@@ -463,16 +467,55 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: index < 58
-                    ? const Color(0xff343337)
+                    ? (ink ? colors.onSurface : const Color(0xff343337))
                     : index >= 94
-                    ? const Color(0xffd1410c)
-                    : const Color(0xffbdbab5),
+                    ? (ink ? colors.primary : const Color(0xffd1410c))
+                    : (ink ? colors.onSurfaceVariant : const Color(0xffbdbab5)),
               ),
             ),
         ],
       );
     },
   );
+
+  Map<String, String>? _elementStyles(BuildContext context, String? tag) {
+    final styles = <String, String>{};
+    final ink = DisplayPreferencesScope.maybeOf(context)?.isInkMode ?? false;
+    if (tag == 'body') styles.addAll({'margin': '0', 'padding': '0'});
+    if (tag == 'img') {
+      styles.addAll({'max-width': '100%', 'height': 'auto'});
+    }
+    if (tag == 'p' && ink) styles['text-indent'] = '2em';
+    if (tag == 'pre') {
+      styles.addAll({
+        'overflow': 'auto',
+        'padding': '14px',
+        'border-radius': '12px',
+      });
+    }
+    if (tag == 'table') {
+      styles.addAll({'width': '100%', 'border-collapse': 'collapse'});
+    }
+    if (ink) {
+      final colors = Theme.of(context).colorScheme;
+      styles['color'] = _cssColor(colors.onSurface);
+      styles['border-color'] = _cssColor(colors.outlineVariant);
+      if (tag == 'html' || tag == 'body') {
+        styles['background-color'] = 'transparent';
+      } else if (tag == 'pre' ||
+          tag == 'code' ||
+          tag == 'blockquote' ||
+          tag == 'th') {
+        styles['background-color'] = _cssColor(colors.surfaceContainerHigh);
+      }
+    }
+    return styles.isEmpty ? null : styles;
+  }
+
+  String _cssColor(Color color) {
+    final rgb = color.toARGB32() & 0xFFFFFF;
+    return '#${rgb.toRadixString(16).padLeft(6, '0')}';
+  }
 
   Widget _nativeGrid(
     BuildContext context,
@@ -562,11 +605,14 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
         return SizedBox(
           width: double.infinity,
           height: height,
-          child: Image.memory(
-            bytes,
+          child: StableReaderImage(
+            cacheKey: '${widget.resourceCacheKey}:background:$source',
+            sessionCache: widget.imageCache,
+            loader: () => _loadResource(source),
+            width: double.infinity,
+            height: height,
             fit: BoxFit.cover,
             alignment: const Alignment(0, -0.02),
-            gaplessPlayback: true,
           ),
         );
       },

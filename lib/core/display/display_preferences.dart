@@ -12,11 +12,12 @@ enum MoyueThemePreference { system, light, dark }
 
 enum MoyueLocalePreference { system, chinese, english }
 
-enum MoyueFontFamily { system, claude, rounded }
+enum MoyueFontFamily { system, claude, rounded, ink }
 
 /// A small boundary that can later be backed by platform e-ink controls.
 abstract interface class DisplayModeController implements Listenable {
   ReadingDisplayMode get mode;
+  bool get isInkMode;
   double get contrast;
   bool get reduceMotion;
   double get glassOpacity;
@@ -26,6 +27,10 @@ abstract interface class DisplayModeController implements Listenable {
   MoyueThemePreference get themePreference;
   MoyueLocalePreference get localePreference;
   MoyueFontFamily get appFontFamily;
+  MoyueFontFamily get effectiveAppFontFamily;
+  double get effectiveAppFontScale;
+  String get effectiveMarkdownThemeId;
+  String get effectiveCodeThemeId;
   String get markdownThemeId;
   String get codeThemeId;
   bool get dynamicColorSupported;
@@ -33,7 +38,7 @@ abstract interface class DisplayModeController implements Listenable {
   int get effectiveSeedArgb;
   int get customSeedArgb;
 
-  void setMode(ReadingDisplayMode mode);
+  Future<void> setMode(ReadingDisplayMode mode);
   void setContrast(double value);
   void setReduceMotion(bool value);
   void setHtmlWebViewEnabled(bool value);
@@ -67,6 +72,7 @@ class MoyueDisplayPreferences extends ChangeNotifier
   int _customSeedArgb = 0xFF6D7967;
 
   static const _htmlWebViewKey = 'reader.html_webview_enabled';
+  static const _displayModeKey = 'display.reading_mode';
   static const _reduceMotionKey = 'display.reduce_motion';
   static const _appFontScaleKey = 'display.app_font_scale';
   static const _predictiveBackKey = 'navigation.predictive_back_enabled';
@@ -80,6 +86,8 @@ class MoyueDisplayPreferences extends ChangeNotifier
 
   @override
   ReadingDisplayMode get mode => _mode;
+  @override
+  bool get isInkMode => _mode == ReadingDisplayMode.ink;
   @override
   double get contrast => _contrast;
   @override
@@ -99,6 +107,16 @@ class MoyueDisplayPreferences extends ChangeNotifier
   @override
   MoyueFontFamily get appFontFamily => _appFontFamily;
   @override
+  MoyueFontFamily get effectiveAppFontFamily =>
+      isInkMode ? MoyueFontFamily.ink : _appFontFamily;
+  @override
+  double get effectiveAppFontScale => isInkMode ? 1 : _appFontScale;
+  @override
+  String get effectiveMarkdownThemeId =>
+      isInkMode ? 'moyue-ink' : _markdownThemeId;
+  @override
+  String get effectiveCodeThemeId => isInkMode ? 'moyue-ink' : _codeThemeId;
+  @override
   String get markdownThemeId => _markdownThemeId;
   @override
   String get codeThemeId => _codeThemeId;
@@ -112,8 +130,6 @@ class MoyueDisplayPreferences extends ChangeNotifier
   int get effectiveSeedArgb => _useDynamicColor && _dynamicSeedArgb != null
       ? _dynamicSeedArgb!
       : _customSeedArgb;
-  bool get isInkMode => _mode == ReadingDisplayMode.ink;
-
   Locale? get locale => switch (_localePreference) {
     MoyueLocalePreference.system => null,
     MoyueLocalePreference.chinese => const Locale('zh'),
@@ -123,6 +139,11 @@ class MoyueDisplayPreferences extends ChangeNotifier
   Future<void> load() async {
     try {
       final preferences = SharedPreferencesAsync();
+      final modeValue = _enumByName(
+        ReadingDisplayMode.values,
+        await preferences.getString(_displayModeKey),
+        ReadingDisplayMode.paper,
+      );
       final htmlValue = await preferences.getBool(_htmlWebViewKey) ?? false;
       final reduceMotionValue =
           await preferences.getBool(_reduceMotionKey) ?? false;
@@ -157,6 +178,7 @@ class MoyueDisplayPreferences extends ChangeNotifier
       final appearance = await SystemAppearanceService.load();
       final nextFont = fontValue.clamp(0.8, 1.4);
       final changed =
+          _mode != modeValue ||
           _htmlWebViewEnabled != htmlValue ||
           _reduceMotion != reduceMotionValue ||
           _appFontScale != nextFont ||
@@ -170,6 +192,7 @@ class MoyueDisplayPreferences extends ChangeNotifier
           _customSeedArgb != customSeedValue ||
           _dynamicColorSupported != appearance.dynamicColorSupported ||
           _dynamicSeedArgb != appearance.seedArgb;
+      _mode = modeValue;
       _htmlWebViewEnabled = htmlValue;
       _reduceMotion = reduceMotionValue;
       _appFontScale = nextFont;
@@ -190,10 +213,11 @@ class MoyueDisplayPreferences extends ChangeNotifier
   }
 
   @override
-  void setMode(ReadingDisplayMode mode) {
+  Future<void> setMode(ReadingDisplayMode mode) async {
     if (_mode == mode) return;
     _mode = mode;
     notifyListeners();
+    await _saveString(_displayModeKey, mode.name);
   }
 
   @override
@@ -358,9 +382,12 @@ class MoyueDisplayPreferences extends ChangeNotifier
 /// Custom animations use this in addition to Flutter's global
 /// `MediaQuery.disableAnimations` accessibility signal.
 Duration moyueMotionDuration(BuildContext context, Duration normal) =>
-    (DisplayPreferencesScope.maybeOf(context)?.reduceMotion ?? false)
-    ? Duration.zero
-    : normal;
+    switch (DisplayPreferencesScope.maybeOf(context)) {
+      final display? when display.reduceMotion => Duration.zero,
+      final display? when display.isInkMode =>
+        normal + const Duration(milliseconds: 75),
+      _ => normal,
+    };
 
 class DisplayPreferencesScope extends InheritedNotifier<DisplayModeController> {
   const DisplayPreferencesScope({
