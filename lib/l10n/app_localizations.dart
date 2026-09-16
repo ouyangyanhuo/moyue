@@ -401,7 +401,7 @@ abstract class AppLocalizations {
   /// No description provided for @inkModeDescription.
   ///
   /// In en, this message translates to:
-  /// **'A global e-paper presentation with 16 gray levels, paper texture, a dedicated serif face, and deliberate refresh rhythm. Switching requires a restart.'**
+  /// **'A global e-paper presentation with 16 gray levels, paper texture, and a dedicated serif face. Scrolling feels closer to a real e-reader. Switching requires a restart.'**
   String get inkModeDescription;
 
   /// No description provided for @inkModeRestartDescription.
@@ -445,18 +445,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Ink reader style'**
   String get inkReaderStyle;
-
-  /// No description provided for @contrast.
-  ///
-  /// In en, this message translates to:
-  /// **'Contrast'**
-  String get contrast;
-
-  /// No description provided for @contrastDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Adjust the difference between the paper background and foreground text and icons. Higher values make them easier to distinguish.'**
-  String get contrastDescription;
 
   /// No description provided for @softwareFontSize.
   ///
@@ -1351,12 +1339,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This document has no heading outline'**
   String get documentHasNoHeadings;
-
-  /// No description provided for @inkPageTurnHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Tap either edge or swipe to turn the page'**
-  String get inkPageTurnHint;
 
   /// No description provided for @tableOfContents.
   ///

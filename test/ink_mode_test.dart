@@ -11,7 +11,7 @@ import 'package:moyue_application/services/ink_image_processor.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('墨主题使用系统衬线字体和16级绿色色阶', () {
+  test('墨主题使用系统衬线字体和16级中性纸墨色阶', () {
     final theme = buildMoyueTheme(
       inkMode: true,
       brightness: Brightness.light,
@@ -22,8 +22,8 @@ void main() {
     expect(theme.textTheme.bodyLarge?.fontFamily, isNot('Source Han Serif SC'));
     expect(ink?.enabled, isTrue);
     expect(ink?.grayRamp, hasLength(16));
-    expect(ink?.grayRamp.first, const Color(0xFF223020));
-    expect(ink?.grayRamp.last, const Color(0xFFC4D29F));
+    expect(ink?.grayRamp.first, const Color(0xFF1E201C));
+    expect(ink?.grayRamp.last, const Color(0xFFDFE0D1));
     expect(theme.colorScheme.primary, isNot(Colors.green));
     expect(theme.splashFactory, NoSplash.splashFactory);
     final allowed = ink!.grayRamp.map((color) => color.toARGB32()).toSet();
@@ -83,24 +83,9 @@ void main() {
     expect(processed, isNotNull);
     final raw = await processed!.toByteData(format: ui.ImageByteFormat.rawRgba);
     final colors = <int>{};
-    const allowed = <int>{
-      0x223020,
-      0x2D3B28,
-      0x384631,
-      0x425039,
-      0x4D5B42,
-      0x58664A,
-      0x637153,
-      0x6E7C5B,
-      0x788664,
-      0x83916C,
-      0x8E9C75,
-      0x99A77D,
-      0xA4B286,
-      0xAEBC8E,
-      0xB9C797,
-      0xC4D29F,
-    };
+    final allowed = moyueInkGrayRamp
+        .map((color) => color.toARGB32() & 0xFFFFFF)
+        .toSet();
     final pixels = raw!.buffer.asUint8List(
       raw.offsetInBytes,
       raw.lengthInBytes,

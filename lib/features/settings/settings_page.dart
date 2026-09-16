@@ -120,23 +120,6 @@ class SettingsPageState extends State<SettingsPage> {
     },
   );
 
-  Future<void> _showContrastDetail(DisplayModeController display) =>
-      _showSettingDetail(
-        listenable: display,
-        contentBuilder: (context) => _SettingDetailSheet(
-          key: const ValueKey('对比度-setting-detail'),
-          icon: Icons.contrast_rounded,
-          title: context.l10n.contrast,
-          description: context.l10n.contrastDescription,
-          status: '${(display.contrast * 100).round()}%',
-          control: _ExpandedGlassSlider(
-            touchAreaKey: const ValueKey('contrast-slider-touch-area'),
-            value: display.contrast,
-            onChanged: display.setContrast,
-          ),
-        ),
-      );
-
   Future<void> _showNativeEngineDetail(DisplayModeController display) =>
       _showSettingDetail(
         listenable: display,
@@ -191,7 +174,10 @@ class SettingsPageState extends State<SettingsPage> {
       ),
     );
     if (confirmed != true) return;
-    await display.setMode(
+    // 墨模式需要重启生效：这里只落盘偏好并重启，绝不在运行时热切换
+    // ——热切换会让主题、玻璃质量域与纸纹在同一帧内重建，与新引擎
+    // 的启动争抢资源导致卡死。重启失败时提示用户手动重启。
+    await display.saveModePreference(
       enabled ? ReadingDisplayMode.ink : ReadingDisplayMode.paper,
     );
     final restarted = await AppRestartService.restart();
@@ -629,14 +615,13 @@ class SettingsPageState extends State<SettingsPage> {
     final debug = DebugService.instance;
     final query = _query.trim().toLowerCase();
     final displayTerms = [
-      '显示主题配色莫奈自定义颜色夜间深色墨模式对比度护眼字体衬线Claude字号大小',
+      '显示主题配色莫奈自定义颜色夜间深色墨模式护眼字体衬线Claude字号大小',
       l10n.displaySection,
       l10n.appColors,
       l10n.monetColors,
       l10n.customColor,
       l10n.nightMode,
       l10n.inkMode,
-      l10n.contrast,
       l10n.sansSerifFont,
       l10n.softwareFontSize,
     ].join(' ').toLowerCase();
@@ -757,11 +742,9 @@ class SettingsPageState extends State<SettingsPage> {
                     const Divider(indent: 56),
                     _GlassSwitchTile(
                       value: display.isInkMode,
-                      // 墨模式暂不开放：未开启时禁用入口；已经开启的用户
-                      // 仍然可以关闭，避免持久化状态将用户困在墨模式中。
-                      onChanged: display.isInkMode
-                          ? (value) => _requestInkModeChange(display, value)
-                          : null,
+                      // 开/关都会弹出重启确认；确认后立即应用并尝试重启。
+                      onChanged: (value) =>
+                          _requestInkModeChange(display, value),
                       icon: Icons.water_drop_outlined,
                       title: l10n.inkMode,
                       subtitle: display.isInkMode
@@ -773,25 +756,11 @@ class SettingsPageState extends State<SettingsPage> {
                         title: l10n.inkMode,
                         description: l10n.inkModeDescription,
                         value: () => display.isInkMode,
-                        onChanged: display.isInkMode
-                            ? (value) => _requestInkModeChange(display, value)
-                            : null,
+                        onChanged: (value) =>
+                            _requestInkModeChange(display, value),
                       ),
                     ),
                     const Divider(indent: 56),
-                    _ContrastSettingTile(
-                      icon: Icons.contrast_rounded,
-                      title: l10n.contrast,
-                      value: display.contrast,
-                      onChanged: display.isInkMode ? null : display.setContrast,
-                      managed: display.isInkMode,
-                      onDetails: () => display.isInkMode
-                          ? _showInkManagedDetail(
-                              icon: Icons.contrast_rounded,
-                              title: l10n.contrast,
-                            )
-                          : _showContrastDetail(display),
-                    ),
                   ],
                 ),
               ),
@@ -852,44 +821,72 @@ class SettingsPageState extends State<SettingsPage> {
                           : _chooseCodeBlockStyle(display),
                     ),
                     const Divider(indent: 56),
-                    _GlassSwitchTile(
-                      value: display.reduceMotion,
-                      onChanged: display.setReduceMotion,
-                      icon: Icons.motion_photos_off_outlined,
-                      title: l10n.reduceMotion,
-                      subtitle: display.reduceMotion
-                          ? l10n.enabled
-                          : l10n.disabled,
-                      onDetails: () => _showSwitchDetail(
-                        listenable: display,
+                    // 墨模式开启时由墨模式接管：强制减少动态效果。
+                    if (display.isInkMode)
+                      _SettingSummaryTile(
                         icon: Icons.motion_photos_off_outlined,
                         title: l10n.reduceMotion,
-                        description: l10n.reduceMotionDescription,
-                        value: () => display.reduceMotion,
+                        status: l10n.managedByInkMode,
+                        managed: true,
+                        onTap: () => _showInkManagedDetail(
+                          icon: Icons.motion_photos_off_outlined,
+                          title: l10n.reduceMotion,
+                        ),
+                      )
+                    else ...[
+                      _GlassSwitchTile(
+                        value: display.reduceMotion,
                         onChanged: display.setReduceMotion,
+                        icon: Icons.motion_photos_off_outlined,
+                        title: l10n.reduceMotion,
+                        subtitle: display.reduceMotion
+                            ? l10n.enabled
+                            : l10n.disabled,
+                        onDetails: () => _showSwitchDetail(
+                          listenable: display,
+                          icon: Icons.motion_photos_off_outlined,
+                          title: l10n.reduceMotion,
+                          description: l10n.reduceMotionDescription,
+                          value: () => display.reduceMotion,
+                          onChanged: display.setReduceMotion,
+                        ),
                       ),
-                    ),
-                    const Divider(indent: 56),
-                    _GlassSwitchTile(
-                      value: display.predictiveBackEnabled,
-                      onChanged: display.setPredictiveBackEnabled,
-                      icon: Icons.swipe_left_alt_rounded,
-                      title: l10n.predictiveBack,
-                      subtitle: display.predictiveBackEnabled
-                          ? l10n.predictiveBack
-                          : l10n.standardBack,
-                      onDetails: () => _showSwitchDetail(
-                        listenable: display,
+                      const Divider(indent: 56),
+                    ],
+                    // 墨模式接管：预见性返回强制关闭。
+                    if (display.isInkMode)
+                      _SettingSummaryTile(
                         icon: Icons.swipe_left_alt_rounded,
                         title: l10n.predictiveBack,
-                        description: l10n.predictiveBackDescription,
-                        value: () => display.predictiveBackEnabled,
+                        status: l10n.managedByInkMode,
+                        managed: true,
+                        onTap: () => _showInkManagedDetail(
+                          icon: Icons.swipe_left_alt_rounded,
+                          title: l10n.predictiveBack,
+                        ),
+                      )
+                    else ...[
+                      _GlassSwitchTile(
+                        value: display.predictiveBackEnabled,
                         onChanged: display.setPredictiveBackEnabled,
-                        statusBuilder: (value) =>
-                            value ? l10n.predictiveBack : l10n.standardBack,
+                        icon: Icons.swipe_left_alt_rounded,
+                        title: l10n.predictiveBack,
+                        subtitle: display.predictiveBackEnabled
+                            ? l10n.predictiveBack
+                            : l10n.standardBack,
+                        onDetails: () => _showSwitchDetail(
+                          listenable: display,
+                          icon: Icons.swipe_left_alt_rounded,
+                          title: l10n.predictiveBack,
+                          description: l10n.predictiveBackDescription,
+                          value: () => display.predictiveBackEnabled,
+                          onChanged: display.setPredictiveBackEnabled,
+                          statusBuilder: (value) =>
+                              value ? l10n.predictiveBack : l10n.standardBack,
+                        ),
                       ),
-                    ),
-                    const Divider(indent: 56),
+                      const Divider(indent: 56),
+                    ],
                     _GlassSwitchTile(
                       value: display.htmlWebViewEnabled,
                       onChanged: display.setHtmlWebViewEnabled,
@@ -1796,93 +1793,6 @@ class _GlassSwitchTile extends StatelessWidget {
   }
 }
 
-class _ContrastSettingTile extends StatelessWidget {
-  const _ContrastSettingTile({
-    required this.icon,
-    required this.title,
-    required this.value,
-    required this.onChanged,
-    required this.onDetails,
-    this.managed = false,
-  });
-
-  final IconData icon;
-  final String title;
-  final double value;
-  final ValueChanged<double>? onChanged;
-  final VoidCallback onDetails;
-  final bool managed;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      key: const ValueKey('contrast-setting-row-touch-area'),
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Icon(icon, size: 21),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              children: [
-                Semantics(
-                  button: true,
-                  label: context.l10n.viewSettingDescription(title),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: onDetails,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 7,
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            title,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(width: 5),
-                          Icon(
-                            Icons.info_outline_rounded,
-                            size: 15,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const Spacer(),
-                          Text(
-                            managed
-                                ? context.l10n.managedByInkMode
-                                : '${(value * 100).round()}%',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                _ExpandedGlassSlider(
-                  touchAreaKey: const ValueKey('contrast-slider-touch-area'),
-                  value: value,
-                  onChanged: onChanged,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _GlassSwitchControl extends StatelessWidget {
   const _GlassSwitchControl({
     required this.touchAreaKey,
@@ -1938,61 +1848,6 @@ class _GlassSwitchControl extends StatelessWidget {
       ),
     ),
   );
-}
-
-class _ExpandedGlassSlider extends StatelessWidget {
-  const _ExpandedGlassSlider({
-    required this.touchAreaKey,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final Key touchAreaKey;
-  final double value;
-  final ValueChanged<double>? onChanged;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    key: touchAreaKey,
-    height: 56,
-    child: LayoutBuilder(
-      builder: (context, constraints) => Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapDown: onChanged == null
-                  ? null
-                  : (details) =>
-                        _update(details.localPosition.dx, constraints.maxWidth),
-              onHorizontalDragUpdate: onChanged == null
-                  ? null
-                  : (details) =>
-                        _update(details.localPosition.dx, constraints.maxWidth),
-            ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 5,
-            height: 46,
-            child: GlassSlider(
-              value: value,
-              onChanged: onChanged,
-              useOwnLayer: true,
-              quality: GlassQuality.premium,
-              settings: moyueGlassSettings(context),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-
-  void _update(double dx, double width) {
-    if (width <= 0) return;
-    onChanged?.call((dx / width).clamp(0.0, 1.0));
-  }
 }
 
 class _SettingsCard extends StatelessWidget {

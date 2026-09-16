@@ -18,7 +18,6 @@ import 'package:moyue_application/services/debug_service.dart';
 import 'package:moyue_application/services/incoming_file_service.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
-import 'package:moyue_application/widgets/ink_refresh_overlay.dart';
 
 class MoyueApp extends StatefulWidget {
   const MoyueApp({this.display, super.key});
@@ -125,7 +124,7 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
                 seedColor: seedColor,
                 fontFamily: _display.effectiveAppFontFamily,
                 dynamicColorScheme: useMonet ? lightDynamic : null,
-                reduceMotion: _display.reduceMotion,
+                reduceMotion: _display.effectiveReduceMotion,
               ),
               darkTheme: buildMoyueTheme(
                 inkMode: _display.isInkMode,
@@ -133,7 +132,7 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
                 seedColor: seedColor,
                 fontFamily: _display.effectiveAppFontFamily,
                 dynamicColorScheme: useMonet ? darkDynamic : null,
-                reduceMotion: _display.reduceMotion,
+                reduceMotion: _display.effectiveReduceMotion,
               ),
               themeMode: themeMode,
               locale: _display.locale,
@@ -164,10 +163,10 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
                         ),
                         disableAnimations:
                             MediaQuery.disableAnimationsOf(context) ||
-                            _display.reduceMotion,
+                            _display.effectiveReduceMotion,
                         accessibleNavigation:
                             MediaQuery.accessibleNavigationOf(context) ||
-                            _display.reduceMotion,
+                            _display.effectiveReduceMotion,
                       ),
                       child: GlassTheme(
                         data: GlassThemeData(
@@ -214,34 +213,28 @@ class _MoyueAppState extends State<MoyueApp> with WidgetsBindingObserver {
                         // 这样阅读页、文件夹页、编辑页等被推入的完整路由也能覆盖到。
                         child: _InkGlassQualityBoundary(
                           enabled: _display.isInkMode,
-                          child: InkRefreshOverlay(
-                            enabled: _display.isInkMode,
-                            reduceMotion: _display.reduceMotion,
-                            child: Stack(
-                              children: [
-                                ?child,
-                                ListenableBuilder(
-                                  listenable: DebugService.instance,
-                                  builder: (context, _) {
-                                    final debug = DebugService.instance;
-                                    if (!debug.enabled ||
-                                        !debug.fpsBadgeVisible) {
-                                      return const SizedBox.shrink();
-                                    }
-                                    // 右上角、页面操作按钮行之下，避免遮挡玻璃控件。
-                                    return Positioned(
-                                      top:
-                                          MediaQuery.paddingOf(context).top +
-                                          58,
-                                      right: 12,
-                                      child: const IgnorePointer(
-                                        child: DebugFpsOverlay(),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
+                          child: Stack(
+                            children: [
+                              ?child,
+                              ListenableBuilder(
+                                listenable: DebugService.instance,
+                                builder: (context, _) {
+                                  final debug = DebugService.instance;
+                                  if (!debug.enabled ||
+                                      !debug.fpsBadgeVisible) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  // 右上角、页面操作按钮行之下，避免遮挡玻璃控件。
+                                  return Positioned(
+                                    top: MediaQuery.paddingOf(context).top + 58,
+                                    right: 12,
+                                    child: const IgnorePointer(
+                                      child: DebugFpsOverlay(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -435,13 +428,12 @@ class _MoyueShellState extends State<MoyueShell> {
                   onTabSelected: (index) {
                     if (index == _selectedIndex) return;
                     setState(() => _selectedIndex = index);
-                    unawaited(InkRefreshOverlay.maybeOf(context)?.refresh());
                   },
                   settings: dockSettings,
                   quality: inkMode
                       ? GlassQuality.standard
                       : GlassQuality.premium,
-                  glowDuration: display.reduceMotion || inkMode
+                  glowDuration: display.effectiveReduceMotion
                       ? Duration.zero
                       : const Duration(milliseconds: 300),
                   extraButton: GlassTabBarExtraButton(

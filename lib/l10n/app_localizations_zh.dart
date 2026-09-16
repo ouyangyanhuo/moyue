@@ -166,7 +166,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get inkModeDescription =>
-      '把应用重塑为带有16级灰阶、纸张纹理、专属宋体和电子纸刷新节奏的全局阅读模式。切换需要重启墨阅。';
+      '把应用重塑为16级灰阶、纸张纹理与专属宋体的全局阅读模式，滚动浏览更接近真实电子纸。切换需要重启墨阅。';
 
   @override
   String get inkModeRestartDescription =>
@@ -190,12 +190,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get inkReaderStyle => '墨模式专属风格';
-
-  @override
-  String get contrast => '对比度';
-
-  @override
-  String get contrastDescription => '调整纸张背景与文字、图标之间的明暗差异。数值越高，前景与背景的区分越明显。';
 
   @override
   String get softwareFontSize => '字体大小';
@@ -688,9 +682,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get documentHasNoHeadings => '当前文档没有标题目录';
-
-  @override
-  String get inkPageTurnHint => '点按屏幕两侧或左右滑动翻页';
 
   @override
   String get tableOfContents => '目录';

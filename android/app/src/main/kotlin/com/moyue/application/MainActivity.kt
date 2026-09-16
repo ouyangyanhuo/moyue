@@ -102,6 +102,9 @@ class MainActivity : FlutterActivity() {
                         startActivity(restartIntent)
                         @Suppress("DEPRECATION")
                         overridePendingTransition(0, 0)
+                        // 立即结束旧实例：两个 FlutterEngine 并存会在着色器编译
+                        // 与首帧渲染上互相争抢，表现为切换墨模式时界面卡死。
+                        finish()
                     }
                 }
                 "systemAppearance" -> {

@@ -18,12 +18,17 @@ enum MoyueFontFamily { system, claude, rounded, ink }
 abstract interface class DisplayModeController implements Listenable {
   ReadingDisplayMode get mode;
   bool get isInkMode;
-  double get contrast;
   bool get reduceMotion;
+
+  /// 生效值：墨模式强制减少动态效果，接管用户偏好。
+  bool get effectiveReduceMotion;
+  bool get predictiveBackEnabled;
+
+  /// 生效值：墨模式强制关闭预见性返回，接管用户偏好。
+  bool get effectivePredictiveBackEnabled;
   double get glassOpacity;
   bool get htmlWebViewEnabled;
   double get appFontScale;
-  bool get predictiveBackEnabled;
   MoyueThemePreference get themePreference;
   MoyueLocalePreference get localePreference;
   MoyueFontFamily get appFontFamily;
@@ -39,7 +44,12 @@ abstract interface class DisplayModeController implements Listenable {
   int get customSeedArgb;
 
   Future<void> setMode(ReadingDisplayMode mode);
-  void setContrast(double value);
+
+  /// 只把模式写入持久化偏好，不修改当前运行时状态、也不广播通知。
+  ///
+  /// 供需要重启才能生效的切换使用（如墨模式）：先落盘偏好再重启，
+  /// 由新的引擎在启动时通过 [load] 应用，避免运行时热切换。
+  Future<void> saveModePreference(ReadingDisplayMode mode);
   void setReduceMotion(bool value);
   void setHtmlWebViewEnabled(bool value);
   Future<void> setAppFontScale(double value);
@@ -56,7 +66,6 @@ abstract interface class DisplayModeController implements Listenable {
 class MoyueDisplayPreferences extends ChangeNotifier
     implements DisplayModeController {
   ReadingDisplayMode _mode = ReadingDisplayMode.paper;
-  double _contrast = 0.58;
   bool _reduceMotion = false;
   bool _htmlWebViewEnabled = false;
   double _appFontScale = 1;
@@ -89,17 +98,20 @@ class MoyueDisplayPreferences extends ChangeNotifier
   @override
   bool get isInkMode => _mode == ReadingDisplayMode.ink;
   @override
-  double get contrast => _contrast;
-  @override
   bool get reduceMotion => _reduceMotion;
+  @override
+  bool get effectiveReduceMotion => _reduceMotion || isInkMode;
+  @override
+  bool get predictiveBackEnabled => _predictiveBackEnabled;
+  @override
+  bool get effectivePredictiveBackEnabled =>
+      _predictiveBackEnabled && !isInkMode;
   @override
   double get glassOpacity => 0;
   @override
   bool get htmlWebViewEnabled => _htmlWebViewEnabled;
   @override
   double get appFontScale => _appFontScale;
-  @override
-  bool get predictiveBackEnabled => _predictiveBackEnabled;
   @override
   MoyueThemePreference get themePreference => _themePreference;
   @override
@@ -221,11 +233,12 @@ class MoyueDisplayPreferences extends ChangeNotifier
   }
 
   @override
-  void setContrast(double value) {
-    final next = value.clamp(0.0, 1.0);
-    if (_contrast == next) return;
-    _contrast = next;
-    notifyListeners();
+  Future<void> saveModePreference(ReadingDisplayMode mode) async {
+    try {
+      await SharedPreferencesAsync().setString(_displayModeKey, mode.name);
+    } on Object {
+      // 平台存储暂不可用时保持原状，用户可再次尝试切换。
+    }
   }
 
   @override

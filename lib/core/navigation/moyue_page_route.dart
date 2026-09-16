@@ -46,7 +46,9 @@ MoyueMaterialPageRoute<T> moyuePageRoute<T>({
   builder: builder,
   allowSnapshotting: allowSnapshotting,
   predictiveBackEnabled:
-      DisplayPreferencesScope.maybeOf(context)?.predictiveBackEnabled ?? true,
-  reduceMotion: DisplayPreferencesScope.maybeOf(context)?.reduceMotion ?? false,
+      DisplayPreferencesScope.maybeOf(context)?.effectivePredictiveBackEnabled ??
+      true,
+  reduceMotion:
+      DisplayPreferencesScope.maybeOf(context)?.effectiveReduceMotion ?? false,
   inkMode: DisplayPreferencesScope.maybeOf(context)?.isInkMode ?? false,
 );

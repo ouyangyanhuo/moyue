@@ -171,7 +171,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inkModeDescription =>
-      'A global e-paper presentation with 16 gray levels, paper texture, a dedicated serif face, and deliberate refresh rhythm. Switching requires a restart.';
+      'A global e-paper presentation with 16 gray levels, paper texture, and a dedicated serif face. Scrolling feels closer to a real e-reader. Switching requires a restart.';
 
   @override
   String get inkModeRestartDescription =>
@@ -196,13 +196,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inkReaderStyle => 'Ink reader style';
-
-  @override
-  String get contrast => 'Contrast';
-
-  @override
-  String get contrastDescription =>
-      'Adjust the difference between the paper background and foreground text and icons. Higher values make them easier to distinguish.';
 
   @override
   String get softwareFontSize => 'Font size';
@@ -735,9 +728,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get documentHasNoHeadings => 'This document has no heading outline';
-
-  @override
-  String get inkPageTurnHint => 'Tap either edge or swipe to turn the page';
 
   @override
   String get tableOfContents => 'Table of contents';

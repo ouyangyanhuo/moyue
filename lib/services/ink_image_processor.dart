@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:moyue_application/core/theme/moyue_theme.dart';
+
 /// Converts the first frame of an image into a deterministic, 16-tone green
 /// LCD/e-paper rendering. Decode stays on Flutter's image pipeline while all
 /// pixel quantization is serialized through one long-lived worker isolate.
@@ -187,23 +189,9 @@ class _InkPixelPayload {
 Uint8List _quantizeInkPixels(_InkPixelPayload payload) {
   final pixels = payload.pixels.materialize().asUint8List();
   const bayer = <int>[0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-  const greenRamp = <int>[
-    0xFF223020,
-    0xFF2D3B28,
-    0xFF384631,
-    0xFF425039,
-    0xFF4D5B42,
-    0xFF58664A,
-    0xFF637153,
-    0xFF6E7C5B,
-    0xFF788664,
-    0xFF83916C,
-    0xFF8E9C75,
-    0xFF99A77D,
-    0xFFA4B286,
-    0xFFAEBC8E,
-    0xFFB9C797,
-    0xFFC4D29F,
+  final greenRamp = <int>[
+    // 像素写回只取 RGB，去掉 Alpha 位以便与原始色值直接比较。
+    for (final color in moyueInkGrayRamp) color.toARGB32() & 0xFFFFFF,
   ];
   for (var offset = 0; offset + 3 < pixels.length; offset += 4) {
     final pixel = offset ~/ 4;

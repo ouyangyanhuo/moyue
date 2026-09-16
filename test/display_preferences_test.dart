@@ -27,6 +27,23 @@ void main() {
     restored.dispose();
   });
 
+  test('saveModePreference 只落盘偏好，不改运行时状态', () async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    final controller = MoyueDisplayPreferences();
+
+    await controller.saveModePreference(ReadingDisplayMode.ink);
+
+    // 运行时保持纸张模式（配合重启式切换，避免热切换卡死）。
+    expect(controller.isInkMode, isFalse);
+
+    final restored = MoyueDisplayPreferences();
+    await restored.load();
+    expect(restored.mode, ReadingDisplayMode.ink);
+    controller.dispose();
+    restored.dispose();
+  });
+
   test('墨模式持久化并只覆盖有效显示值，不破坏原偏好', () async {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();

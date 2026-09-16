@@ -66,21 +66,12 @@ void main() {
     await tester.tapAt(tester.getCenter(find.byIcon(Icons.tune_outlined).last));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Settings'), findsWidgets);
-    expect(find.byType(GlassSlider), findsOneWidget);
+    // 对比度滑杆已随无效功能移除；设置页不再使用任何 Material 滑杆。
+    expect(find.byType(GlassSlider), findsNothing);
     expect(find.byType(GlassSwitch), findsNWidgets(4));
     expect(find.byType(Slider), findsNothing);
     expect(find.byType(Switch), findsNothing);
 
-    final contrastSlider = tester.widget<GlassSlider>(find.byType(GlassSlider));
-    expect(contrastSlider.thumbRadius, 15);
-    expect(contrastSlider.trackHeight, 4);
-    expect(
-      tester
-          .getSize(find.byKey(const ValueKey('contrast-slider-touch-area')))
-          .height,
-      56,
-    );
-    expect(tester.getSize(find.byType(GlassSlider)).height, 46);
     expect(find.textContaining('Liquid 透明度'), findsNothing);
     final dock = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
     expect(dock.quality, GlassQuality.premium);
@@ -1326,7 +1317,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('设置页墨模式开关禁止开启并保留扩大触控区', (tester) async {
+  testWidgets('设置页墨模式开关可开启并弹出重启确认', (tester) async {
     final display = MoyueDisplayPreferences();
     addTearDown(display.dispose);
     await tester.pumpWidget(
@@ -1370,7 +1361,8 @@ void main() {
           )
           .first,
     );
-    expect(switchPointer.ignoring, isTrue);
+    // 墨模式已开放：开关不再被禁用。
+    expect(switchPointer.ignoring, isFalse);
     expect(find.text('已关闭'), findsOneWidget);
     final inkTitle = tester.widget<Text>(find.text('墨模式'));
     expect(
@@ -1406,6 +1398,31 @@ void main() {
 
     expect(find.text('需要重启墨阅'), findsNothing);
     expect(display.isInkMode, isFalse);
+
+    // 开关可开启：点按后先弹出重启确认，取消则保持纸张模式。
+    await tester.tap(find.byKey(const ValueKey('墨模式-switch-touch-area')));
+    await tester.pumpAndSettle();
+    expect(find.text('需要重启墨阅'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(display.isInkMode, isFalse);
+
+    // 确认后只落盘偏好并触发重启：运行时状态保持不变（需重启生效）。
+    // Mock 系统通道让重启立即成功返回，避免 fake-async 下挂起。
+    const systemChannel = MethodChannel('com.moyue.application/system');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(systemChannel, (call) async => true);
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(systemChannel, null),
+    );
+    await tester.tap(find.byKey(const ValueKey('墨模式-switch-touch-area')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('应用并重启'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(display.isInkMode, isFalse);
+    expect(find.byType(AlertDialog), findsNothing);
 
     await _scrollSettingsUntilVisible(tester, find.text('Web 阅读器'));
     expect(find.text('Web 阅读器'), findsOneWidget);
@@ -1680,38 +1697,6 @@ void main() {
     expect(find.text('缓存已清空'), findsOneWidget);
     expect(find.byIcon(Icons.check_circle_outline_rounded), findsOneWidget);
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('设置页文字详情与主页滑杆使用独立触控区', (tester) async {
-    final display = MoyueDisplayPreferences();
-    addTearDown(display.dispose);
-    await tester.pumpWidget(
-      DisplayPreferencesScope(
-        controller: display,
-        child: const MaterialApp(home: Scaffold(body: SettingsPage())),
-      ),
-    );
-
-    final sliderArea = find.byKey(const ValueKey('contrast-slider-touch-area'));
-    await _scrollSettingsUntilVisible(tester, sliderArea);
-    final sliderRect = tester.getRect(sliderArea);
-    await tester.tapAt(
-      Offset(sliderRect.left + sliderRect.width * 0.86, sliderRect.top + 4),
-    );
-    await tester.pump();
-    expect(display.contrast, greaterThan(0.8));
-    expect(find.byKey(const ValueKey('对比度-setting-detail')), findsNothing);
-
-    final contrastDetailsButton = find.descendant(
-      of: find.byKey(const ValueKey('contrast-setting-row-touch-area')),
-      matching: find.byType(InkWell),
-    );
-    await _scrollSettingsUntilVisible(tester, contrastDetailsButton);
-    await tester.tap(contrastDetailsButton);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('对比度-setting-detail')), findsOneWidget);
-    expect(find.textContaining('明暗差异'), findsOneWidget);
-    expect(find.byType(GlassSlider), findsNWidgets(2));
   });
 
   testWidgets('字体大小使用 WheelView 并在应用前提示重启', (tester) async {

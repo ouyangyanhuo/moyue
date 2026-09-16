@@ -10,9 +10,9 @@ abstract final class MoyuePalette {
   static const mutedInk = Color(0xFF697068);
   static const moss = Color(0xFF6D7967);
   static const hairline = Color(0xFFD9D4C8);
-  static const eInkPaper = Color(0xFFF1EFE6);
-  static const eInkSurface = Color(0xFFE5E3DA);
-  static const eInk = Color(0xFF292A27);
+  static const eInkPaper = Color(0xFFDFE0D1);
+  static const eInkSurface = Color(0xFFCECFBE);
+  static const eInk = Color(0xFF1E201C);
   static const nightPaper = Color(0xFF171A18);
   static const nightSurface = Color(0xFF202420);
   static const nightSurfaceStrong = Color(0xFF2A2F2A);
@@ -70,23 +70,26 @@ class MoyueInkTheme extends ThemeExtension<MoyueInkTheme> {
       other == null || t < 0.5 ? this : other;
 }
 
-const _inkGreenRamp = <Color>[
-  Color(0xFF223020),
-  Color(0xFF2D3B28),
-  Color(0xFF384631),
-  Color(0xFF425039),
-  Color(0xFF4D5B42),
-  Color(0xFF58664A),
-  Color(0xFF637153),
-  Color(0xFF6E7C5B),
-  Color(0xFF788664),
-  Color(0xFF83916C),
-  Color(0xFF8E9C75),
-  Color(0xFF99A77D),
-  Color(0xFFA4B286),
-  Color(0xFFAEBC8E),
-  Color(0xFFB9C797),
-  Color(0xFFC4D29F),
+/// 墨模式 16 级灰阶：模拟真实电子纸的暖中性色。
+/// 绿色通道略高于蓝色，呼应品牌苔绿；整体保持中性，长文阅读不腻。
+/// 同时供 [InkImageProcessor] 做图片 16 色量化，勿在此之外复制色值。
+const List<Color> moyueInkGrayRamp = <Color>[
+  Color(0xFF1E201C),
+  Color(0xFF272925),
+  Color(0xFF30332D),
+  Color(0xFF3A3D36),
+  Color(0xFF45483F),
+  Color(0xFF505349),
+  Color(0xFF5C5F53),
+  Color(0xFF686B5E),
+  Color(0xFF75786A),
+  Color(0xFF83867A),
+  Color(0xFF909387),
+  Color(0xFF9EA294),
+  Color(0xFFADB1A2),
+  Color(0xFFBDC0AF),
+  Color(0xFFCECFBE),
+  Color(0xFFDFE0D1),
 ];
 
 ThemeData buildMoyueTheme({
@@ -98,7 +101,7 @@ ThemeData buildMoyueTheme({
   bool reduceMotion = false,
 }) {
   final dark = brightness == Brightness.dark;
-  final inkSurface = dark ? _inkGreenRamp[1] : _inkGreenRamp[15];
+  final inkSurface = dark ? moyueInkGrayRamp[1] : moyueInkGrayRamp[15];
   final surface = inkMode
       ? inkSurface
       : dark
@@ -117,36 +120,36 @@ ThemeData buildMoyueTheme({
   // the paper/surface roles that define the reader's eye-friendly canvas;
   // primary, secondary, tertiary and their containers stay system-derived.
   final scheme = generatedScheme.copyWith(
-    primary: inkMode ? (dark ? _inkGreenRamp[13] : _inkGreenRamp[3]) : null,
-    onPrimary: inkMode ? (dark ? _inkGreenRamp[1] : _inkGreenRamp[15]) : null,
+    primary: inkMode ? (dark ? moyueInkGrayRamp[13] : moyueInkGrayRamp[3]) : null,
+    onPrimary: inkMode ? (dark ? moyueInkGrayRamp[1] : moyueInkGrayRamp[15]) : null,
     surface: surface,
     onSurface: inkMode
-        ? (dark ? _inkGreenRamp[14] : _inkGreenRamp[0])
+        ? (dark ? moyueInkGrayRamp[14] : moyueInkGrayRamp[0])
         : dark
         ? MoyuePalette.nightInk
         : MoyuePalette.ink,
     surfaceContainer: inkMode
-        ? (dark ? _inkGreenRamp[2] : _inkGreenRamp[14])
+        ? (dark ? moyueInkGrayRamp[2] : moyueInkGrayRamp[14])
         : dark
         ? MoyuePalette.nightSurface
         : MoyuePalette.surface,
     surfaceContainerHighest: inkMode
-        ? (dark ? _inkGreenRamp[3] : _inkGreenRamp[13])
+        ? (dark ? moyueInkGrayRamp[3] : moyueInkGrayRamp[13])
         : dark
         ? MoyuePalette.nightSurfaceStrong
         : MoyuePalette.paperStrong,
     onSurfaceVariant: inkMode
-        ? (dark ? _inkGreenRamp[10] : _inkGreenRamp[5])
+        ? (dark ? moyueInkGrayRamp[10] : moyueInkGrayRamp[5])
         : dark
         ? MoyuePalette.nightMutedInk
         : MoyuePalette.mutedInk,
     outline: inkMode
-        ? _inkGreenRamp[7]
+        ? moyueInkGrayRamp[7]
         : dark
         ? MoyuePalette.nightHairline
         : MoyuePalette.hairline,
     outlineVariant: inkMode
-        ? (dark ? _inkGreenRamp[5] : _inkGreenRamp[11])
+        ? (dark ? moyueInkGrayRamp[5] : moyueInkGrayRamp[11])
         : dark
         ? MoyuePalette.nightHairline
         : MoyuePalette.hairline,
@@ -210,7 +213,7 @@ ThemeData buildMoyueTheme({
           paper: scheme.surface,
           ink: scheme.onSurface,
           mutedInk: scheme.onSurfaceVariant,
-          grayRamp: _inkGreenRamp,
+          grayRamp: moyueInkGrayRamp,
           textureOpacity: dark ? 0.16 : 0.2,
         )
       else
@@ -315,7 +318,7 @@ List<String> _fontFamilyFallback(MoyueFontFamily family) => switch (family) {
 ColorScheme _buildInkColorScheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
   Color tone(int lightIndex, int darkIndex) =>
-      _inkGreenRamp[dark ? darkIndex : lightIndex];
+      moyueInkGrayRamp[dark ? darkIndex : lightIndex];
   return ColorScheme.fromSeed(
     seedColor: tone(3, 13),
     brightness: brightness,
