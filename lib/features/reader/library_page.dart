@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/core/display/moyue_glass_style.dart';
+import 'package:moyue_application/core/files/document_import_policy.dart';
 import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
@@ -22,6 +23,26 @@ import 'package:moyue_application/widgets/moyue_backdrop.dart';
 import 'package:moyue_application/widgets/moyue_create_menu.dart';
 import 'package:moyue_application/widgets/scrolling_title.dart';
 import 'package:moyue_application/widgets/section_label.dart';
+
+Future<void> _showUnsupportedImportDialog(
+  BuildContext context,
+  String fileName,
+) => showDialog<void>(
+  context: context,
+  builder: (dialogContext) => AlertDialog(
+    icon: const Icon(Icons.error_outline_rounded),
+    title: Text(dialogContext.l10n.unsupportedImportFileTitle),
+    content: Text(
+      dialogContext.l10n.unsupportedImportFileDescription(fileName),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(dialogContext),
+        child: Text(dialogContext.l10n.gotIt),
+      ),
+    ],
+  ),
+);
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({
@@ -379,12 +400,13 @@ class LibraryPageState extends State<LibraryPage> {
         type: FileType.any,
       );
       if (!mounted || file == null) return;
-      final extension = file.name.split('.').last.toLowerCase();
-      if (!const {'md', 'html', 'zip', 'moyue'}.contains(extension)) {
-        throw FormatException(l10n.chooseSupportedDocument);
+      if (!DocumentImportPolicy.supportsFileName(file.name)) {
+        await _showUnsupportedImportDialog(context, file.name);
+        return;
       }
+      final extension = DocumentImportPolicy.extensionOf(file.name);
       final bytes = await file.readAsBytes();
-      if (const {'md', 'html'}.contains(extension) &&
+      if (DocumentImportPolicy.textExtensions.contains(extension) &&
           bytes.length > 8 * 1024 * 1024) {
         throw FormatException(l10n.documentTextLimit);
       }
@@ -1318,12 +1340,13 @@ class _FolderPageState extends State<_FolderPage> {
     try {
       final file = await FilePicker.pickFile(type: FileType.any);
       if (file == null || !mounted) return;
-      final extension = file.name.split('.').last.toLowerCase();
-      if (!const {'md', 'html', 'zip', 'moyue'}.contains(extension)) {
-        throw FormatException(l10n.chooseSupportedDocument);
+      if (!DocumentImportPolicy.supportsFileName(file.name)) {
+        await _showUnsupportedImportDialog(context, file.name);
+        return;
       }
+      final extension = DocumentImportPolicy.extensionOf(file.name);
       final bytes = await file.readAsBytes();
-      if (const {'md', 'html'}.contains(extension) &&
+      if (DocumentImportPolicy.textExtensions.contains(extension) &&
           bytes.length > 8 * 1024 * 1024) {
         throw FormatException(l10n.fileLimit);
       }

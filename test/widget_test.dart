@@ -519,7 +519,33 @@ void main() {
 
     await tester.tap(find.byTooltip('支持的文件格式'));
     await tester.pumpAndSettle();
+    expect(find.textContaining('.htm'), findsOneWidget);
     expect(find.textContaining('文档数量大于 2 时'), findsOneWidget);
+  });
+
+  testWidgets('导入不支持的文件会明确提示', (tester) async {
+    final originalPicker = FilePickerPlatform.instance;
+    FilePickerPlatform.instance = _SelectedFilePicker(
+      _MemoryPlatformFile(name: '财务报表.pdf', bytes: Uint8List(3)),
+    );
+    addTearDown(() => FilePickerPlatform.instance = originalPicker);
+    final key = GlobalKey<LibraryPageState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LibraryPage(key: key, documents: const [], loading: false),
+        ),
+      ),
+    );
+
+    key.currentState!.showAddMenu();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('导入文件或文档包'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('不支持此文件'), findsOneWidget);
+    expect(find.textContaining('财务报表.pdf'), findsOneWidget);
+    expect(find.textContaining('.htm'), findsOneWidget);
   });
 
   testWidgets('创建文件夹关闭对话框时不会提前释放输入状态', (tester) async {
@@ -1327,6 +1353,14 @@ void main() {
       ),
     );
 
+    expect(
+      find.descendant(
+        of: find.byType(Card).first,
+        matching: find.byType(Divider),
+      ),
+      findsNWidgets(4),
+    );
+
     final inkSwitch = tester.widget<GlassSwitch>(
       find.byType(GlassSwitch).first,
     );
@@ -1803,4 +1837,47 @@ class _ThrowingFilePicker extends FilePickerPlatform {
     LinuxOptions linuxOptions = const LinuxOptions(),
     WebOptions webOptions = const WebOptions(),
   }) => throw StateError('private/storage/path/image.png');
+}
+
+class _SelectedFilePicker extends FilePickerPlatform {
+  _SelectedFilePicker(this.file);
+
+  final PlatformFile file;
+
+  @override
+  Future<PlatformFile?> pickFile({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async => file;
+}
+
+base class _MemoryPlatformFile extends PlatformFile {
+  _MemoryPlatformFile({required this.name, required this.bytes});
+
+  @override
+  final String name;
+  final Uint8List bytes;
+
+  @override
+  Uri get uri => Uri.dataFromBytes(bytes);
+
+  @override
+  Never get xFile => throw UnsupportedError('Not needed by this test');
+
+  @override
+  Future<int> length() async => bytes.length;
+
+  @override
+  Future<Uint8List> readAsBytes() async => bytes;
+
+  @override
+  Stream<Uint8List> readAsByteStream() => Stream.value(bytes);
 }

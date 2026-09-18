@@ -3,13 +3,19 @@ import 'package:flutter/material.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 
 abstract final class MoyuePalette {
-  static const paper = Color(0xFFF7F3E9);
-  static const paperStrong = Color(0xFFEFE9DC);
-  static const surface = Color(0xFFFFFCF5);
+  // A quiet grey-green paper scale. Keeping every surface away from pure
+  // white reduces glare while preserving enough separation between layers.
+  static const paper = Color(0xFFECEEE7);
+  static const paperStrong = Color(0xFFE0E3DA);
+  static const surface = Color(0xFFF2F2EC);
+  static const surfaceLowest = Color(0xFFF6F6F1);
+  static const surfaceLow = Color(0xFFEFF0E9);
+  static const surfaceHigh = Color(0xFFE7E9E1);
+  static const surfaceDim = Color(0xFFD7DBD1);
   static const ink = Color(0xFF252A27);
   static const mutedInk = Color(0xFF697068);
-  static const moss = Color(0xFF6D7967);
-  static const hairline = Color(0xFFD9D4C8);
+  static const moss = Color(0xFFC3C6B8);
+  static const hairline = Color(0xFFCFD3C9);
   static const eInkPaper = Color(0xFFDFE0D1);
   static const eInkSurface = Color(0xFFCECFBE);
   static const eInk = Color(0xFF1E201C);
@@ -115,14 +121,41 @@ ThemeData buildMoyueTheme({
           seedColor: seedColor,
           brightness: brightness,
           surface: surface,
+          // Material keeps matching foreground roles accessible while making
+          // primary, secondary and tertiary accents a little less assertive.
+          contrastLevel: -0.1,
         );
   // Monet supplies the complete Android tonal palette. Moyue only replaces
   // the paper/surface roles that define the reader's eye-friendly canvas;
   // primary, secondary, tertiary and their containers stay system-derived.
   final scheme = generatedScheme.copyWith(
-    primary: inkMode ? (dark ? moyueInkGrayRamp[13] : moyueInkGrayRamp[3]) : null,
-    onPrimary: inkMode ? (dark ? moyueInkGrayRamp[1] : moyueInkGrayRamp[15]) : null,
+    primary: inkMode
+        ? (dark ? moyueInkGrayRamp[13] : moyueInkGrayRamp[3])
+        : null,
+    onPrimary: inkMode
+        ? (dark ? moyueInkGrayRamp[1] : moyueInkGrayRamp[15])
+        : null,
     surface: surface,
+    surfaceDim: inkMode
+        ? (dark ? moyueInkGrayRamp[2] : moyueInkGrayRamp[13])
+        : dark
+        ? MoyuePalette.nightPaper
+        : MoyuePalette.surfaceDim,
+    surfaceBright: inkMode
+        ? (dark ? moyueInkGrayRamp[3] : moyueInkGrayRamp[15])
+        : dark
+        ? MoyuePalette.nightSurfaceStrong
+        : MoyuePalette.surfaceLowest,
+    surfaceContainerLowest: inkMode
+        ? (dark ? moyueInkGrayRamp[0] : moyueInkGrayRamp[15])
+        : dark
+        ? MoyuePalette.nightPaper
+        : MoyuePalette.surfaceLowest,
+    surfaceContainerLow: inkMode
+        ? (dark ? moyueInkGrayRamp[2] : moyueInkGrayRamp[14])
+        : dark
+        ? MoyuePalette.nightSurface
+        : MoyuePalette.surfaceLow,
     onSurface: inkMode
         ? (dark ? moyueInkGrayRamp[14] : moyueInkGrayRamp[0])
         : dark
@@ -138,6 +171,11 @@ ThemeData buildMoyueTheme({
         : dark
         ? MoyuePalette.nightSurfaceStrong
         : MoyuePalette.paperStrong,
+    surfaceContainerHigh: inkMode
+        ? (dark ? moyueInkGrayRamp[3] : moyueInkGrayRamp[13])
+        : dark
+        ? MoyuePalette.nightSurfaceStrong
+        : MoyuePalette.surfaceHigh,
     onSurfaceVariant: inkMode
         ? (dark ? moyueInkGrayRamp[10] : moyueInkGrayRamp[5])
         : dark

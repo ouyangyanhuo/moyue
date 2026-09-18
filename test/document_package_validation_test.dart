@@ -41,7 +41,7 @@ void main() {
     );
   });
 
-  test('外层文件扩展名只允许 zip、moyue、md 和 html', () async {
+  test('外层文件扩展名只允许 zip、moyue、md、html 和 htm', () async {
     await expectLater(
       DocumentPackageService().importFile(
         'legacy.markdown',

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moyue_application/app/moyue_app.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
-import 'package:moyue_application/services/moyue_storage_service.dart';
+import 'package:moyue_application/core/theme/moyue_theme.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
@@ -18,14 +19,23 @@ void main() {
     // 预置已保存的墨模式偏好，模拟用户开启墨模式后的下一次启动。
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.withData({
-          'display.mode': 'ink',
+          'display.reading_mode': 'ink',
+          'i18n.locale_preference': 'chinese',
         });
+    const systemChannel = MethodChannel('com.moyue.application/system');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(
+      systemChannel,
+      (_) async => <String, Object?>{'dynamicColorSupported': false},
+    );
+    addTearDown(() => messenger.setMockMethodCallHandler(systemChannel, null));
     final display = MoyueDisplayPreferences();
     await display.load();
     addTearDown(display.dispose);
     expect(display.isInkMode, isTrue);
 
-    await tester.pumpWidget(const MoyueApp());
+    await tester.pumpWidget(MoyueApp(display: display));
     await tester.pump(const Duration(milliseconds: 120));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 300));
@@ -34,7 +44,7 @@ void main() {
     expect(find.text('本地文档，安静阅读'), findsOneWidget);
 
     // 墨模式下玻璃 Dock 降级为 standard。
-    final context = tester.element(find.byType(MaterialApp));
+    final context = tester.element(find.text('阅读').first);
     final theme = Theme.of(context);
     final ink = theme.extension<MoyueInkTheme>();
     expect(ink?.enabled, isTrue);
@@ -44,5 +54,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('设置'), findsWidgets);
     expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 }

@@ -26,11 +26,11 @@ class SettingsPage extends StatefulWidget {
 class SettingsPageState extends State<SettingsPage> {
   static const _fontScales = <double>[0.85, 0.95, 1.0, 1.1, 1.2, 1.3, 1.4];
   static const _customColors = <int>[
-    0xFF6D7967,
-    0xFF5B6F8F,
-    0xFF7B5F87,
-    0xFF9A624B,
-    0xFF3E7D73,
+    0xFFC3C6B8,
+    0xFF8190A8,
+    0xFF98859F,
+    0xFFB18472,
+    0xFF789990,
   ];
   String _query = '';
   final _searchKey = GlobalKey<ExpandableGlassSearchState>();
@@ -760,7 +760,6 @@ class SettingsPageState extends State<SettingsPage> {
                             _requestInkModeChange(display, value),
                       ),
                     ),
-                    const Divider(indent: 56),
                   ],
                 ),
               ),

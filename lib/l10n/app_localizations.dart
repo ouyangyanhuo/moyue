@@ -263,7 +263,7 @@ abstract class AppLocalizations {
   /// No description provided for @invalidHexColor.
   ///
   /// In en, this message translates to:
-  /// **'Enter a 6-digit hex color, such as #6D7967'**
+  /// **'Enter a 6-digit hex color, such as #C3C6B8'**
   String get invalidHexColor;
 
   /// No description provided for @nightMode.
@@ -875,7 +875,7 @@ abstract class AppLocalizations {
   /// No description provided for @supportedFilesDescription.
   ///
   /// In en, this message translates to:
-  /// **'Supports .md, .html, .zip, and .moyue.\n\nZIP or .moyue packages must contain at least 2 files and include Markdown or HTML. Packages may contain only HTML, Markdown, CSS, JavaScript, common images, and videos. A folder is created automatically when there are more than 2 documents.'**
+  /// **'Supports .zip, .moyue, .md, .html, and .htm.\n\nZIP or .moyue packages must contain at least 2 files and include Markdown or HTML. Packages may contain only HTML, Markdown, CSS, JavaScript, common images, and videos. A folder is created automatically when there are more than 2 documents.'**
   String get supportedFilesDescription;
 
   /// No description provided for @gotIt.
@@ -989,8 +989,20 @@ abstract class AppLocalizations {
   /// No description provided for @chooseSupportedDocument.
   ///
   /// In en, this message translates to:
-  /// **'Choose a Markdown, HTML, ZIP, or .moyue file'**
+  /// **'Choose a .zip, .moyue, .md, .html, or .htm file'**
   String get chooseSupportedDocument;
+
+  /// No description provided for @unsupportedImportFileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsupported file'**
+  String get unsupportedImportFileTitle;
+
+  /// No description provided for @unsupportedImportFileDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot import \"{fileName}\". Only .zip, .moyue, .md, .html, and .htm files are supported.'**
+  String unsupportedImportFileDescription(String fileName);
 
   /// No description provided for @importFailed.
   ///

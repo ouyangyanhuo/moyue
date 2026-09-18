@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:moyue_application/core/files/document_import_policy.dart';
 import 'package:moyue_application/services/incoming_file_reader.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 
@@ -27,7 +28,7 @@ class IncomingFileService extends ChangeNotifier {
   static const _channel = MethodChannel('com.moyue.application/incoming_files');
   static const _documentLimit = 8 * 1024 * 1024;
   static const _packageLimit = 128 * 1024 * 1024;
-  static const supportedExtensions = {'md', 'html', 'zip', 'moyue'};
+  static const supportedExtensions = DocumentImportPolicy.supportedExtensions;
 
   bool _initialized = false;
   bool _draining = false;
@@ -39,7 +40,7 @@ class IncomingFileService extends ChangeNotifier {
 
   @visibleForTesting
   static bool supportsFileName(String fileName) =>
-      supportedExtensions.contains(_extension(fileName));
+      DocumentImportPolicy.supportsFileName(fileName);
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -94,11 +95,11 @@ class IncomingFileService extends ChangeNotifier {
   Future<void> _import(({String name, String path}) file) async {
     try {
       if (!supportsFileName(file.name)) {
-        throw const FormatException('仅支持 Markdown、HTML、ZIP 或 .moyue 文件');
+        throw const FormatException('仅支持 .zip、.moyue、.md、.html 或 .htm 文件');
       }
       final bytes = await readIncomingFile(file.path);
       final extension = _extension(file.name);
-      final limit = extension == 'md' || extension == 'html'
+      final limit = DocumentImportPolicy.textExtensions.contains(extension)
           ? _documentLimit
           : _packageLimit;
       if (bytes.length > limit) {
@@ -131,8 +132,6 @@ class IncomingFileService extends ChangeNotifier {
     notifyListeners();
   }
 
-  static String _extension(String fileName) {
-    final dot = fileName.lastIndexOf('.');
-    return dot < 0 ? '' : fileName.substring(dot + 1).toLowerCase();
-  }
+  static String _extension(String fileName) =>
+      DocumentImportPolicy.extensionOf(fileName);
 }

@@ -12,6 +12,13 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('默认高亮色使用低饱和灰绿色', () {
+    final display = MoyueDisplayPreferences();
+    expect(display.customSeedArgb, 0xFFC3C6B8);
+    expect(display.effectiveSeedArgb, 0xFFC3C6B8);
+    display.dispose();
+  });
+
   test('HTML WebView 开关会持久化并在下次启动恢复', () async {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();

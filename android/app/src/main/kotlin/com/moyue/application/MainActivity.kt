@@ -277,6 +277,6 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
-        private val SUPPORTED_EXTENSIONS = setOf("md", "html", "zip", "moyue")
+        private val SUPPORTED_EXTENSIONS = setOf("md", "html", "htm", "zip", "moyue")
     }
 }

@@ -97,7 +97,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hexColor => 'Hex color';
 
   @override
-  String get invalidHexColor => 'Enter a 6-digit hex color, such as #6D7967';
+  String get invalidHexColor => 'Enter a 6-digit hex color, such as #C3C6B8';
 
   @override
   String get nightMode => 'Night mode';
@@ -453,7 +453,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get supportedFilesDescription =>
-      'Supports .md, .html, .zip, and .moyue.\n\nZIP or .moyue packages must contain at least 2 files and include Markdown or HTML. Packages may contain only HTML, Markdown, CSS, JavaScript, common images, and videos. A folder is created automatically when there are more than 2 documents.';
+      'Supports .zip, .moyue, .md, .html, and .htm.\n\nZIP or .moyue packages must contain at least 2 files and include Markdown or HTML. Packages may contain only HTML, Markdown, CSS, JavaScript, common images, and videos. A folder is created automatically when there are more than 2 documents.';
 
   @override
   String get gotIt => 'Got it';
@@ -518,7 +518,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chooseSupportedDocument =>
-      'Choose a Markdown, HTML, ZIP, or .moyue file';
+      'Choose a .zip, .moyue, .md, .html, or .htm file';
+
+  @override
+  String get unsupportedImportFileTitle => 'Unsupported file';
+
+  @override
+  String unsupportedImportFileDescription(String fileName) {
+    return 'Cannot import \"$fileName\". Only .zip, .moyue, .md, .html, and .htm files are supported.';
+  }
 
   @override
   String importFailed(String error) {

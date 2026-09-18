@@ -674,7 +674,7 @@ void main() {
     final archive = Archive()
       ..addFile(ArchiveFile.string('开篇.md', '# 开篇'))
       ..addFile(
-        ArchiveFile.string('章节/正文.html', '<h1>正文</h1><img src="插图.png">'),
+        ArchiveFile.string('章节/正文.htm', '<h1>正文</h1><img src="插图.png">'),
       )
       ..addFile(ArchiveFile('章节/插图.png', 4, [1, 2, 3, 4]));
 
@@ -688,7 +688,7 @@ void main() {
     expect(moved, hasLength(2));
     expect(moved.map((document) => document.logicalPath).toSet(), {
       '已导入/开篇.md',
-      '已导入/章节/正文.html',
+      '已导入/章节/正文.htm',
     });
     final html = moved.singleWhere(
       (document) => document.kind == DocumentKind.html,

@@ -12,57 +12,25 @@ class MoyueBackdrop extends StatelessWidget {
     final isInk = display.mode == ReadingDisplayMode.ink;
     if (isInk) return const _InkPaperBackdrop();
 
-    if (theme.brightness == Brightness.dark) {
-      final accent = theme.colorScheme.primary;
-      return DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF181B19), Color(0xFF151816), Color(0xFF111512)],
-            stops: [0, 0.58, 1],
-          ),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              top: -90,
-              right: -80,
-              child: _SoftCircle(size: 260, color: accent),
-            ),
-            Positioned(
-              bottom: 70,
-              left: -120,
-              child: _SoftCircle(size: 320, color: accent),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final accent = theme.colorScheme.primary;
+    final dark = theme.brightness == Brightness.dark;
+    final accentWash = theme.colorScheme.primary.withValues(
+      alpha: dark ? 0.035 : 0.025,
+    );
+    final top = Color.alphaBlend(
+      accentWash,
+      dark ? const Color(0xFF1B1D1C) : const Color(0xFFF0F2EB),
+    );
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      key: const ValueKey('moyue-normal-backdrop'),
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFF9F6EE), Color(0xFFF3EEE4), Color(0xFFE9EFE5)],
-          stops: [0, 0.58, 1],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: dark
+              ? [top, const Color(0xFF161817), const Color(0xFF111312)]
+              : [top, const Color(0xFFEAECE5), const Color(0xFFE3E7DE)],
+          stops: const [0, 0.54, 1],
         ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: -90,
-            right: -80,
-            child: _SoftCircle(size: 260, color: accent),
-          ),
-          Positioned(
-            bottom: 70,
-            left: -120,
-            child: _SoftCircle(size: 320, color: accent),
-          ),
-        ],
       ),
     );
   }
@@ -103,22 +71,4 @@ class MoyueInkPaperTexture extends StatelessWidget {
       ),
     );
   }
-}
-
-class _SoftCircle extends StatelessWidget {
-  const _SoftCircle({required this.size, required this.color});
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => IgnorePointer(
-    child: Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color.withValues(alpha: 0.13),
-      ),
-    ),
-  );
 }

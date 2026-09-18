@@ -96,7 +96,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get hexColor => '十六进制颜色';
 
   @override
-  String get invalidHexColor => '请输入 6 位十六进制颜色，例如 #6D7967';
+  String get invalidHexColor => '请输入 6 位十六进制颜色，例如 #C3C6B8';
 
   @override
   String get nightMode => '夜间模式';
@@ -422,7 +422,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get supportedFilesDescription =>
-      '支持 .md、.html、.zip 和 .moyue。\n\nZIP 或 .moyue 至少需要 2 个文件，并包含 Markdown 或 HTML。包内只允许 HTML、Markdown、CSS、JS、常见图片和视频；文档数量大于 2 时会自动创建文件夹。';
+      '支持 .zip、.moyue、.md、.html 和 .htm。\n\nZIP 或 .moyue 至少需要 2 个文件，并包含 Markdown 或 HTML。包内只允许 HTML、Markdown、CSS、JS、常见图片和视频；文档数量大于 2 时会自动创建文件夹。';
 
   @override
   String get gotIt => '知道了';
@@ -485,7 +485,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get documentTextLimit => '文本文档不能超过 8 MB';
 
   @override
-  String get chooseSupportedDocument => '请选择 Markdown、HTML、ZIP 或 .moyue 文件';
+  String get chooseSupportedDocument => '请选择 .zip、.moyue、.md、.html 或 .htm 文件';
+
+  @override
+  String get unsupportedImportFileTitle => '不支持此文件';
+
+  @override
+  String unsupportedImportFileDescription(String fileName) {
+    return '无法导入“$fileName”。仅支持 .zip、.moyue、.md、.html 和 .htm 文件。';
+  }
 
   @override
   String importFailed(String error) {

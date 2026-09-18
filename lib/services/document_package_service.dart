@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:moyue_application/core/files/document_import_policy.dart';
 import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/models/library_folder.dart';
 import 'package:moyue_application/models/reading_document.dart';
@@ -360,8 +361,8 @@ class DocumentPackageService {
     String logicalDirectory = '',
   }) async {
     final extension = _extension(fileName);
-    if (extension != 'md' && extension != 'html') {
-      throw const FormatException('文件夹内仅支持导入 .md 或 .html 文件');
+    if (!DocumentImportPolicy.textExtensions.contains(extension)) {
+      throw const FormatException('文件夹内仅支持导入 .md、.html 或 .htm 文件');
     }
     final folderRow = await (await index).folder(folder.id);
     if (folderRow == null) throw StateError('文件夹不存在');
@@ -387,7 +388,9 @@ class DocumentPackageService {
       id: documentId,
       folderId: folder.id,
       name: p.posix.basenameWithoutExtension(safeName),
-      kind: extension == 'html' ? 'html' : 'markdown',
+      kind: DocumentImportPolicy.htmlExtensions.contains(extension)
+          ? 'html'
+          : 'markdown',
       relativePath: relativePath,
       logicalPath: logicalPath,
       isPrimary: existing.isEmpty,
@@ -403,7 +406,9 @@ class DocumentPackageService {
       id: record.id,
       title: record.name,
       content: decodeImportedText(bytes),
-      kind: extension == 'html' ? DocumentKind.html : DocumentKind.markdown,
+      kind: DocumentImportPolicy.htmlExtensions.contains(extension)
+          ? DocumentKind.html
+          : DocumentKind.markdown,
       updatedAt: now,
       sourceLabel: '文件夹',
       filePath: relativePath,
@@ -415,7 +420,7 @@ class DocumentPackageService {
 
   Future<ReadingDocument> importFile(String fileName, Uint8List bytes) async {
     final extension = _extension(fileName);
-    if (extension == 'md' || extension == 'html') {
+    if (DocumentImportPolicy.textExtensions.contains(extension)) {
       return _importEntries(
         sourceName: fileName,
         entries: {_safeArchivePath(fileName): bytes},
@@ -423,7 +428,7 @@ class DocumentPackageService {
       );
     }
     if (extension != 'zip' && extension != 'moyue') {
-      throw const FormatException('仅支持 Markdown、HTML、ZIP 或 .moyue 文件');
+      throw const FormatException('仅支持 .zip、.moyue、.md、.html 或 .htm 文件');
     }
     final archive = ZipDecoder().decodeBytes(bytes, verify: true);
     final entries = <String, Uint8List>{};
@@ -457,7 +462,7 @@ class DocumentPackageService {
     String logicalDirectory = '',
   }) async {
     final extension = _extension(fileName);
-    if (extension == 'md' || extension == 'html') {
+    if (DocumentImportPolicy.textExtensions.contains(extension)) {
       return [
         await importIntoFolder(
           folder: folder,
@@ -468,7 +473,7 @@ class DocumentPackageService {
       ];
     }
     if (extension != 'zip' && extension != 'moyue') {
-      throw const FormatException('仅支持 Markdown、HTML、ZIP 或 .moyue 文件');
+      throw const FormatException('仅支持 .zip、.moyue、.md、.html 或 .htm 文件');
     }
 
     final importedPrimary = await importFile(fileName, bytes);
@@ -1936,15 +1941,18 @@ class DocumentPackageService {
   String _extension(String value) =>
       p.extension(value).replaceFirst('.', '').toLowerCase();
   bool _isDocument(String value) =>
-      const {'md', 'html'}.contains(_extension(value));
+      DocumentImportPolicy.textExtensions.contains(_extension(value));
   DocumentKind _kindFor(String value) =>
-      _extension(value) == 'html' ? DocumentKind.html : DocumentKind.markdown;
+      DocumentImportPolicy.htmlExtensions.contains(_extension(value))
+      ? DocumentKind.html
+      : DocumentKind.markdown;
 
   bool _isAllowedPackageEntry(String value) {
     if (value == 'meta.json') return true;
     return const {
       'md',
       'html',
+      'htm',
       'css',
       'js',
       'png',

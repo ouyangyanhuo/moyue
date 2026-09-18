@@ -78,7 +78,10 @@ class MoyueDisplayPreferences extends ChangeNotifier
   bool _dynamicColorSupported = false;
   bool _useDynamicColor = false;
   int? _dynamicSeedArgb;
-  int _customSeedArgb = 0xFF6D7967;
+  static const _defaultCustomSeedArgb = 0xFFC3C6B8;
+  static const _legacyDefaultSeedArgb = 0xFFBBBEAE;
+
+  int _customSeedArgb = _defaultCustomSeedArgb;
 
   static const _htmlWebViewKey = 'reader.html_webview_enabled';
   static const _displayModeKey = 'display.reading_mode';
@@ -185,8 +188,13 @@ class MoyueDisplayPreferences extends ChangeNotifier
       );
       final useDynamicValue =
           await preferences.getBool(_useDynamicColorKey) ?? false;
-      final customSeedValue =
-          await preferences.getInt(_customSeedArgbKey) ?? _customSeedArgb;
+      final storedCustomSeed = await preferences.getInt(_customSeedArgbKey);
+      final customSeedValue = storedCustomSeed == _legacyDefaultSeedArgb
+          ? _defaultCustomSeedArgb
+          : storedCustomSeed ?? _defaultCustomSeedArgb;
+      if (storedCustomSeed == _legacyDefaultSeedArgb) {
+        await preferences.setInt(_customSeedArgbKey, customSeedValue);
+      }
       final appearance = await SystemAppearanceService.load();
       final nextFont = fontValue.clamp(0.8, 1.4);
       final changed =
