@@ -19,6 +19,23 @@ void main() {
     display.dispose();
   });
 
+  test('旧版默认高亮色会迁移为更柔和的新默认色', () async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.withData({
+          'display.custom_seed_argb': 0xFFBBBEAE,
+        });
+    final display = MoyueDisplayPreferences();
+    await display.load();
+
+    expect(display.customSeedArgb, 0xFFC3C6B8);
+
+    final restored = MoyueDisplayPreferences();
+    await restored.load();
+    expect(restored.customSeedArgb, 0xFFC3C6B8);
+    display.dispose();
+    restored.dispose();
+  });
+
   test('HTML WebView 开关会持久化并在下次启动恢复', () async {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
