@@ -14,6 +14,7 @@ import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/core/theme/moyue_theme.dart';
 import 'package:moyue_application/features/editor/editor_page.dart';
+import 'package:moyue_application/features/reader/markdown_math.dart';
 import 'package:moyue_application/features/reader/native_html_view.dart';
 import 'package:moyue_application/features/reader/reader_overlay_tone_sampler.dart';
 import 'package:moyue_application/features/reader/webview_html_view.dart';
@@ -271,8 +272,11 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
 
   List<_ReaderHeading> get _headings {
     if (_document.kind == DocumentKind.markdown) {
-      final nodes = md.Document(extensionSet: md.ExtensionSet.gitHubWeb)
-          .parseLines(_document.content.split('\n'));
+      final nodes = md.Document(
+        extensionSet: md.ExtensionSet.gitHubWeb,
+        blockSyntaxes: buildMoyueMarkdownBlockSyntaxes(),
+        inlineSyntaxes: buildMoyueMarkdownInlineSyntaxes(),
+      ).parseLines(_document.content.split('\n'));
       final headingElements = <md.Element>[];
       void collect(md.Node node) {
         if (node is! md.Element) return;
@@ -759,37 +763,45 @@ class _MarkdownDocument extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final headingAllocator = _MarkdownHeadingAllocator(headingKeys);
-    return Markdown(
-      data: data,
-      controller: controller,
-      selectable: true,
-      padding: EdgeInsets.fromLTRB(24, topInset, 24, bottomInset),
-      builders: {
-        'pre': buildMoyueCodeBlockBuilder(context),
-        for (final tag in const ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-          tag: _MarkdownHeadingBuilder(headingAllocator),
-      },
-      imageBuilder: (uri, title, alt) => ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: StableReaderImage(
-          cacheKey: '${document.id}:${uri.toString()}',
-          sessionCache: imageCache,
-          loader: () => MoyueStorageService.instance.readLinkedResource(
-            document,
-            uri.toString(),
+    return SelectionArea(
+      key: const ValueKey('markdown-document-selection-area'),
+      child: Markdown(
+        data: data,
+        controller: controller,
+        // A page-level SelectionArea lets one selection span every Markdown
+        // block. `selectable: true` would create one SelectableText per block.
+        selectable: false,
+        blockSyntaxes: buildMoyueMarkdownBlockSyntaxes(),
+        inlineSyntaxes: buildMoyueMarkdownInlineSyntaxes(),
+        padding: EdgeInsets.fromLTRB(24, topInset, 24, bottomInset),
+        builders: {
+          ...buildMoyueMarkdownMathBuilders(),
+          'pre': buildMoyueCodeBlockBuilder(context),
+          for (final tag in const ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+            tag: _MarkdownHeadingBuilder(headingAllocator),
+        },
+        imageBuilder: (uri, title, alt) => ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: StableReaderImage(
+            cacheKey: '${document.id}:${uri.toString()}',
+            sessionCache: imageCache,
+            loader: () => MoyueStorageService.instance.readLinkedResource(
+              document,
+              uri.toString(),
+            ),
+            fit: BoxFit.contain,
+            semanticLabel: alt,
+            onTap: (bytes) => unawaited(ImageLightbox.show(context, bytes)),
           ),
-          fit: BoxFit.contain,
-          semanticLabel: alt,
-          onTap: (bytes) => unawaited(ImageLightbox.show(context, bytes)),
         ),
+        onTapLink: (_, href, _) async {
+          final uri = href == null ? null : Uri.tryParse(href);
+          if (uri != null) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        },
+        styleSheet: buildMoyueMarkdownStyleSheet(context),
       ),
-      onTapLink: (_, href, _) async {
-        final uri = href == null ? null : Uri.tryParse(href);
-        if (uri != null) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        }
-      },
-      styleSheet: buildMoyueMarkdownStyleSheet(context),
     );
   }
 }
@@ -806,7 +818,12 @@ class _MarkdownShareCanvas extends StatelessWidget {
     child: MarkdownBody(
       data: data,
       selectable: false,
-      builders: {'pre': buildMoyueCodeBlockBuilder(context)},
+      blockSyntaxes: buildMoyueMarkdownBlockSyntaxes(),
+      inlineSyntaxes: buildMoyueMarkdownInlineSyntaxes(),
+      builders: {
+        ...buildMoyueMarkdownMathBuilders(),
+        'pre': buildMoyueCodeBlockBuilder(context),
+      },
       styleSheet: buildMoyueMarkdownStyleSheet(context),
       imageBuilder: (uri, title, alt) {
         final image = images[uri.toString()];

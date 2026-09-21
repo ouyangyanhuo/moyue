@@ -483,83 +483,85 @@ class _MoyueCodeBlockState extends State<MoyueCodeBlock> {
 
   Widget _buildHeader(BuildContext context) {
     final palette = widget.palette;
-    return ColoredBox(
-      color: palette.headerBackground,
-      child: SizedBox(
-        height: 44,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 14, right: 4),
-          child: Row(
-            children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  color: palette.accent,
-                  shape: BoxShape.circle,
+    return SelectionContainer.disabled(
+      child: ColoredBox(
+        color: palette.headerBackground,
+        child: SizedBox(
+          height: 44,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 14, right: 4),
+            child: Row(
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: palette.accent,
+                    shape: BoxShape.circle,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        _displayLanguage(context, widget.language),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelMedium
-                            ?.copyWith(
-                              color: palette.foreground,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.22,
-                            ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _displayLanguage(context, widget.language),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: palette.foreground,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.22,
+                              ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      context.l10n.codeLineCount(_lineCount),
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: palette.mutedForeground,
-                        fontWeight: FontWeight.w500,
+                      const SizedBox(width: 10),
+                      Text(
+                        context.l10n.codeLineCount(_lineCount),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: palette.mutedForeground,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              Material(
-                type: MaterialType.transparency,
-                child: Tooltip(
-                  message: _copied
-                      ? context.l10n.codeCopied
-                      : context.l10n.copyCode,
-                  child: Semantics(
-                    button: true,
-                    label: _copied
+                Material(
+                  type: MaterialType.transparency,
+                  child: Tooltip(
+                    message: _copied
                         ? context.l10n.codeCopied
                         : context.l10n.copyCode,
-                    child: InkResponse(
-                      onTap: _copy,
-                      radius: 23,
-                      containedInkWell: true,
-                      highlightShape: BoxShape.circle,
-                      child: SizedBox.square(
-                        dimension: 44,
-                        child: Center(
-                          child: AnimatedSwitcher(
-                            duration: moyueMotionDuration(
-                              context,
-                              const Duration(milliseconds: 150),
-                            ),
-                            child: Icon(
-                              _copied
-                                  ? Icons.check_rounded
-                                  : Icons.content_copy_rounded,
-                              key: ValueKey(_copied),
-                              size: 17,
-                              color: _copied
-                                  ? palette.accent
-                                  : palette.mutedForeground,
+                    child: Semantics(
+                      button: true,
+                      label: _copied
+                          ? context.l10n.codeCopied
+                          : context.l10n.copyCode,
+                      child: InkResponse(
+                        onTap: _copy,
+                        radius: 23,
+                        containedInkWell: true,
+                        highlightShape: BoxShape.circle,
+                        child: SizedBox.square(
+                          dimension: 44,
+                          child: Center(
+                            child: AnimatedSwitcher(
+                              duration: moyueMotionDuration(
+                                context,
+                                const Duration(milliseconds: 150),
+                              ),
+                              child: Icon(
+                                _copied
+                                    ? Icons.check_rounded
+                                    : Icons.content_copy_rounded,
+                                key: ValueKey(_copied),
+                                size: 17,
+                                color: _copied
+                                    ? palette.accent
+                                    : palette.mutedForeground,
+                              ),
                             ),
                           ),
                         ),
@@ -567,8 +569,8 @@ class _MoyueCodeBlockState extends State<MoyueCodeBlock> {
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -610,16 +612,18 @@ class _MoyueCodeBlockState extends State<MoyueCodeBlock> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (showLineNumbers) ...[
-                  ExcludeSemantics(
-                    child: Text(
-                      lineNumberText,
-                      textAlign: TextAlign.right,
-                      style: textStyle.copyWith(
-                        color: palette.mutedForeground,
-                        backgroundColor: Colors.transparent,
-                        decoration: TextDecoration.none,
-                        fontWeight: FontWeight.w400,
-                        fontFeatures: const [FontFeature.tabularFigures()],
+                  SelectionContainer.disabled(
+                    child: ExcludeSemantics(
+                      child: Text(
+                        lineNumberText,
+                        textAlign: TextAlign.right,
+                        style: textStyle.copyWith(
+                          color: palette.mutedForeground,
+                          backgroundColor: Colors.transparent,
+                          decoration: TextDecoration.none,
+                          fontWeight: FontWeight.w400,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ),
                   ),

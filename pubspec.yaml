@@ -35,6 +35,8 @@ dependencies:
   liquid_glass_widgets: ^0.29.6
   file_picker: ^12.0.0
   flutter_markdown_plus: ^1.0.12
+  # Pure Flutter TeX renderer used by Markdown; never falls back to WebView.
+  flutter_math_fork: ^0.7.4
   flutter_highlighting: ^0.9.0+11.8.0
   highlighting: ^0.9.0+11.8.0
   markdown: ^7.3.0
