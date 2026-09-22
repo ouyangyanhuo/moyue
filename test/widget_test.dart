@@ -68,7 +68,8 @@ void main() {
     expect(find.text('Settings'), findsWidgets);
     // 对比度滑杆已随无效功能移除；设置页不再使用任何 Material 滑杆。
     expect(find.byType(GlassSlider), findsNothing);
-    expect(find.byType(GlassSwitch), findsNWidgets(4));
+    // Section cards below the viewport are now built lazily.
+    expect(find.byType(GlassSwitch), findsWidgets);
     expect(find.byType(Slider), findsNothing);
     expect(find.byType(Switch), findsNothing);
 
@@ -338,6 +339,15 @@ void main() {
     final canvasHeight = tester
         .getSize(find.byKey(const ValueKey('edit')))
         .height;
+    final writingSurface = find.byKey(const ValueKey('editor-writing-surface'));
+    final initialSurfaceBounds = tester.getRect(writingSurface);
+    expect(initialSurfaceBounds.left, 0);
+    expect(initialSurfaceBounds.right, 430);
+    for (final field in tester.widgetList<TextField>(find.byType(TextField))) {
+      final padding = field.decoration!.contentPadding! as EdgeInsets;
+      expect(padding.left, 20);
+      expect(padding.right, 20);
+    }
     expect(
       tester.getCenter(find.bySemanticsLabel('返回')).dy,
       lessThanOrEqualTo(80),
@@ -358,6 +368,7 @@ void main() {
     await tester.pump();
 
     expect(find.byIcon(Icons.format_bold_rounded), findsOneWidget);
+    expect(tester.getRect(writingSurface), initialSurfaceBounds);
     final formatBar = tester.widget<GlassButtonGroup>(
       find.byType(GlassButtonGroup),
     );
@@ -519,8 +530,9 @@ void main() {
 
     await tester.tap(find.byTooltip('支持的文件格式'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('.htm'), findsOneWidget);
-    expect(find.textContaining('文档数量大于 2 时'), findsOneWidget);
+    expect(find.textContaining('md、html、htm、zip、moyue'), findsOneWidget);
+    expect(find.textContaining('至少含 2 个文件（须含文档）'), findsOneWidget);
+    expect(find.textContaining('超过 2 篇文档自动建文件夹'), findsOneWidget);
   });
 
   testWidgets('导入不支持的文件会明确提示', (tester) async {
@@ -1219,6 +1231,29 @@ void main() {
     );
   });
 
+  testWidgets('真实 Markdown 阅读页的无尺寸缺失图片显示占位', (tester) async {
+    final document = ReadingDocument(
+      id: 'missing-image-reader',
+      title: '缺失资源',
+      content:
+          '正文\n\n![图片](missing.png)\n\n'
+          '```text\nfirst\n```\n\n```text\nsecond\n```\n\n'
+          '后续正文',
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026),
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: ReaderDetailPage(document: document)),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('引用的资源不存在'), findsOneWidget);
+    await tester.drag(find.byType(Markdown), const Offset(0, -600));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('后续正文', findRichText: true), findsOneWidget);
+  });
+
   testWidgets('阅读器目录使用与新增入口一致的 Material 底部弹层', (tester) async {
     final document = ReadingDocument(
       id: 'toc-doc',
@@ -1358,7 +1393,7 @@ void main() {
         of: find.byType(Card).first,
         matching: find.byType(Divider),
       ),
-      findsNWidgets(4),
+      findsNWidgets(2),
     );
 
     final inkSwitch = tester.widget<GlassSwitch>(
@@ -1418,7 +1453,7 @@ void main() {
     await tester.tap(find.text('墨模式'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('墨模式-setting-detail')), findsOneWidget);
-    expect(find.textContaining('16级灰阶'), findsOneWidget);
+    expect(find.textContaining('绿色电子纸配色'), findsOneWidget);
     expect(
       tester.getSize(
         find.byKey(const ValueKey('墨模式-detail-switch-touch-area')),
@@ -1458,30 +1493,33 @@ void main() {
     expect(display.isInkMode, isFalse);
     expect(find.byType(AlertDialog), findsNothing);
 
-    await _scrollSettingsUntilVisible(tester, find.text('Web 阅读器'));
-    expect(find.text('Web 阅读器'), findsOneWidget);
+    await _scrollSettingsUntilVisible(tester, find.text('HTML 网页引擎'));
+    expect(find.text('HTML 网页引擎'), findsOneWidget);
     expect(display.htmlWebViewEnabled, isFalse);
 
     // 开关保持主页直控，并且不会误开详情。
-    await tester.tap(find.byKey(const ValueKey('Web 阅读器-switch-touch-area')));
+    await tester.tap(find.byKey(const ValueKey('HTML 网页引擎-switch-touch-area')));
     await tester.pump();
     expect(display.htmlWebViewEnabled, isTrue);
-    expect(find.byKey(const ValueKey('Web 阅读器-setting-detail')), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('Web 阅读器-switch-touch-area')));
+    expect(
+      find.byKey(const ValueKey('HTML 网页引擎-setting-detail')),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const ValueKey('HTML 网页引擎-switch-touch-area')));
     await tester.pump();
     expect(display.htmlWebViewEnabled, isFalse);
 
     // 文字区域只负责打开长说明，不会同时切换开关。
-    await tester.tap(find.text('Web 阅读器'));
+    await tester.tap(find.text('HTML 网页引擎'));
     await tester.pumpAndSettle();
     expect(display.htmlWebViewEnabled, isFalse);
     expect(
-      find.byKey(const ValueKey('Web 阅读器-setting-detail')),
+      find.byKey(const ValueKey('HTML 网页引擎-setting-detail')),
       findsOneWidget,
     );
-    expect(find.textContaining('CSS 与 JavaScript'), findsOneWidget);
+    expect(find.textContaining('复杂样式或脚本'), findsOneWidget);
     await tester.tap(
-      find.byKey(const ValueKey('Web 阅读器-detail-switch-touch-area')),
+      find.byKey(const ValueKey('HTML 网页引擎-detail-switch-touch-area')),
     );
     await tester.pump();
     expect(display.htmlWebViewEnabled, isTrue);
@@ -1498,7 +1536,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('应用配色'));
+    await tester.tap(find.text('主题颜色'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('自定义颜色'));
     await tester.pumpAndSettle();
@@ -1536,8 +1574,8 @@ void main() {
       ),
     );
 
-    await _scrollSettingsUntilVisible(tester, find.text('Markdown 排版风格'));
-    await tester.tap(find.text('Markdown 排版风格'));
+    await _scrollSettingsUntilVisible(tester, find.text('正文配色'));
+    await tester.tap(find.text('正文配色'));
     await tester.pumpAndSettle();
     var wheel = find.byKey(const ValueKey('markdown-theme-wheel'));
     expect(wheel, findsOneWidget);
@@ -1556,8 +1594,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(display.markdownThemeId, 'paper-warm');
 
-    await _scrollSettingsUntilVisible(tester, find.text('代码块外观'));
-    await tester.tap(find.text('代码块外观'));
+    await _scrollSettingsUntilVisible(tester, find.text('代码配色'));
+    await tester.tap(find.text('代码配色'));
     await tester.pumpAndSettle();
     wheel = find.byKey(const ValueKey('code-highlight-theme-wheel'));
     expect(wheel, findsOneWidget);
@@ -1587,9 +1625,9 @@ void main() {
       ),
     );
 
-    await _scrollSettingsUntilVisible(tester, find.text('Markdown 渲染模式'));
+    await _scrollSettingsUntilVisible(tester, find.text('长文加载与选择'));
     expect(find.text('分段渲染'), findsOneWidget);
-    await tester.tap(find.text('Markdown 渲染模式'));
+    await tester.tap(find.text('长文加载与选择'));
     await tester.pumpAndSettle();
 
     expect(find.text('分段渲染'), findsWidgets);

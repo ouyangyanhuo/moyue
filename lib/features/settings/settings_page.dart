@@ -654,33 +654,37 @@ class SettingsPageState extends State<SettingsPage> {
     final debug = DebugService.instance;
     final query = _query.trim().toLowerCase();
     final displayTerms = [
-      '显示主题配色莫奈自定义颜色夜间深色墨模式护眼字体衬线Claude字号大小',
+      '显示主题配色莫奈自定义颜色夜间深色墨模式护眼纸面',
       l10n.displaySection,
       l10n.appColors,
       l10n.monetColors,
       l10n.customColor,
       l10n.nightMode,
       l10n.inkMode,
+    ].join(' ').toLowerCase();
+    final typographyTerms = [
+      '字体衬线Claude字号大小文字',
+      l10n.typographySection,
       l10n.sansSerifFont,
       l10n.softwareFontSize,
     ].join(' ').toLowerCase();
     final generalTerms = [
-      '通用语言中文英文国际化i18n',
+      '通用语言中文英文国际化i18n动画动效预见性返回手势',
       l10n.generalSection,
+      l10n.reduceMotion,
+      l10n.predictiveBack,
       l10n.language,
       l10n.chinese,
       l10n.english,
     ].join(' ').toLowerCase();
     final readingTerms = [
-      '阅读动画翻页动效HTML WebView网页原生预见性返回手势Markdown排版代码块外观分段整体渲染全文选择复制性能',
+      '阅读HTML WebView网页原生Markdown排版代码块外观分段整体渲染全文选择复制性能',
       l10n.readingSection,
       l10n.markdownRenderingMode,
       l10n.segmentedRendering,
       l10n.wholeDocumentRendering,
       l10n.markdownRenderingStyle,
       l10n.codeBlockAppearance,
-      l10n.reduceMotion,
-      l10n.predictiveBack,
       l10n.webReader,
       l10n.nativeLayoutEngine,
     ].join(' ').toLowerCase();
@@ -696,6 +700,7 @@ class SettingsPageState extends State<SettingsPage> {
       l10n.clearApplicationData,
     ].join(' ').toLowerCase();
     final showDisplay = query.isEmpty || displayTerms.contains(query);
+    final showTypography = query.isEmpty || typographyTerms.contains(query);
     final showGeneral = query.isEmpty || generalTerms.contains(query);
     final showReading = query.isEmpty || readingTerms.contains(query);
     final showDebug = query.isEmpty || debugTerms.contains(query);
@@ -752,6 +757,34 @@ class SettingsPageState extends State<SettingsPage> {
                       onTap: () => _chooseThemePreference(display),
                     ),
                     const Divider(indent: 56),
+                    _GlassSwitchTile(
+                      value: display.isInkMode,
+                      onChanged: (value) =>
+                          _requestInkModeChange(display, value),
+                      icon: Icons.water_drop_outlined,
+                      title: l10n.inkMode,
+                      subtitle: display.isInkMode
+                          ? l10n.enabled
+                          : l10n.disabled,
+                      onDetails: () => _showSwitchDetail(
+                        listenable: display,
+                        icon: Icons.water_drop_outlined,
+                        title: l10n.inkMode,
+                        description: l10n.inkModeDescription,
+                        value: () => display.isInkMode,
+                        onChanged: (value) =>
+                            _requestInkModeChange(display, value),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (showTypography) ...[
+              SliverToBoxAdapter(child: SectionLabel(l10n.typographySection)),
+              SliverToBoxAdapter(
+                child: _SettingsCard(
+                  children: [
                     _SettingSummaryTile(
                       icon: Icons.font_download_outlined,
                       title: l10n.sansSerifFont,
@@ -780,45 +813,6 @@ class SettingsPageState extends State<SettingsPage> {
                               title: l10n.softwareFontSize,
                             )
                           : _chooseFontSize(display),
-                    ),
-                    const Divider(indent: 56),
-                    _GlassSwitchTile(
-                      value: display.isInkMode,
-                      // 开/关都会弹出重启确认；确认后立即应用并尝试重启。
-                      onChanged: (value) =>
-                          _requestInkModeChange(display, value),
-                      icon: Icons.water_drop_outlined,
-                      title: l10n.inkMode,
-                      subtitle: display.isInkMode
-                          ? l10n.enabled
-                          : l10n.disabled,
-                      onDetails: () => _showSwitchDetail(
-                        listenable: display,
-                        icon: Icons.water_drop_outlined,
-                        title: l10n.inkMode,
-                        description: l10n.inkModeDescription,
-                        value: () => display.isInkMode,
-                        onChanged: (value) =>
-                            _requestInkModeChange(display, value),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            if (showGeneral) ...[
-              SliverToBoxAdapter(child: SectionLabel(l10n.generalSection)),
-              SliverToBoxAdapter(
-                child: _SettingsCard(
-                  children: [
-                    _SettingSummaryTile(
-                      icon: Icons.translate_rounded,
-                      title: l10n.language,
-                      status: _localePreferenceLabel(
-                        context,
-                        display.localePreference,
-                      ),
-                      onTap: () => _chooseLocalePreference(display),
                     ),
                   ],
                 ),
@@ -872,6 +866,53 @@ class SettingsPageState extends State<SettingsPage> {
                           : _chooseCodeBlockStyle(display),
                     ),
                     const Divider(indent: 56),
+                    _GlassSwitchTile(
+                      value: display.htmlWebViewEnabled,
+                      onChanged: display.setHtmlWebViewEnabled,
+                      icon: Icons.language_rounded,
+                      title: l10n.webReader,
+                      subtitle: display.htmlWebViewEnabled
+                          ? 'WebView'
+                          : l10n.nativeFlutter,
+                      onDetails: () => _showSwitchDetail(
+                        listenable: display,
+                        icon: Icons.language_rounded,
+                        title: l10n.webReader,
+                        description: l10n.webReaderDescription,
+                        value: () => display.htmlWebViewEnabled,
+                        onChanged: display.setHtmlWebViewEnabled,
+                        statusBuilder: (value) =>
+                            value ? 'WebView' : l10n.nativeFlutter,
+                      ),
+                    ),
+                    const Divider(indent: 56),
+                    _SettingSummaryTile(
+                      icon: Icons.auto_awesome_motion_outlined,
+                      title: l10n.nativeLayoutEngine,
+                      status: display.htmlWebViewEnabled
+                          ? l10n.markdownOnly
+                          : l10n.markdownAndHtml,
+                      onTap: () => _showNativeEngineDetail(display),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (showGeneral) ...[
+              SliverToBoxAdapter(child: SectionLabel(l10n.generalSection)),
+              SliverToBoxAdapter(
+                child: _SettingsCard(
+                  children: [
+                    _SettingSummaryTile(
+                      icon: Icons.translate_rounded,
+                      title: l10n.language,
+                      status: _localePreferenceLabel(
+                        context,
+                        display.localePreference,
+                      ),
+                      onTap: () => _chooseLocalePreference(display),
+                    ),
+                    const Divider(indent: 56),
                     // 墨模式开启时由墨模式接管：强制减少动态效果。
                     if (display.isInkMode)
                       _SettingSummaryTile(
@@ -902,8 +943,8 @@ class SettingsPageState extends State<SettingsPage> {
                           onChanged: display.setReduceMotion,
                         ),
                       ),
-                      const Divider(indent: 56),
                     ],
+                    const Divider(indent: 56),
                     // 墨模式接管：预见性返回强制关闭。
                     if (display.isInkMode)
                       _SettingSummaryTile(
@@ -936,36 +977,7 @@ class SettingsPageState extends State<SettingsPage> {
                               value ? l10n.predictiveBack : l10n.standardBack,
                         ),
                       ),
-                      const Divider(indent: 56),
                     ],
-                    _GlassSwitchTile(
-                      value: display.htmlWebViewEnabled,
-                      onChanged: display.setHtmlWebViewEnabled,
-                      icon: Icons.language_rounded,
-                      title: l10n.webReader,
-                      subtitle: display.htmlWebViewEnabled
-                          ? 'WebView'
-                          : l10n.nativeFlutter,
-                      onDetails: () => _showSwitchDetail(
-                        listenable: display,
-                        icon: Icons.language_rounded,
-                        title: l10n.webReader,
-                        description: l10n.webReaderDescription,
-                        value: () => display.htmlWebViewEnabled,
-                        onChanged: display.setHtmlWebViewEnabled,
-                        statusBuilder: (value) =>
-                            value ? 'WebView' : l10n.nativeFlutter,
-                      ),
-                    ),
-                    const Divider(indent: 56),
-                    _SettingSummaryTile(
-                      icon: Icons.auto_awesome_motion_outlined,
-                      title: l10n.nativeLayoutEngine,
-                      status: display.htmlWebViewEnabled
-                          ? l10n.markdownOnly
-                          : l10n.markdownAndHtml,
-                      onTap: () => _showNativeEngineDetail(display),
-                    ),
                   ],
                 ),
               ),
@@ -1020,6 +1032,7 @@ class SettingsPageState extends State<SettingsPage> {
               ),
             ],
             if (!showDisplay &&
+                !showTypography &&
                 !showGeneral &&
                 !showReading &&
                 !showStorage &&

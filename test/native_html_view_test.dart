@@ -14,6 +14,31 @@ import 'package:moyue_application/services/text_decoder.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  for (final source in [
+    'missing.png',
+    'file:///missing.png',
+    'data:image/png;base64,not-valid-base64!',
+    'https://example.invalid/missing.png',
+  ]) {
+    testWidgets('HTML 图片 $source 失败显示统一占位', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: NativeHtmlView(
+                data: '<p>保留正文</p><img src="$source">',
+                resourceLoader: (_) async => null,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('引用的资源不存在'), findsOneWidget);
+    });
+  }
+
   testWidgets('HTML 缺少样式和图片时保留正文并显示缺失占位', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

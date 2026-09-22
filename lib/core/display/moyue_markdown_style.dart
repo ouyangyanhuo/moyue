@@ -256,16 +256,19 @@ MarkdownStyleSheet buildMoyueMarkdownStyleSheet(BuildContext context) {
       border: Border(left: BorderSide(color: palette.accent, width: 3.5)),
       borderRadius: BorderRadius.circular(13),
     ),
-    code: secondaryBody.copyWith(
+    // Inline code stays in the paragraph's TextSpan flow. Do not inherit
+    // bodyMedium tracking/word spacing or introduce a separate line height.
+    code: TextStyle(
       fontFamily: 'monospace',
       fontFamilyFallback: const [
         'Noto Sans Mono',
         'JetBrains Mono',
         'Courier New',
       ],
-      fontSize: (secondaryBody.fontSize ?? 15) * 0.91,
-      height: 1.48,
-      fontWeight: FontWeight.w600,
+      fontSize: (body.fontSize ?? 17) * 0.9,
+      letterSpacing: 0,
+      wordSpacing: 0,
+      fontWeight: FontWeight.w500,
       color: palette.inlineCodeForeground,
       backgroundColor: palette.inlineCodeSurface,
     ),

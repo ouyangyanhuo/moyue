@@ -23,8 +23,9 @@ void main() {
                 sessionCache: cache,
                 loader: () async {
                   reads++;
-                  if (failure == 'throws')
+                  if (failure == 'throws') {
                     throw StateError('missing private/path.png');
+                  }
                   return failure == 'missing'
                       ? null
                       : Uint8List.fromList([1, 2, 3]);

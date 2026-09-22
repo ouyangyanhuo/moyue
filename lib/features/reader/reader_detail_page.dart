@@ -361,7 +361,10 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
                         bottomSampleY:
                             mediaQuery.size.height - readerBottomInset + 48,
                         onChanged: _updateOverlayTone,
-                        child: readerContent,
+                        child: MoyuePaperSurface(
+                          color: readerSurface,
+                          child: readerContent,
+                        ),
                       ),
               ),
               if ((display?.isInkMode ?? false) && !useWebView)

@@ -12,6 +12,66 @@ import 'package:moyue_application/models/reading_document.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets('整体渲染允许重复块公式和缺失图片共存', (tester) async {
+    final display = MoyueDisplayPreferences()
+      ..setMarkdownRenderingMode(MarkdownRenderingMode.wholeDocument);
+    addTearDown(display.dispose);
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: MaterialApp(
+          home: ReaderDetailPage(
+            document: ReadingDocument(
+              id: 'repeat-math-missing-image',
+              title: '公式与缺失图片',
+              content: '\$\$a+b\$\$\n\n![missing](missing.png)\n\n\$\$a+b\$\$',
+              kind: DocumentKind.markdown,
+              updatedAt: DateTime(2026),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('引用的资源不存在'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('markdown-latex-block')),
+      findsNWidgets(2),
+    );
+  });
+
+  for (final expression in [
+    r'\frac{a}{b}+\sqrt[3]{x}',
+    r'\sum_{i=1}^{n}x_i',
+    r'\begin{matrix}a&b\\c&d\end{matrix}',
+    r'\begin{aligned}a&=b\\c&=d\end{aligned}',
+    r'\phantom{x}+\hat{y}',
+    'é+a',
+  ]) {
+    testWidgets('相同复杂公式同时显示时不共享渲染 Key: $expression', (tester) async {
+      final cache = MoyueLatexRenderCache();
+      Widget formula() => cache.resolve(
+        expression: expression,
+        display: true,
+        style: const TextStyle(fontSize: 16, color: Colors.black),
+        errorColor: Colors.grey,
+        fallbackText: expression,
+        textScaleFactor: 1,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: Column(children: [formula(), formula()])),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.byType(Math), findsNWidgets(2));
+      expect(find.byKey(const ValueKey('markdown-latex-error')), findsNothing);
+      expect(cache.debugParseCount, 1);
+    });
+  }
+
   test('Markdown LaTeX 语法识别行内与块级公式', () {
     final nodes =
         md.Document(
@@ -74,7 +134,8 @@ $$
 
     final first = resolve('a+b');
     final reused = resolve('a+b');
-    expect(identical(first, reused), isTrue);
+    // Reuse parsing, but never mount one keyed math subtree twice.
+    expect(identical(first, reused), isFalse);
     expect(cache.debugParseCount, 1);
 
     resolve('c+d');

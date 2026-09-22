@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:flutter_math_fork/ast.dart' as math_ast;
 import 'package:markdown/markdown.dart' as md;
 import 'package:moyue_application/core/display/moyue_markdown_style.dart';
 
@@ -12,11 +13,11 @@ const String moyueBlockLatexTag = 'moyue-latex-block';
 
 final MoyueLatexRenderCache moyueLatexRenderCache = MoyueLatexRenderCache();
 
-/// Bounded LRU cache for parsed TeX widgets.
+/// Bounded LRU cache for unmounted parsed TeX templates.
 ///
 /// Markdown builds cheap [_MoyueLazyMath] placeholders for the whole AST.
 /// Actual TeX parsing only happens when a formula reaches the viewport, and
-/// revisiting an equation reuses the parsed immutable syntax tree.
+/// revisiting an equation reuses parsing, not live keyed render subtrees.
 class MoyueLatexRenderCache {
   MoyueLatexRenderCache({this.maximumEntries = 128})
     : assert(maximumEntries > 0);
@@ -45,7 +46,7 @@ class MoyueLatexRenderCache {
     final cached = _entries.remove(key);
     if (cached != null) {
       _entries[key] = cached;
-      return cached;
+      return _IsolatedMath(template: cached);
     }
 
     _parseCount++;
@@ -66,7 +67,7 @@ class MoyueLatexRenderCache {
     while (_entries.length > maximumEntries) {
       _entries.remove(_entries.keys.first);
     }
-    return parsed;
+    return _IsolatedMath(template: parsed);
   }
 
   @visibleForTesting
@@ -80,6 +81,113 @@ class MoyueLatexRenderCache {
     _entries.clear();
     _parseCount = 0;
   }
+}
+
+/// flutter_math's AST caches widgets containing GlobalKeys. Each mounted
+/// occurrence needs its own row/branch nodes, even for identical source TeX.
+class _IsolatedMath extends StatefulWidget {
+  const _IsolatedMath({required this.template});
+
+  final Math template;
+
+  @override
+  State<_IsolatedMath> createState() => _IsolatedMathState();
+}
+
+class _IsolatedMathState extends State<_IsolatedMath> {
+  late Math _math = _instantiate();
+
+  Math _instantiate() {
+    final template = widget.template;
+    final ast = template.ast;
+    return Math(
+      ast: ast == null
+          ? null
+          : math_ast.SyntaxTree(
+              greenRoot:
+                  _copyMathNode(ast.greenRoot) as math_ast.EquationRowNode,
+            ),
+      parseError: template.parseError,
+      mathStyle: template.mathStyle,
+      textStyle: template.textStyle,
+      textScaleFactor: template.textScaleFactor,
+      onErrorFallback: template.onErrorFallback,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _IsolatedMath oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.template, widget.template)) _math = _instantiate();
+  }
+
+  @override
+  Widget build(BuildContext context) => _math;
+}
+
+math_ast.GreenNode _copyMathNode(math_ast.GreenNode node) {
+  // Unicode accented symbols can synthesize keyed equation rows when built.
+  if (node is math_ast.SymbolNode) {
+    return math_ast.SymbolNode(
+      symbol: node.symbol,
+      variantForm: node.variantForm,
+      overrideAtomType: node.overrideAtomType,
+      overrideFont: node.overrideFont,
+      mode: node.mode,
+    );
+  }
+  // Phantom is classified as a leaf by the package, but owns a hidden row.
+  if (node is math_ast.PhantomNode) {
+    return math_ast.PhantomNode(
+      phantomChild:
+          _copyMathNode(node.phantomChild) as math_ast.EquationRowNode,
+      zeroWidth: node.zeroWidth,
+      zeroHeight: node.zeroHeight,
+      zeroDepth: node.zeroDepth,
+    );
+  }
+  // Matrix updateChildren in 0.7.x flattens/slices rows incorrectly and does
+  // not accept nullable cells. Copy its public two-dimensional body instead.
+  if (node is math_ast.MatrixNode) {
+    return node.copyWith(
+      body: [
+        for (final row in node.body)
+          [
+            for (final cell in row)
+              cell == null
+                  ? null
+                  : _copyMathNode(cell) as math_ast.EquationRowNode,
+          ],
+      ],
+    );
+  }
+  if (node is math_ast.EquationArrayNode) {
+    return node.copyWith(
+      body: [
+        for (final row in node.body)
+          _copyMathNode(row) as math_ast.EquationRowNode,
+      ],
+    );
+  }
+  final children = node.children.map(
+    (child) => child == null ? null : _copyMathNode(child),
+  );
+  // Preserve the covariant child-list types required by updateChildren.
+  if (node is math_ast.SlotableNode<math_ast.EquationRowNode>) {
+    return node.updateChildren(
+      children.cast<math_ast.EquationRowNode>().toList(),
+    );
+  }
+  if (node is math_ast.SlotableNode<math_ast.EquationRowNode?>) {
+    return node.updateChildren(
+      children.cast<math_ast.EquationRowNode?>().toList(),
+    );
+  }
+  if (node is math_ast.ParentableNode<math_ast.GreenNode>) {
+    return node.updateChildren(children.cast<math_ast.GreenNode>().toList());
+  }
+  // Remaining leaves (spacing/cursor nodes) have no keyed descendants.
+  return node;
 }
 
 class _LatexCacheKey {
@@ -245,7 +353,8 @@ class _MoyueLazyMathState extends State<_MoyueLazyMath> {
   Widget build(BuildContext context) {
     // Off-screen export/share render trees have no vertical Scrollable and must
     // render eagerly; the document reader always takes the lazy branch.
-    if (!_activated && Scrollable.maybeOf(context, axis: Axis.vertical) != null) {
+    if (!_activated &&
+        Scrollable.maybeOf(context, axis: Axis.vertical) != null) {
       _scheduleVisibilityCheck();
       return _buildPlaceholder();
     }
@@ -428,22 +537,26 @@ class MoyueLatexBuilder extends MarkdownElementBuilder {
       );
     }
 
-    return Container(
-      key: const ValueKey('markdown-latex-block'),
+    // Keep the diagnostic key local to this formula. MarkdownBody inserts
+    // builder results as siblings in one Column, including repeated formulas.
+    return SizedBox(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      decoration: BoxDecoration(
-        color: palette.inlineCodeSurface.withValues(alpha: 0.58),
-        border: Border.all(color: palette.outline.withValues(alpha: 0.8)),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) => SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: constraints.maxWidth),
-            child: Center(child: formula),
+      child: Container(
+        key: const ValueKey('markdown-latex-block'),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        decoration: BoxDecoration(
+          color: palette.inlineCodeSurface.withValues(alpha: 0.58),
+          border: Border.all(color: palette.outline.withValues(alpha: 0.8)),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: Center(child: formula),
+            ),
           ),
         ),
       ),

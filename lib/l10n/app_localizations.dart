@@ -173,7 +173,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Calm reading, tuned to you'**
+  /// **'Paper, type, and reading—your way'**
   String get settingsSubtitle;
 
   /// No description provided for @searchSettings.
@@ -185,25 +185,31 @@ abstract class AppLocalizations {
   /// No description provided for @displaySection.
   ///
   /// In en, this message translates to:
-  /// **'Appearance'**
+  /// **'Appearance & paper'**
   String get displaySection;
+
+  /// No description provided for @typographySection.
+  ///
+  /// In en, this message translates to:
+  /// **'Type & size'**
+  String get typographySection;
 
   /// No description provided for @generalSection.
   ///
   /// In en, this message translates to:
-  /// **'General'**
+  /// **'Interaction & language'**
   String get generalSection;
 
   /// No description provided for @readingSection.
   ///
   /// In en, this message translates to:
-  /// **'Reading'**
+  /// **'Reading & content'**
   String get readingSection;
 
   /// No description provided for @debugSection.
   ///
   /// In en, this message translates to:
-  /// **'Debug'**
+  /// **'Developer & diagnostics'**
   String get debugSection;
 
   /// No description provided for @noMatchingSettings.
@@ -215,7 +221,7 @@ abstract class AppLocalizations {
   /// No description provided for @appColors.
   ///
   /// In en, this message translates to:
-  /// **'App colors'**
+  /// **'Accent color'**
   String get appColors;
 
   /// No description provided for @monetColors.
@@ -233,7 +239,7 @@ abstract class AppLocalizations {
   /// No description provided for @appColorsDescription.
   ///
   /// In en, this message translates to:
-  /// **'On Android 12 or later, Moyue reads the home wallpaper\'s public primary color and builds a Material palette from it. Turn this off to choose a preset or enter any hexadecimal app color.'**
+  /// **'Choose the accent for buttons, selections, and notices. Supported Android devices can follow the wallpaper; otherwise use a preset or the color picker.'**
   String get appColorsDescription;
 
   /// No description provided for @useSystemMonet.
@@ -353,7 +359,7 @@ abstract class AppLocalizations {
   /// No description provided for @claudeStyleSans.
   ///
   /// In en, this message translates to:
-  /// **'Claude-style serif'**
+  /// **'Serif'**
   String get claudeStyleSans;
 
   /// No description provided for @roundedSans.
@@ -401,7 +407,7 @@ abstract class AppLocalizations {
   /// No description provided for @inkModeDescription.
   ///
   /// In en, this message translates to:
-  /// **'A global e-paper presentation with 16 gray levels, paper texture, and a dedicated serif face. Scrolling feels closer to a real e-reader. Switching requires a restart.'**
+  /// **'Use a green e-paper palette, system serif type, and reduced motion. Switching requires a restart; your font and color preferences are preserved.'**
   String get inkModeDescription;
 
   /// No description provided for @inkModeRestartDescription.
@@ -491,7 +497,7 @@ abstract class AppLocalizations {
   /// No description provided for @reduceMotionDescription.
   ///
   /// In en, this message translates to:
-  /// **'Reduce page transitions, list state animations, and decorative motion to lower visual distraction and refresh pressure on low-refresh displays.'**
+  /// **'Reduce page transitions, sheet animations, and decorative motion for a calmer interface without changing how reading or controls work.'**
   String get reduceMotionDescription;
 
   /// No description provided for @enabled.
@@ -527,7 +533,7 @@ abstract class AppLocalizations {
   /// No description provided for @webReader.
   ///
   /// In en, this message translates to:
-  /// **'Web reader'**
+  /// **'HTML web engine'**
   String get webReader;
 
   /// No description provided for @nativeFlutter.
@@ -539,7 +545,7 @@ abstract class AppLocalizations {
   /// No description provided for @webReaderDescription.
   ///
   /// In en, this message translates to:
-  /// **'When enabled, HTML uses the system WebView for broader web, CSS, and JavaScript compatibility. When disabled, HTML uses native Flutter layout. Markdown always remains native.'**
+  /// **'Use system WebView for HTML with complex styling or scripts. Turn off for native layout. Markdown always uses the native renderer.'**
   String get webReaderDescription;
 
   /// No description provided for @nativeLayoutEngine.
@@ -575,7 +581,7 @@ abstract class AppLocalizations {
   /// No description provided for @markdownRenderingMode.
   ///
   /// In en, this message translates to:
-  /// **'Markdown rendering mode'**
+  /// **'Loading & selection'**
   String get markdownRenderingMode;
 
   /// No description provided for @segmentedRendering.
@@ -605,7 +611,7 @@ abstract class AppLocalizations {
   /// No description provided for @markdownRenderingStyle.
   ///
   /// In en, this message translates to:
-  /// **'Markdown color theme'**
+  /// **'Text color theme'**
   String get markdownRenderingStyle;
 
   /// No description provided for @moyueAdaptiveMarkdownTheme.
@@ -659,7 +665,7 @@ abstract class AppLocalizations {
   /// No description provided for @codeBlockAppearance.
   ///
   /// In en, this message translates to:
-  /// **'Code highlighting theme'**
+  /// **'Code color theme'**
   String get codeBlockAppearance;
 
   /// No description provided for @vscodeAutomaticTheme.
@@ -905,7 +911,7 @@ abstract class AppLocalizations {
   /// No description provided for @supportedFilesDescription.
   ///
   /// In en, this message translates to:
-  /// **'Supports .zip, .moyue, .md, .html, and .htm.\n\nZIP or .moyue packages must contain at least 2 files and include Markdown or HTML. Packages may contain only HTML, Markdown, CSS, JavaScript, common images, and videos. A folder is created automatically when there are more than 2 documents.'**
+  /// **'Supports md, html, htm, zip, and moyue.\nPackages need 2+ files, including a document; styles, scripts, images, and videos are allowed. More than 2 documents creates a folder.'**
   String get supportedFilesDescription;
 
   /// No description provided for @gotIt.
@@ -1655,7 +1661,7 @@ abstract class AppLocalizations {
   /// No description provided for @storageSection.
   ///
   /// In en, this message translates to:
-  /// **'Storage'**
+  /// **'Data & storage'**
   String get storageSection;
 
   /// No description provided for @clearCache.

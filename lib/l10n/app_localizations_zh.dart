@@ -50,28 +50,31 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsTitle => '设置';
 
   @override
-  String get settingsSubtitle => '护眼阅读，随你调整';
+  String get settingsSubtitle => '让纸面、文字与阅读习惯相合';
 
   @override
   String get searchSettings => '搜索设置';
 
   @override
-  String get displaySection => '显示';
+  String get displaySection => '外观与纸面';
 
   @override
-  String get generalSection => '通用';
+  String get typographySection => '文字与字号';
 
   @override
-  String get readingSection => '阅读';
+  String get generalSection => '交互与语言';
 
   @override
-  String get debugSection => '调试';
+  String get readingSection => '阅读与内容';
+
+  @override
+  String get debugSection => '开发与诊断';
 
   @override
   String get noMatchingSettings => '没有匹配的设置';
 
   @override
-  String get appColors => '应用配色';
+  String get appColors => '主题颜色';
 
   @override
   String get monetColors => '莫奈取色';
@@ -81,7 +84,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get appColorsDescription =>
-      'Android 12 及以上优先读取主屏壁纸公开的主色，并由墨阅生成 Material 配色；关闭后可选择预设颜色，或输入任意十六进制颜色作为软件主题色。';
+      '调整按钮、选中状态与提示的强调色。支持壁纸取色的 Android 设备可跟随壁纸；关闭后可选择预设色或用调色盘自定义。';
 
   @override
   String get useSystemMonet => '使用壁纸莫奈取色';
@@ -166,7 +169,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get inkModeDescription =>
-      '把应用重塑为16级灰阶、纸张纹理与专属宋体的全局阅读模式，滚动浏览更接近真实电子纸。切换需要重启墨阅。';
+      '使用绿色电子纸配色与系统衬线字体，减少动态效果。切换需重启，原有的字体和配色设置会保留。';
 
   @override
   String get inkModeRestartDescription =>
@@ -217,8 +220,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get reduceMotion => '减少动态效果';
 
   @override
-  String get reduceMotionDescription =>
-      '减少页面切换、列表状态变化和部分装饰动画，降低视觉干扰，也可减轻低刷新率设备的刷新压力。';
+  String get reduceMotionDescription => '减少页面切换、弹层和装饰动画，让界面更安静；不影响阅读和操作。';
 
   @override
   String get enabled => '已开启';
@@ -237,14 +239,14 @@ class AppLocalizationsZh extends AppLocalizations {
       '在支持的 Android 设备上，返回手势过程中会预览即将返回的页面。若遇到兼容问题，可关闭并使用普通返回行为。';
 
   @override
-  String get webReader => 'Web 阅读器';
+  String get webReader => 'HTML 网页引擎';
 
   @override
   String get nativeFlutter => '原生 Flutter';
 
   @override
   String get webReaderDescription =>
-      '开启后 HTML 使用系统 WebView 渲染，以获得更完整的网页、CSS 与 JavaScript 兼容性；关闭后使用 Flutter 原生排版。Markdown 始终使用原生渲染。';
+      '开启后使用系统 WebView，适合包含复杂样式或脚本的 HTML。关闭后使用原生排版；Markdown 始终原生渲染。';
 
   @override
   String get nativeLayoutEngine => '原生排版引擎';
@@ -264,7 +266,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get markdownAndHtml => 'Markdown 与 HTML';
 
   @override
-  String get markdownRenderingMode => 'Markdown 渲染模式';
+  String get markdownRenderingMode => '长文加载与选择';
 
   @override
   String get segmentedRendering => '分段渲染';
@@ -281,7 +283,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '一次构建整篇文档，支持跨越未显示段落选择并复制全文；超长文会占用更多内存。';
 
   @override
-  String get markdownRenderingStyle => 'Markdown 排版风格';
+  String get markdownRenderingStyle => '正文配色';
 
   @override
   String get moyueAdaptiveMarkdownTheme => '墨阅自适应';
@@ -308,7 +310,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get solarizedDarkMarkdownThemeDescription => 'Solarized 经典深青色低对比阅读配色';
 
   @override
-  String get codeBlockAppearance => '代码块外观';
+  String get codeBlockAppearance => '代码配色';
 
   @override
   String get vscodeAutomaticTheme => 'VS Code 自动';
@@ -439,7 +441,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get supportedFilesDescription =>
-      '支持 .zip、.moyue、.md、.html 和 .htm。\n\nZIP 或 .moyue 至少需要 2 个文件，并包含 Markdown 或 HTML。包内只允许 HTML、Markdown、CSS、JS、常见图片和视频；文档数量大于 2 时会自动创建文件夹。';
+      '支持 md、html、htm、zip、moyue。\n文档包至少含 2 个文件（须含文档），可附样式、脚本、图片和视频；超过 2 篇文档自动建文件夹。';
 
   @override
   String get gotIt => '知道了';
@@ -856,7 +858,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get referencedResourceMissing => '引用的资源不存在';
 
   @override
-  String get storageSection => '存储';
+  String get storageSection => '数据与存储';
 
   @override
   String get clearCache => '清空缓存';

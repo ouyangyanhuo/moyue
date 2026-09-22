@@ -21,7 +21,7 @@ void main() {
     );
 
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('App colors'), findsOneWidget);
+    expect(find.text('Accent color'), findsOneWidget);
     expect(find.text('Night mode'), findsOneWidget);
     expect(find.text('Font style'), findsOneWidget);
     expect(find.text('设置'), findsNothing);
@@ -43,7 +43,7 @@ void main() {
     );
 
     expect(find.text('设置'), findsOneWidget);
-    expect(find.text('应用配色'), findsOneWidget);
+    expect(find.text('主题颜色'), findsOneWidget);
     expect(find.text('夜间模式'), findsOneWidget);
     expect(find.text('字体风格'), findsOneWidget);
   });

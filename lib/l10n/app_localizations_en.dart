@@ -50,28 +50,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsTitle => 'Settings';
 
   @override
-  String get settingsSubtitle => 'Calm reading, tuned to you';
+  String get settingsSubtitle => 'Paper, type, and reading—your way';
 
   @override
   String get searchSettings => 'Search settings';
 
   @override
-  String get displaySection => 'Appearance';
+  String get displaySection => 'Appearance & paper';
 
   @override
-  String get generalSection => 'General';
+  String get typographySection => 'Type & size';
 
   @override
-  String get readingSection => 'Reading';
+  String get generalSection => 'Interaction & language';
 
   @override
-  String get debugSection => 'Debug';
+  String get readingSection => 'Reading & content';
+
+  @override
+  String get debugSection => 'Developer & diagnostics';
 
   @override
   String get noMatchingSettings => 'No matching settings';
 
   @override
-  String get appColors => 'App colors';
+  String get appColors => 'Accent color';
 
   @override
   String get monetColors => 'Monet colors';
@@ -81,7 +84,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appColorsDescription =>
-      'On Android 12 or later, Moyue reads the home wallpaper\'s public primary color and builds a Material palette from it. Turn this off to choose a preset or enter any hexadecimal app color.';
+      'Choose the accent for buttons, selections, and notices. Supported Android devices can follow the wallpaper; otherwise use a preset or the color picker.';
 
   @override
   String get useSystemMonet => 'Use wallpaper Monet colors';
@@ -143,7 +146,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get systemSans => 'System font';
 
   @override
-  String get claudeStyleSans => 'Claude-style serif';
+  String get claudeStyleSans => 'Serif';
 
   @override
   String get roundedSans => 'Rounded sans-serif';
@@ -171,7 +174,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inkModeDescription =>
-      'A global e-paper presentation with 16 gray levels, paper texture, and a dedicated serif face. Scrolling feels closer to a real e-reader. Switching requires a restart.';
+      'Use a green e-paper palette, system serif type, and reduced motion. Switching requires a restart; your font and color preferences are preserved.';
 
   @override
   String get inkModeRestartDescription =>
@@ -226,7 +229,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reduceMotionDescription =>
-      'Reduce page transitions, list state animations, and decorative motion to lower visual distraction and refresh pressure on low-refresh displays.';
+      'Reduce page transitions, sheet animations, and decorative motion for a calmer interface without changing how reading or controls work.';
 
   @override
   String get enabled => 'On';
@@ -245,14 +248,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'Preview the destination while swiping back on supported Android devices. Turn this off to use standard back behavior if compatibility issues occur.';
 
   @override
-  String get webReader => 'Web reader';
+  String get webReader => 'HTML web engine';
 
   @override
   String get nativeFlutter => 'Native Flutter';
 
   @override
   String get webReaderDescription =>
-      'When enabled, HTML uses the system WebView for broader web, CSS, and JavaScript compatibility. When disabled, HTML uses native Flutter layout. Markdown always remains native.';
+      'Use system WebView for HTML with complex styling or scripts. Turn off for native layout. Markdown always uses the native renderer.';
 
   @override
   String get nativeLayoutEngine => 'Native layout engine';
@@ -272,7 +275,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get markdownAndHtml => 'Markdown and HTML';
 
   @override
-  String get markdownRenderingMode => 'Markdown rendering mode';
+  String get markdownRenderingMode => 'Loading & selection';
 
   @override
   String get segmentedRendering => 'Segmented rendering';
@@ -289,7 +292,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Build the entire document at once so selection and copy can span off-screen paragraphs. Very long documents use more memory.';
 
   @override
-  String get markdownRenderingStyle => 'Markdown color theme';
+  String get markdownRenderingStyle => 'Text color theme';
 
   @override
   String get moyueAdaptiveMarkdownTheme => 'Moyue adaptive';
@@ -322,7 +325,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'The classic deep-cyan, low-contrast Solarized dark palette';
 
   @override
-  String get codeBlockAppearance => 'Code highlighting theme';
+  String get codeBlockAppearance => 'Code color theme';
 
   @override
   String get vscodeAutomaticTheme => 'VS Code automatic';
@@ -470,7 +473,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get supportedFilesDescription =>
-      'Supports .zip, .moyue, .md, .html, and .htm.\n\nZIP or .moyue packages must contain at least 2 files and include Markdown or HTML. Packages may contain only HTML, Markdown, CSS, JavaScript, common images, and videos. A folder is created automatically when there are more than 2 documents.';
+      'Supports md, html, htm, zip, and moyue.\nPackages need 2+ files, including a document; styles, scripts, images, and videos are allowed. More than 2 documents creates a folder.';
 
   @override
   String get gotIt => 'Got it';
@@ -906,7 +909,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get referencedResourceMissing => 'The referenced resource is missing';
 
   @override
-  String get storageSection => 'Storage';
+  String get storageSection => 'Data & storage';
 
   @override
   String get clearCache => 'Clear cache';

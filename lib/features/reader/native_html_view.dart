@@ -628,7 +628,12 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
       return const SizedBox(height: 120, child: MissingResourcePlaceholder());
     }
     final uri = Uri.tryParse(source);
-    if (uri != null && uri.hasScheme) return null;
+    // Only supported inline/network images may use the HTML image provider.
+    // file:/asset: references in imported documents are not app-owned assets;
+    // resolve them through the safe resource loader (or show the placeholder).
+    if (uri != null && const ['http', 'https', 'data'].contains(uri.scheme)) {
+      return null;
+    }
     final avatar = element.classes.contains('avatar');
     final declaredWidth = double.tryParse(element.attributes['width'] ?? '');
     final declaredHeight = double.tryParse(element.attributes['height'] ?? '');

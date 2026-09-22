@@ -648,12 +648,14 @@ class _EditorCanvas extends StatelessWidget {
     final l10n = context.l10n;
     return Padding(
       key: const ValueKey('edit'),
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      padding: const EdgeInsets.only(bottom: 12),
       child: DecoratedBox(
         key: const ValueKey('editor-writing-surface'),
         decoration: BoxDecoration(
           color: theme.colorScheme.surface.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(22),
+          image: (DisplayPreferencesScope.maybeOf(context)?.isInkMode ?? false)
+              ? null
+              : moyuePaperGrain(theme.colorScheme.surface),
         ),
         child: Column(
           children: [
@@ -729,7 +731,7 @@ class _PreviewCanvas extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = moyueMarkdownPaletteOf(context);
-    return ColoredBox(
+    return MoyuePaperSurface(
       color: palette.surface,
       child: Markdown(
         key: const ValueKey('preview'),
