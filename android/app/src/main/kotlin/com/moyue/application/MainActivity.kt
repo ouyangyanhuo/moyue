@@ -19,6 +19,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
+    private var editorKeyboardObserver: EditorKeyboardObserver? = null
     private var incomingFilesChannel: MethodChannel? = null
     private val pendingIncomingFiles = mutableListOf<Map<String, String>>()
     private val incomingFilesExecutor = Executors.newSingleThreadExecutor()
@@ -41,6 +42,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        editorKeyboardObserver?.dispose()
         incomingFilesChannel?.setMethodCallHandler(null)
         incomingFilesExecutor.shutdownNow()
         super.onDestroy()
@@ -63,6 +65,9 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        editorKeyboardObserver = EditorKeyboardObserver(
+            this, flutterEngine.dartExecutor.binaryMessenger
+        )
         incomingFilesChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "com.moyue.application/incoming_files"
@@ -92,6 +97,8 @@ class MainActivity : FlutterActivity() {
             "com.moyue.application/system"
         ).setMethodCallHandler { call, result ->
             when (call.method) {
+                "editorKeyboardEventsSupported" ->
+                    result.success(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
                 "restartApp" -> {
                     result.success(true)
                     Handler(Looper.getMainLooper()).post {

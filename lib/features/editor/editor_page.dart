@@ -20,6 +20,8 @@ import 'package:moyue_application/widgets/moyue_transient_message.dart';
 import 'package:moyue_application/widgets/image_lightbox.dart';
 import 'package:moyue_application/widgets/stable_reader_image.dart';
 
+import 'editor_keyboard_controller.dart';
+
 Route<ReadingDocument?> markdownEditorRoute(
   BuildContext context,
   Object? arguments,
@@ -158,194 +160,196 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = context.l10n;
-    return PopScope<ReadingDocument?>(
-      // 拦截系统返回：与「保存」一致，先落盘、再清理、最后退出，
-      // 保证磁盘正文始终包含已插入的图片链接，避免清理误删。
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        unawaited(_exitWithSave());
-      },
-      child: Scaffold(
-        resizeToAvoidBottomInset: false,
-        extendBody: true,
-        backgroundColor: Colors.transparent,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            const Positioned.fill(child: MoyueBackdrop()),
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 66),
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(22, 8, 22, 10),
-                      child: Row(
+    return _KeyboardStableViewport(
+      child: PopScope<ReadingDocument?>(
+        // 拦截系统返回：与「保存」一致，先落盘、再清理、最后退出，
+        // 保证磁盘正文始终包含已插入的图片链接，避免清理误删。
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          unawaited(_exitWithSave());
+        },
+        child: Scaffold(
+          resizeToAvoidBottomInset: false,
+          extendBody: true,
+          backgroundColor: Colors.transparent,
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              const Positioned.fill(child: MoyueBackdrop()),
+              SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 66),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(22, 8, 22, 10),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _dirty.value
+                                  ? Icons.cloud_upload_outlined
+                                  : Icons.cloud_done_outlined,
+                              size: 15,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              _saving
+                                  ? l10n.saving
+                                  : _dirty.value
+                                  ? l10n.draftQueued
+                                  : l10n.autoSaved,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              l10n.characterCount(
+                                _body.value.text.characters.length,
+                              ),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: AnimatedSwitcher(
+                          duration: moyueMotionDuration(
+                            context,
+                            const Duration(milliseconds: 220),
+                          ),
+                          child: _mode.value == 0
+                              ? _EditorCanvas(
+                                  title: _title.value,
+                                  body: _body.value,
+                                  titleFocus: _titleFocus,
+                                  bodyFocus: _bodyFocus,
+                                  bodyScrollController: _bodyScrollController,
+                                  keyboardInset: _settledKeyboardInset,
+                                )
+                              : _PreviewCanvas(
+                                  body: _body.value.text,
+                                  document: _currentDocument,
+                                  imageCache: _previewImageCache,
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    child: SizedBox(
+                      height: 44,
+                      child: Stack(
+                        alignment: Alignment.center,
                         children: [
-                          Icon(
-                            _dirty.value
-                                ? Icons.cloud_upload_outlined
-                                : Icons.cloud_done_outlined,
-                            size: 15,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 7),
-                          Text(
-                            _saving
-                                ? l10n.saving
-                                : _dirty.value
-                                ? l10n.draftQueued
-                                : l10n.autoSaved,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: MoyueGlassIconButton(
+                              icon: const Icon(
+                                CupertinoIcons.chevron_back,
+                                size: 21,
+                              ),
+                              onPressed: _exitWithSave,
+                              semanticLabel: l10n.back,
+                              size: 44,
+                              useOwnLayer: true,
+                              settings: moyueGlassSettings(context),
                             ),
                           ),
-                          const Spacer(),
-                          Text(
-                            l10n.characterCount(
-                              _body.value.text.characters.length,
-                            ),
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
+                          MoyueGlassTitlePill(
+                            width: 150,
+                            title: _title.value.text.trim().isEmpty
+                                ? l10n.newMarkdown
+                                : _title.value.text.trim(),
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                MoyueGlassIconButton(
+                                  icon: Icon(
+                                    _mode.value == 0
+                                        ? CupertinoIcons.eye
+                                        : CupertinoIcons.pencil,
+                                    size: 20,
+                                  ),
+                                  onPressed: () => setState(() {
+                                    _mode.value = _mode.value == 0 ? 1 : 0;
+                                  }),
+                                  semanticLabel: _mode.value == 0
+                                      ? l10n.preview
+                                      : l10n.continueEditing,
+                                  size: 44,
+                                  useOwnLayer: true,
+                                  settings: moyueGlassSettings(context),
+                                ),
+                                const SizedBox(width: 4),
+                                MoyueGlassIconButton(
+                                  icon: _saving
+                                      ? const SizedBox.square(
+                                          dimension: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          CupertinoIcons.check_mark_circled,
+                                          size: 21,
+                                        ),
+                                  onPressed: _saving ? null : _save,
+                                  semanticLabel: l10n.save,
+                                  size: 44,
+                                  useOwnLayer: true,
+                                  settings: moyueGlassSettings(context),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
-                    Expanded(
-                      child: AnimatedSwitcher(
-                        duration: moyueMotionDuration(
-                          context,
-                          const Duration(milliseconds: 220),
-                        ),
-                        child: _mode.value == 0
-                            ? _EditorCanvas(
-                                title: _title.value,
-                                body: _body.value,
-                                titleFocus: _titleFocus,
-                                bodyFocus: _bodyFocus,
-                                bodyScrollController: _bodyScrollController,
-                                keyboardInset: _settledKeyboardInset,
-                              )
-                            : _PreviewCanvas(
-                                body: _body.value.text,
-                                document: _currentDocument,
-                                imageCache: _previewImageCache,
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  child: SizedBox(
-                    height: 44,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: MoyueGlassIconButton(
-                            icon: const Icon(
-                              CupertinoIcons.chevron_back,
-                              size: 21,
-                            ),
-                            onPressed: _exitWithSave,
-                            semanticLabel: l10n.back,
-                            size: 44,
-                            useOwnLayer: true,
-                            settings: moyueGlassSettings(context),
-                          ),
-                        ),
-                        MoyueGlassTitlePill(
-                          width: 150,
-                          title: _title.value.text.trim().isEmpty
-                              ? l10n.newMarkdown
-                              : _title.value.text.trim(),
-                        ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              MoyueGlassIconButton(
-                                icon: Icon(
-                                  _mode.value == 0
-                                      ? CupertinoIcons.eye
-                                      : CupertinoIcons.pencil,
-                                  size: 20,
-                                ),
-                                onPressed: () => setState(() {
-                                  _mode.value = _mode.value == 0 ? 1 : 0;
-                                }),
-                                semanticLabel: _mode.value == 0
-                                    ? l10n.preview
-                                    : l10n.continueEditing,
-                                size: 44,
-                                useOwnLayer: true,
-                                settings: moyueGlassSettings(context),
-                              ),
-                              const SizedBox(width: 4),
-                              MoyueGlassIconButton(
-                                icon: _saving
-                                    ? const SizedBox.square(
-                                        dimension: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(
-                                        CupertinoIcons.check_mark_circled,
-                                        size: 21,
-                                      ),
-                                onPressed: _saving ? null : _save,
-                                semanticLabel: l10n.save,
-                                size: 44,
-                                useOwnLayer: true,
-                                settings: moyueGlassSettings(context),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
               ),
-            ),
-            _SettledKeyboardDock(
-              enabled: _mode.value == 0,
-              bodyFocus: _bodyFocus,
-              keyboardInset: _settledKeyboardInset,
-              child: _FormatBar(
-                onFormat: _applyFormat,
-                onInsertImage: _insertImage,
-                importingImage: _importingImage,
-              ),
-            ),
-            ValueListenableBuilder<double>(
-              valueListenable: _settledKeyboardInset,
-              builder: (context, keyboardInset, _) => Positioned.fill(
-                child: MoyueTransientMessageOverlay(
-                  message: _editorMessage,
-                  bottomInset: keyboardInset > 0
-                      ? keyboardInset + 76
-                      : MediaQuery.paddingOf(context).bottom + 20,
-                  onDismiss: _dismissMessage,
+              _SettledKeyboardDock(
+                enabled: _mode.value == 0,
+                bodyFocus: _bodyFocus,
+                keyboardInset: _settledKeyboardInset,
+                child: _FormatBar(
+                  onFormat: _applyFormat,
+                  onInsertImage: _insertImage,
+                  importingImage: _importingImage,
                 ),
               ),
-            ),
-          ],
+              ValueListenableBuilder<double>(
+                valueListenable: _settledKeyboardInset,
+                builder: (context, keyboardInset, _) => Positioned.fill(
+                  child: MoyueTransientMessageOverlay(
+                    message: _editorMessage,
+                    bottomInset: keyboardInset > 0
+                        ? keyboardInset + 76
+                        : MediaQuery.paddingOf(context).bottom + 20,
+                    onDismiss: _dismissMessage,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -764,6 +768,26 @@ class _PreviewCanvas extends StatelessWidget {
 
 enum _MarkdownFormat { heading, bold, italic, quote, list, link, code }
 
+/// Only this small boundary sees animated insets. Its child and inherited data
+/// stay identical throughout an IME transition; rotation/accessibility still flow.
+class _KeyboardStableViewport extends StatelessWidget {
+  const _KeyboardStableViewport({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return MediaQuery(
+      data: media.copyWith(
+        viewInsets: EdgeInsets.zero,
+        padding: media.viewPadding,
+      ),
+      child: child,
+    );
+  }
+}
+
 class _SettledKeyboardDock extends StatefulWidget {
   const _SettledKeyboardDock({
     required this.enabled,
@@ -781,28 +805,24 @@ class _SettledKeyboardDock extends StatefulWidget {
   State<_SettledKeyboardDock> createState() => _SettledKeyboardDockState();
 }
 
-class _SettledKeyboardDockState extends State<_SettledKeyboardDock>
-    with WidgetsBindingObserver {
-  Timer? _sampleTimer;
-  bool _settled = false;
-  double _keyboardInset = 0;
-  double? _lastSample;
-  int _stableSamples = 0;
+class _SettledKeyboardDockState extends State<_SettledKeyboardDock> {
+  EditorKeyboardController? _keyboard;
 
   bool get _visible => widget.enabled && widget.bodyFocus.hasFocus;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     widget.bodyFocus.addListener(_focusChanged);
   }
 
   @override
-  void didChangeMetrics() {
-    // 焦点不变时键盘也可能收起（如系统返回键关闭输入法），
-    // 监听窗口度量变化，重新采样以及时隐藏工具栏。
-    if (mounted && _visible) _beginSampling();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final view = View.of(context);
+    if (_keyboard?.view == view) return;
+    _keyboard?.dispose();
+    _keyboard = EditorKeyboardController(view)..addListener(_keyboardChanged);
   }
 
   @override
@@ -814,71 +834,43 @@ class _SettledKeyboardDockState extends State<_SettledKeyboardDock>
     }
     if (oldWidget.enabled != widget.enabled ||
         oldWidget.bodyFocus != widget.bodyFocus) {
-      _beginSampling();
-    }
-  }
-
-  void _focusChanged() => _beginSampling();
-
-  void _beginSampling() {
-    _sampleTimer?.cancel();
-    _lastSample = null;
-    _stableSamples = 0;
-    final needsRebuild = _settled || _keyboardInset != 0;
-    _settled = false;
-    _keyboardInset = 0;
-    widget.keyboardInset.value = 0;
-    if (needsRebuild && mounted) setState(() {});
-    if (!_visible) return;
-    _sampleTimer = Timer(const Duration(milliseconds: 80), _sampleInset);
-  }
-
-  void _sampleInset() {
-    if (!mounted || !_visible) return;
-    final views = WidgetsBinding.instance.platformDispatcher.views;
-    if (views.isEmpty) return;
-    final view = views.first;
-    final inset = view.viewInsets.bottom / view.devicePixelRatio;
-    final previous = _lastSample;
-    if (inset <= 0 && previous != null && (inset - previous).abs() < 0.5) {
-      // 键盘确认已收起：停在隐藏状态，等待焦点或窗口变化再次触发采样，
-      // 避免无限轮询。
-      return;
-    }
-    if (inset > 0 && previous != null && (inset - previous).abs() < 0.5) {
-      _stableSamples++;
-    } else {
-      _stableSamples = inset > 0 ? 1 : 0;
-    }
-    _lastSample = inset;
-    if (_stableSamples >= 3) {
-      setState(() {
-        _keyboardInset = inset;
-        _settled = true;
+      // Updating sibling padding during a parent build is deferred to the frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _keyboardChanged();
       });
-      widget.keyboardInset.value = inset;
-      return;
     }
-    _sampleTimer = Timer(const Duration(milliseconds: 45), _sampleInset);
+  }
+
+  void _focusChanged() => _keyboardChanged();
+
+  void _keyboardChanged() {
+    if (!mounted) return;
+    final keyboard = _keyboard!;
+    // Do not repeatedly collapse/expand body padding as the keyboard animates.
+    widget.keyboardInset.value = _visible ? keyboard.inset : 0;
+    setState(() {});
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _sampleTimer?.cancel();
+    _keyboard?.dispose();
     widget.bodyFocus.removeListener(_focusChanged);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_settled || !_visible || _keyboardInset <= 0) {
+    final keyboard = _keyboard;
+    if (keyboard == null ||
+        keyboard.animating ||
+        !_visible ||
+        keyboard.inset <= 0) {
       return const SizedBox.shrink();
     }
     return Positioned(
       left: 12,
       right: 12,
-      bottom: _keyboardInset + 10,
+      bottom: keyboard.inset + 10,
       child: KeyedSubtree(
         key: const ValueKey('keyboard-format-dock'),
         child: widget.child,

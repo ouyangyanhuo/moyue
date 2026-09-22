@@ -28,6 +28,14 @@ import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 import 'package:share_plus/share_plus.dart'
     show ShareParams, ShareResult, ShareResultStatus;
 
+void _mockLegacyKeyboard() {
+  const channel = MethodChannel('com.moyue.application/system');
+  final messenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  messenger.setMockMethodCallHandler(channel, (call) async => false);
+  addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+}
+
 void main() {
   test('编辑器可恢复路由会保留文档逻辑路径', () {
     final document = ReadingDocument(
@@ -321,6 +329,7 @@ void main() {
   });
 
   testWidgets('编辑工具栏只在输入法稳定显示后贴在其上方', (tester) async {
+    _mockLegacyKeyboard();
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -419,6 +428,7 @@ void main() {
   });
 
   testWidgets('编辑工具栏格式按钮再次点击会撤销标记并保持焦点', (tester) async {
+    _mockLegacyKeyboard();
     tester.view.viewInsets = const FakeViewPadding(bottom: 300);
     addTearDown(tester.view.resetViewInsets);
     final display = MoyueDisplayPreferences();
@@ -467,6 +477,7 @@ void main() {
   });
 
   testWidgets('编辑器图片导入失败使用小型通用提示且不泄露错误', (tester) async {
+    _mockLegacyKeyboard();
     tester.view.viewInsets = const FakeViewPadding(bottom: 300);
     addTearDown(tester.view.resetViewInsets);
     final originalPicker = FilePickerPlatform.instance;
