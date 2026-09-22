@@ -272,6 +272,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get markdownAndHtml => 'Markdown and HTML';
 
   @override
+  String get markdownRenderingMode => 'Markdown rendering mode';
+
+  @override
+  String get segmentedRendering => 'Segmented rendering';
+
+  @override
+  String get segmentedRenderingDescription =>
+      'Build content in viewport-sized segments for smoother long-document scrolling and lower memory use. Select all only covers content that has already been built.';
+
+  @override
+  String get wholeDocumentRendering => 'Whole-document rendering';
+
+  @override
+  String get wholeDocumentRenderingDescription =>
+      'Build the entire document at once so selection and copy can span off-screen paragraphs. Very long documents use more memory.';
+
+  @override
   String get markdownRenderingStyle => 'Markdown color theme';
 
   @override
@@ -884,6 +901,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get imageResourceMissing => 'Image resource not found';
+
+  @override
+  String get referencedResourceMissing => 'The referenced resource is missing';
 
   @override
   String get storageSection => 'Storage';

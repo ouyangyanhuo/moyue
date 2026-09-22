@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/services/ink_image_processor.dart';
+import 'package:moyue_application/widgets/missing_resource_placeholder.dart';
 
 /// Keeps images that have already entered the viewport alive for the lifetime
 /// of one reader page. The cache owns both encoded bytes and intrinsic size,
@@ -205,12 +206,11 @@ class _StableReaderImageState extends State<StableReaderImage>
   }
 
   Future<_ReaderImageData?> _load() async {
-    final loader = widget.loader;
-    final bytes = await loader();
-    if (bytes == null || bytes.isEmpty) return null;
     ui.ImmutableBuffer? buffer;
     ui.ImageDescriptor? descriptor;
     try {
+      final bytes = await widget.loader();
+      if (bytes == null || bytes.isEmpty) return null;
       buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
       descriptor = await ui.ImageDescriptor.encoded(buffer);
       return _ReaderImageData(
@@ -278,6 +278,9 @@ class _StableReaderImageState extends State<StableReaderImage>
                   fit: widget.fit,
                   alignment: widget.alignment,
                   gaplessPlayback: true,
+                  errorBuilder: (context, error, stackTrace) =>
+                      widget.errorBuilder?.call(context) ??
+                      const MissingResourcePlaceholder(),
                   frameBuilder:
                       (context, child, frame, wasSynchronouslyLoaded) {
                         if (frame != null || wasSynchronouslyLoaded) {
@@ -322,7 +325,12 @@ class _StableReaderImageState extends State<StableReaderImage>
       ),
       builder: (context, snapshot) {
         final image = snapshot.data;
-        if (image == null) return _placeholder(context);
+        if (image == null) {
+          return _placeholder(
+            context,
+            error: snapshot.connectionState == ConnectionState.done,
+          );
+        }
         _scheduleReveal();
         return _revealStack(
           context,
@@ -399,12 +407,14 @@ class _StableReaderImageState extends State<StableReaderImage>
     key: const ValueKey('stable-reader-image-placeholder'),
     color: Theme.of(context).colorScheme.surfaceContainerHighest
         .withValues(alpha: 0.62),
-    child: Center(
-      child: Icon(
-        error ? Icons.broken_image_outlined : Icons.image_outlined,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
-    ),
+    child: error
+        ? const MissingResourcePlaceholder()
+        : Center(
+            child: Icon(
+              error ? Icons.broken_image_outlined : Icons.image_outlined,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
   );
 }
 

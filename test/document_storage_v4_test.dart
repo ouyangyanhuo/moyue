@@ -70,6 +70,71 @@ void main() {
     sqflite.databaseFactory = databaseFactoryFfi;
   });
 
+  test('缺失附件的 moyue、zip 和单文档仍可导入，资源返回空值', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'moyue-missing-resource-',
+    );
+    final service = DocumentPackageService(store: _IndexedMemoryStore(root));
+    addTearDown(() async {
+      await service.close();
+      await root.delete(recursive: true);
+    });
+    final meta = {
+      'format': 'moyue',
+      'format_version': 1,
+      'documents': [
+        {'id': 'doc', 'path': 'note.md'},
+      ],
+      'resources': [
+        {'path': 'gone.png', 'document_id': 'doc'},
+      ],
+    };
+    final archive = Archive()
+      ..addFile(ArchiveFile.string('note.md', '正文\n\n![缺失图片](gone.png)'))
+      ..addFile(ArchiveFile.string('meta.json', jsonEncode(meta)));
+    final imported = await service.importFile(
+      'missing.moyue',
+      Uint8List.fromList(ZipEncoder().encodeBytes(archive)),
+    );
+    expect(imported.content, contains('正文'));
+    expect(await service.readLinkedResource(imported, 'gone.png'), isNull);
+    expect(await service.readLinkedResource(imported, '%FF.png'), isNull);
+    expect(
+      await service.readLinkedResource(imported, '../../../private.png'),
+      isNull,
+    );
+    final zip = Archive()
+      ..addFile(ArchiveFile.string('note.md', '![图片](gone.png)'))
+      ..addFile(
+        ArchiveFile.string('other.html', '<p>正文</p><img src="gone.png">'),
+      );
+    final zipped = await service.importFile(
+      'missing.zip',
+      Uint8List.fromList(ZipEncoder().encodeBytes(zip)),
+    );
+    expect(await service.readLinkedResource(zipped, 'gone.png'), isNull);
+    final single = await service.importFile(
+      'single.md',
+      Uint8List.fromList(utf8.encode('![图片](gone.png)')),
+    );
+    expect(await service.readLinkedResource(single, 'gone.png'), isNull);
+
+    // Missing attachments do not relax archive path or document validation.
+    meta['resources'] = [
+      {'path': '../unsafe.png'},
+    ];
+    final unsafe = Archive()
+      ..addFile(ArchiveFile.string('note.md', '正文'))
+      ..addFile(ArchiveFile.string('meta.json', jsonEncode(meta)));
+    await expectLater(
+      service.importFile(
+        'unsafe.moyue',
+        Uint8List.fromList(ZipEncoder().encodeBytes(unsafe)),
+      ),
+      throwsFormatException,
+    );
+  });
+
   test('同一文件夹允许同名文档，物理文件互不覆盖且 moyue 可逆', () async {
     final root = await Directory.systemTemp.createTemp('moyue-storage-v4-');
     final store = _IndexedMemoryStore(root);

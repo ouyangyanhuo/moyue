@@ -10,6 +10,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:moyue_application/services/native_html_preprocessor.dart';
 import 'package:moyue_application/widgets/image_lightbox.dart';
 import 'package:moyue_application/widgets/stable_reader_image.dart';
+import 'package:moyue_application/widgets/missing_resource_placeholder.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 把 HTML/CSS 映射成原生 Flutter widget 树，不创建 WebView。
@@ -92,7 +93,7 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
     return FutureBuilder<String>(
       future: _preparedData,
       builder: (context, snapshot) {
-        final data = snapshot.data;
+        final data = snapshot.data ?? (snapshot.hasError ? widget.data : null);
         if (data == null) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 28),
@@ -188,7 +189,13 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
   Future<Uint8List?> _loadResource(String source) {
     final loader = widget.resourceLoader;
     if (loader == null) return Future<Uint8List?>.value();
-    return _resourceFutures.putIfAbsent(source, () => loader(source));
+    return _resourceFutures.putIfAbsent(source, () async {
+      try {
+        return await loader(source);
+      } on Object {
+        return null;
+      }
+    });
   }
 
   HtmlWidget _htmlWidget(BuildContext context, String data, {Key? key}) {
@@ -216,10 +223,15 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
         if (uri == null || !uri.hasScheme) return false;
         return launchUrl(uri, mode: LaunchMode.externalApplication);
       },
-      onErrorBuilder: (context, element, error) => _HtmlPlaceholder(
-        icon: Icons.warning_amber_rounded,
-        label: context.l10n.cannotRenderElement(element.localName ?? 'HTML'),
-      ),
+      onErrorBuilder: (context, element, error) =>
+          const ['img', 'video', 'audio', 'source'].contains(element.localName)
+          ? const SizedBox(height: 120, child: MissingResourcePlaceholder())
+          : _HtmlPlaceholder(
+              icon: Icons.warning_amber_rounded,
+              label: context.l10n.cannotRenderElement(
+                element.localName ?? 'HTML',
+              ),
+            ),
       onLoadingBuilder: (_, _, _) => const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
         child: LinearProgressIndicator(minHeight: 2),
@@ -592,36 +604,29 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
     dom.Element element,
     String source,
   ) {
-    final loader = widget.resourceLoader;
-    if (loader == null) return const SizedBox.shrink();
     final height = element.classes.contains('banner')
         ? (MediaQuery.sizeOf(context).width <= 820 ? 76.0 : 112.0)
         : 120.0;
-    return FutureBuilder<Uint8List?>(
-      future: _loadResource(source),
-      builder: (context, snapshot) {
-        final bytes = snapshot.data;
-        if (bytes == null) return SizedBox(height: height);
-        return SizedBox(
-          width: double.infinity,
-          height: height,
-          child: StableReaderImage(
-            cacheKey: '${widget.resourceCacheKey}:background:$source',
-            sessionCache: widget.imageCache,
-            loader: () => _loadResource(source),
-            width: double.infinity,
-            height: height,
-            fit: BoxFit.cover,
-            alignment: const Alignment(0, -0.02),
-          ),
-        );
-      },
+    return SizedBox(
+      width: double.infinity,
+      height: height,
+      child: StableReaderImage(
+        cacheKey: '${widget.resourceCacheKey}:background:$source',
+        sessionCache: widget.imageCache,
+        loader: () => _loadResource(source),
+        width: double.infinity,
+        height: height,
+        fit: BoxFit.cover,
+        alignment: const Alignment(0, -0.02),
+      ),
     );
   }
 
   Widget? _localImage(BuildContext context, dom.Element element) {
     final source = element.attributes['src']?.trim();
-    if (source == null || source.isEmpty) return const SizedBox.shrink();
+    if (source == null || source.isEmpty) {
+      return const SizedBox(height: 120, child: MissingResourcePlaceholder());
+    }
     final uri = Uri.tryParse(source);
     if (uri != null && uri.hasScheme) return null;
     final avatar = element.classes.contains('avatar');
@@ -636,10 +641,6 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
       fit: avatar ? BoxFit.cover : BoxFit.contain,
       semanticLabel: element.attributes['alt'],
       onTap: (bytes) => unawaited(ImageLightbox.show(context, bytes)),
-      errorBuilder: (context) => _HtmlPlaceholder(
-        icon: Icons.broken_image_outlined,
-        label: context.l10n.imageResourceMissing,
-      ),
     );
     if (avatar) {
       return ClipOval(child: SizedBox.square(dimension: 84, child: image));

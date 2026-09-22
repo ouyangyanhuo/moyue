@@ -264,6 +264,23 @@ class AppLocalizationsZh extends AppLocalizations {
   String get markdownAndHtml => 'Markdown 与 HTML';
 
   @override
+  String get markdownRenderingMode => 'Markdown 渲染模式';
+
+  @override
+  String get segmentedRendering => '分段渲染';
+
+  @override
+  String get segmentedRenderingDescription =>
+      '按视口分段构建内容，长文滚动更流畅、内存占用更低；系统全选只能覆盖当前已构建的内容。';
+
+  @override
+  String get wholeDocumentRendering => '整体渲染';
+
+  @override
+  String get wholeDocumentRenderingDescription =>
+      '一次构建整篇文档，支持跨越未显示段落选择并复制全文；超长文会占用更多内存。';
+
+  @override
   String get markdownRenderingStyle => 'Markdown 排版风格';
 
   @override
@@ -834,6 +851,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get imageResourceMissing => '图片资源不存在';
+
+  @override
+  String get referencedResourceMissing => '引用的资源不存在';
 
   @override
   String get storageSection => '存储';

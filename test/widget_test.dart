@@ -1577,6 +1577,32 @@ void main() {
     expect(display.codeThemeId, 'vscode-dark-plus');
   });
 
+  testWidgets('Markdown 渲染模式可在性能优先与全文选择之间切换', (tester) async {
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: const MaterialApp(home: Scaffold(body: SettingsPage())),
+      ),
+    );
+
+    await _scrollSettingsUntilVisible(tester, find.text('Markdown 渲染模式'));
+    expect(find.text('分段渲染'), findsOneWidget);
+    await tester.tap(find.text('Markdown 渲染模式'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('分段渲染'), findsWidgets);
+    expect(find.text('整体渲染'), findsOneWidget);
+    expect(find.textContaining('长文滚动更流畅'), findsOneWidget);
+    expect(find.textContaining('支持跨越未显示段落'), findsOneWidget);
+    await tester.tap(find.text('整体渲染'));
+    await tester.pumpAndSettle();
+
+    expect(display.markdownRenderingMode, MarkdownRenderingMode.wholeDocument);
+    expect(find.text('整体渲染'), findsOneWidget);
+  });
+
   testWidgets('Markdown 阅读器应用独立的正文配色和代码高亮主题', (tester) async {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;

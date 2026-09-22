@@ -345,6 +345,37 @@ class SettingsPageState extends State<SettingsPage> {
     if (selected != null) display.setAppFontFamily(selected);
   }
 
+  Future<void> _chooseMarkdownRenderingMode(
+    DisplayModeController display,
+  ) async {
+    final l10n = context.l10n;
+    final selected = await showModalBottomSheet<MarkdownRenderingMode>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      sheetAnimationStyle: _sheetAnimationStyle,
+      builder: (sheetContext) => _OptionPickerSheet<MarkdownRenderingMode>(
+        title: l10n.markdownRenderingMode,
+        selected: display.markdownRenderingMode,
+        options: [
+          _PickerOption(
+            value: MarkdownRenderingMode.segmented,
+            icon: Icons.view_stream_outlined,
+            title: l10n.segmentedRendering,
+            subtitle: l10n.segmentedRenderingDescription,
+          ),
+          _PickerOption(
+            value: MarkdownRenderingMode.wholeDocument,
+            icon: Icons.select_all_rounded,
+            title: l10n.wholeDocumentRendering,
+            subtitle: l10n.wholeDocumentRenderingDescription,
+          ),
+        ],
+      ),
+    );
+    if (selected != null) display.setMarkdownRenderingMode(selected);
+  }
+
   Future<void> _chooseMarkdownStyle(DisplayModeController display) async {
     final l10n = context.l10n;
     final themes = MoyueMarkdownThemeRegistry.themes;
@@ -595,6 +626,14 @@ class SettingsPageState extends State<SettingsPage> {
   String _codeThemeLabel(BuildContext context, String id) =>
       MoyueCodeThemeRegistry.resolve(id).label(context);
 
+  String _markdownRenderingModeLabel(
+    BuildContext context,
+    MarkdownRenderingMode value,
+  ) => switch (value) {
+    MarkdownRenderingMode.segmented => context.l10n.segmentedRendering,
+    MarkdownRenderingMode.wholeDocument => context.l10n.wholeDocumentRendering,
+  };
+
   int _nearestFontScaleIndex(double value) {
     var result = 0;
     var distance = double.infinity;
@@ -633,8 +672,11 @@ class SettingsPageState extends State<SettingsPage> {
       l10n.english,
     ].join(' ').toLowerCase();
     final readingTerms = [
-      '阅读动画翻页动效HTML WebView网页原生预见性返回手势Markdown排版代码块外观',
+      '阅读动画翻页动效HTML WebView网页原生预见性返回手势Markdown排版代码块外观分段整体渲染全文选择复制性能',
       l10n.readingSection,
+      l10n.markdownRenderingMode,
+      l10n.segmentedRendering,
+      l10n.wholeDocumentRendering,
       l10n.markdownRenderingStyle,
       l10n.codeBlockAppearance,
       l10n.reduceMotion,
@@ -787,6 +829,16 @@ class SettingsPageState extends State<SettingsPage> {
               SliverToBoxAdapter(
                 child: _SettingsCard(
                   children: [
+                    _SettingSummaryTile(
+                      icon: Icons.view_stream_outlined,
+                      title: l10n.markdownRenderingMode,
+                      status: _markdownRenderingModeLabel(
+                        context,
+                        display.markdownRenderingMode,
+                      ),
+                      onTap: () => _chooseMarkdownRenderingMode(display),
+                    ),
+                    const Divider(indent: 56),
                     _SettingSummaryTile(
                       icon: Icons.auto_stories_rounded,
                       title: l10n.markdownRenderingStyle,

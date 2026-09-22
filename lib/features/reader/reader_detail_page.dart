@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+
+import 'package:crypto/crypto.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -22,12 +25,14 @@ import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/services/ink_image_processor.dart';
 import 'package:moyue_application/services/system_share_service.dart';
+import 'package:moyue_application/services/reading_progress_service.dart';
 import 'package:moyue_application/widgets/floating_document_header.dart';
 import 'package:moyue_application/widgets/image_lightbox.dart';
 import 'package:moyue_application/widgets/moyue_action_menu.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
 import 'package:moyue_application/widgets/moyue_transient_message.dart';
 import 'package:moyue_application/widgets/stable_reader_image.dart';
+import 'package:moyue_application/widgets/missing_resource_placeholder.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -48,10 +53,13 @@ Route<void> readerDetailRoute(BuildContext context, ReadingDocument document) =>
       builder: (_) => ReaderDetailPage(document: document),
     );
 
-class _ReaderDetailPageState extends State<ReaderDetailPage> {
+class _ReaderDetailPageState extends State<ReaderDetailPage>
+    with WidgetsBindingObserver {
   double _textScale = 1;
   late ReadingDocument _document;
-  final ScrollController _scrollController = ScrollController();
+  final ScrollController _scrollController = ScrollController(
+    keepScrollOffset: false,
+  );
   final GlobalKey<NativeHtmlViewState> _htmlKey =
       GlobalKey<NativeHtmlViewState>();
   final GlobalKey<WebViewHtmlViewState> _webViewKey =
@@ -62,16 +70,164 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
   String? _readerMessage;
   Timer? _readerMessageTimer;
   ReaderOverlayTone? _overlayTone;
+  late ReadingProgressSession _progressSession;
+  late Future<ReadingProgress?> _progressFuture;
+  ReadingProgress? _restoreProgress;
+  Timer? _restoreTimer;
+  bool _progressReady = false;
+  bool _userNavigated = false;
+  bool _restoring = false;
+  bool _usesWebView = false;
+  String _layout = '';
+  late String _contentHash;
 
   @override
   void initState() {
     super.initState();
     _document = widget.document;
+    WidgetsBinding.instance.addObserver(this);
+    _scrollController.addListener(_recordNativePosition);
+    _initializeProgress();
     MoyueStorageService.instance.addListener(_reloadDocument);
+  }
+
+  void _initializeProgress() {
+    _contentHash = sha256.convert(utf8.encode(_document.content)).toString();
+    _progressSession = ReadingProgressSession(
+      _document.id,
+      ReadingProgressService.instance,
+    );
+    _progressFuture = _loadProgress();
+  }
+
+  Future<ReadingProgress?> _loadProgress() async {
+    final id = _document.id;
+    final progress = await ReadingProgressService.instance.read(id);
+    if (!mounted || _document.id != id) return null;
+    _progressReady = true;
+    if (_userNavigated) {
+      _recordNativePosition();
+      return null;
+    }
+    if (progress == null) return null;
+    _restoreProgress = progress;
+    setState(() => _textScale = progress.textScale);
+    // Retry briefly while lazy blocks/images establish their scroll extents.
+    // No per-frame polling, and a user gesture always takes precedence.
+    _restoring = true;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _restoreNativePosition(),
+    );
+    var attempts = 0;
+    _restoreTimer = Timer.periodic(const Duration(milliseconds: 120), (timer) {
+      if (!mounted || _userNavigated || ++attempts >= 12 || _usesWebView) {
+        timer.cancel();
+        _restoring = false;
+        return;
+      }
+      _restoreNativePosition();
+    });
+    return progress;
+  }
+
+  void _restoreNativePosition() {
+    final progress = _restoreProgress;
+    if (!mounted ||
+        !_restoring ||
+        _usesWebView ||
+        progress == null ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final position = _scrollController.position;
+    if (!position.hasContentDimensions) return;
+    final target = progress.target(position.maxScrollExtent, _layout);
+    if ((position.pixels - target).abs() > 0.5) {
+      _scrollController.jumpTo(target);
+    }
+  }
+
+  void _takeOverReading() {
+    _userNavigated = true;
+    _restoring = false;
+    _restoreTimer?.cancel();
+  }
+
+  void _recordNativePosition() {
+    if (!_progressReady ||
+        !_userNavigated ||
+        _restoring ||
+        _usesWebView ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final position = _scrollController.position;
+    if (!position.hasContentDimensions) return;
+    _progressSession.record(
+      ReadingProgress(
+        offset: position.pixels.clamp(0, position.maxScrollExtent),
+        extent: position.maxScrollExtent,
+        layout: _layout,
+        textScale: _textScale,
+      ),
+    );
+  }
+
+  bool _onReaderScroll(ScrollNotification notification) {
+    if (notification.depth != 0) return false;
+    if (notification is ScrollStartNotification &&
+            notification.dragDetails != null ||
+        notification is UserScrollNotification &&
+            notification.direction != ScrollDirection.idle) {
+      _takeOverReading();
+    }
+    if (notification is ScrollEndNotification && !_restoring) {
+      _recordNativePosition();
+      unawaited(_progressSession.flush());
+    }
+    return false;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      unawaited(_saveReadingPosition());
+    }
+  }
+
+  Future<void> _saveReadingPosition() async {
+    _recordNativePosition();
+    await _webViewKey.currentState?.reportReadingPosition();
+    await _progressSession.flush();
+  }
+
+  Future<void> _leaveReader() async {
+    await _saveReadingPosition();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  void didUpdateWidget(covariant ReaderDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.document.id != widget.document.id) {
+      _progressSession.dispose();
+      _restoreTimer?.cancel();
+      _document = widget.document;
+      _progressReady = _restoring = _userNavigated = false;
+      _restoreProgress = null;
+      _textScale = 1;
+      _imageCache.clear();
+      _markdownHeadingKeys.clear();
+      _initializeProgress();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _recordNativePosition();
+    _restoreTimer?.cancel();
+    _progressSession.dispose();
     MoyueStorageService.instance.removeListener(_reloadDocument);
     _readerMessageTimer?.cancel();
     _scrollController.dispose();
@@ -102,9 +258,28 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
       _overlayTone?.bottom ?? fallbackBrightness,
     );
     final mediaQuery = MediaQuery.of(context);
+    _usesWebView = useWebView;
+    _layout = [
+      _contentHash,
+      useWebView
+          ? 'web'
+          : _document.kind == DocumentKind.html
+          ? 'html'
+          : display?.markdownRenderingMode.name ?? 'segmented',
+      mediaQuery.size.width,
+      mediaQuery.size.height,
+      readerTopInset,
+      readerBottomInset,
+      _textScale,
+      display?.effectiveAppFontFamily.name,
+      display?.effectiveAppFontScale,
+      display?.effectiveMarkdownThemeId,
+      display?.effectiveCodeThemeId,
+    ].join(':');
     // 墨模式与纸张模式共用同一套滚动排版：滚动是电子纸上最自然、
     // 性能最好的阅读方式，不做分页与逐行刷新模拟。
-    final readerContent = MediaQuery(
+    final nativeContent = MediaQuery(
+      key: ValueKey('reader-content-${_document.id}'),
       data: mediaQuery.copyWith(textScaler: TextScaler.linear(_textScale)),
       child: _document.kind == DocumentKind.markdown
           ? _MarkdownDocument(
@@ -115,6 +290,9 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
               headingKeys: _markdownHeadingKeys,
               bottomInset: readerBottomInset,
               imageCache: _imageCache,
+              renderingMode:
+                  display?.markdownRenderingMode ??
+                  MarkdownRenderingMode.segmented,
             )
           : useWebView
           ? WebViewHtmlView(
@@ -127,6 +305,16 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
               textScale: _textScale,
               fallbackSurfaceColor: readerSurface,
               onOverlayBrightnessChanged: _updateOverlayTone,
+              initialProgress: _progressFuture,
+              progressLayout: _layout,
+              onReadingPosition: (progress) {
+                if (!mounted) return;
+                _progressSession.record(progress);
+                if (WidgetsBinding.instance.lifecycleState !=
+                    AppLifecycleState.resumed) {
+                  unawaited(_progressSession.flush());
+                }
+              },
             )
           : SingleChildScrollView(
               controller: _scrollController,
@@ -146,79 +334,88 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
               ),
             ),
     );
+    final readerContent = NotificationListener<ScrollNotification>(
+      onNotification: _onReaderScroll,
+      child: nativeContent,
+    );
     for (final heading in _headings) {
       _markdownHeadingKeys.putIfAbsent(heading.index, GlobalKey.new);
     }
     // 墨模式下前景色固定由纸墨灰阶决定，跳过逐帧采样以省电。
-    return RepaintBoundary(
-      child: Scaffold(
-        backgroundColor: readerSurface,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            Positioned.fill(
-              child: useWebView || inkMode
-                  ? ColoredBox(color: readerSurface, child: readerContent)
-                  : ReaderOverlayToneSampler(
-                      backgroundColor: readerSurface,
-                      topSampleY: readerTopInset - 43,
-                      bottomSampleY:
-                          mediaQuery.size.height - readerBottomInset + 48,
-                      onChanged: _updateOverlayTone,
-                      child: readerContent,
-                    ),
-            ),
-            if ((display?.isInkMode ?? false) && !useWebView)
-              const Positioned.fill(child: MoyueInkPaperTexture()),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  child: FloatingDocumentHeader(
-                    title: _document.title,
-                    onBack: () => Navigator.of(context).pop(),
-                    actionIcon: Icons.edit_outlined,
-                    actionLabel: context.l10n.editMarkdown,
-                    onAction: _document.kind == DocumentKind.markdown
-                        ? _editDocument
-                        : null,
-                    foregroundColor: headerForeground,
-                  ),
-                ),
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) unawaited(_saveReadingPosition());
+      },
+      child: RepaintBoundary(
+        child: Scaffold(
+          backgroundColor: readerSurface,
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(
+                child: useWebView || inkMode
+                    ? ColoredBox(color: readerSurface, child: readerContent)
+                    : ReaderOverlayToneSampler(
+                        backgroundColor: readerSurface,
+                        topSampleY: readerTopInset - 43,
+                        bottomSampleY:
+                            mediaQuery.size.height - readerBottomInset + 48,
+                        onChanged: _updateOverlayTone,
+                        child: readerContent,
+                      ),
               ),
-            ),
-            if (!_readerMenuVisible)
+              if ((display?.isInkMode ?? false) && !useWebView)
+                const Positioned.fill(child: MoyueInkPaperTexture()),
               Positioned(
-                left: 12,
-                right: 12,
-                bottom: MediaQuery.paddingOf(context).bottom + 12,
-                height: 64,
-                child: _ReaderToolbar(
-                  showTextControls: !useWebView,
-                  textControlsEnabled: !(display?.isInkMode ?? false),
-                  onTableOfContents: _showTableOfContents,
-                  onDecreaseText: () => setState(
-                    () => _textScale = (_textScale - 0.1).clamp(0.8, 1.4),
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    child: FloatingDocumentHeader(
+                      title: _document.title,
+                      onBack: _leaveReader,
+                      actionIcon: Icons.edit_outlined,
+                      actionLabel: context.l10n.editMarkdown,
+                      onAction: _document.kind == DocumentKind.markdown
+                          ? _editDocument
+                          : null,
+                      foregroundColor: headerForeground,
+                    ),
                   ),
-                  onIncreaseText: () => setState(
-                    () => _textScale = (_textScale + 0.1).clamp(0.8, 1.4),
-                  ),
-                  onShare: _shareDocument,
-                  foregroundColor: toolbarForeground,
                 ),
               ),
-            Positioned.fill(
-              child: MoyueTransientMessageOverlay(
-                message: _readerMessage,
-                bottomInset: MediaQuery.paddingOf(context).bottom + 88,
-                onDismiss: _dismissMessage,
+              if (!_readerMenuVisible)
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: MediaQuery.paddingOf(context).bottom + 12,
+                  height: 64,
+                  child: _ReaderToolbar(
+                    showTextControls: !useWebView,
+                    textControlsEnabled: !(display?.isInkMode ?? false),
+                    onTableOfContents: _showTableOfContents,
+                    onDecreaseText: () => setState(
+                      () => _textScale = (_textScale - 0.1).clamp(0.8, 1.4),
+                    ),
+                    onIncreaseText: () => setState(
+                      () => _textScale = (_textScale + 0.1).clamp(0.8, 1.4),
+                    ),
+                    onShare: _shareDocument,
+                    foregroundColor: toolbarForeground,
+                  ),
+                ),
+              Positioned.fill(
+                child: MoyueTransientMessageOverlay(
+                  message: _readerMessage,
+                  bottomInset: MediaQuery.paddingOf(context).bottom + 88,
+                  onDismiss: _dismissMessage,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -244,6 +441,8 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
   }
 
   void _editDocument() {
+    _recordNativePosition();
+    unawaited(_progressSession.flush());
     Navigator.of(context).restorablePush<ReadingDocument?>(
       markdownEditorRoute,
       arguments: markdownEditorArguments(_document),
@@ -257,14 +456,13 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
       ...documents,
       ...folders.expand((folder) => folder.documents),
     ];
-    final matches = allDocuments.where(
-      (item) => item.filePath == _document.filePath,
-    );
+    final matches = allDocuments.where((item) => item.id == _document.id);
     if (mounted && matches.isNotEmpty) {
       final next = matches.first;
       if (next.content != _document.content ||
           next.updatedAt != _document.updatedAt) {
         _imageCache.clear();
+        _contentHash = sha256.convert(utf8.encode(next.content)).toString();
       }
       setState(() => _document = next);
     }
@@ -350,6 +548,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage> {
   }
 
   Future<void> _scrollToHeading(_ReaderHeading heading) async {
+    _takeOverReading();
     final reduceMotion =
         DisplayPreferencesScope.maybeOf(context)?.effectiveReduceMotion ??
         false;
@@ -751,6 +950,7 @@ class _MarkdownDocument extends StatelessWidget {
     required this.headingKeys,
     required this.bottomInset,
     required this.imageCache,
+    required this.renderingMode,
   });
   final String data;
   final ReadingDocument document;
@@ -759,49 +959,75 @@ class _MarkdownDocument extends StatelessWidget {
   final Map<int, GlobalKey> headingKeys;
   final double bottomInset;
   final ReaderImageSessionCache imageCache;
+  final MarkdownRenderingMode renderingMode;
 
   @override
   Widget build(BuildContext context) {
     final headingAllocator = _MarkdownHeadingAllocator(headingKeys);
-    return SelectionArea(
-      key: const ValueKey('markdown-document-selection-area'),
-      child: Markdown(
+    final builders = <String, MarkdownElementBuilder>{
+      ...buildMoyueMarkdownMathBuilders(),
+      'pre': buildMoyueCodeBlockBuilder(context),
+      for (final tag in const ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+        tag: _MarkdownHeadingBuilder(headingAllocator),
+    };
+    Widget imageBuilder(Uri uri, String? title, String? alt) => ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: StableReaderImage(
+        cacheKey: '${document.id}:${uri.toString()}',
+        sessionCache: imageCache,
+        loader: () => MoyueStorageService.instance.readLinkedResource(
+          document,
+          uri.toString(),
+        ),
+        fit: BoxFit.contain,
+        semanticLabel: alt,
+        onTap: (bytes) => unawaited(ImageLightbox.show(context, bytes)),
+      ),
+    );
+    void onTapLink(String _, String? href, String _) {
+      final uri = href == null ? null : Uri.tryParse(href);
+      if (uri != null) {
+        unawaited(launchUrl(uri, mode: LaunchMode.externalApplication));
+      }
+    }
+
+    final markdown = switch (renderingMode) {
+      MarkdownRenderingMode.segmented => Markdown(
+        key: const ValueKey('markdown-segmented-renderer'),
         data: data,
         controller: controller,
-        // A page-level SelectionArea lets one selection span every Markdown
-        // block. `selectable: true` would create one SelectableText per block.
+        // A page-level SelectionArea lets one selection span the Markdown
+        // blocks that the lazy list has currently built.
         selectable: false,
         blockSyntaxes: buildMoyueMarkdownBlockSyntaxes(),
         inlineSyntaxes: buildMoyueMarkdownInlineSyntaxes(),
         padding: EdgeInsets.fromLTRB(24, topInset, 24, bottomInset),
-        builders: {
-          ...buildMoyueMarkdownMathBuilders(),
-          'pre': buildMoyueCodeBlockBuilder(context),
-          for (final tag in const ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-            tag: _MarkdownHeadingBuilder(headingAllocator),
-        },
-        imageBuilder: (uri, title, alt) => ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: StableReaderImage(
-            cacheKey: '${document.id}:${uri.toString()}',
-            sessionCache: imageCache,
-            loader: () => MoyueStorageService.instance.readLinkedResource(
-              document,
-              uri.toString(),
-            ),
-            fit: BoxFit.contain,
-            semanticLabel: alt,
-            onTap: (bytes) => unawaited(ImageLightbox.show(context, bytes)),
-          ),
-        ),
-        onTapLink: (_, href, _) async {
-          final uri = href == null ? null : Uri.tryParse(href);
-          if (uri != null) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-          }
-        },
+        builders: builders,
+        imageBuilder: imageBuilder,
+        onTapLink: onTapLink,
         styleSheet: buildMoyueMarkdownStyleSheet(context),
       ),
+      MarkdownRenderingMode.wholeDocument => SingleChildScrollView(
+        key: const ValueKey('markdown-whole-document-renderer'),
+        controller: controller,
+        padding: EdgeInsets.fromLTRB(24, topInset, 24, bottomInset),
+        child: MarkdownBody(
+          data: data,
+          // MarkdownBody creates the complete render tree, allowing the outer
+          // SelectionArea to select paragraphs that have never entered view.
+          selectable: false,
+          blockSyntaxes: buildMoyueMarkdownBlockSyntaxes(),
+          inlineSyntaxes: buildMoyueMarkdownInlineSyntaxes(),
+          builders: builders,
+          imageBuilder: imageBuilder,
+          onTapLink: onTapLink,
+          styleSheet: buildMoyueMarkdownStyleSheet(context),
+        ),
+      ),
+    };
+    return SelectionArea(
+      key: const ValueKey('markdown-document-selection-area'),
+      child: markdown,
     );
   }
 }
@@ -835,7 +1061,7 @@ class _MarkdownShareCanvas extends StatelessWidget {
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.broken_image_outlined),
+            child: const MissingResourcePlaceholder(),
           );
         }
         return ClipRRect(

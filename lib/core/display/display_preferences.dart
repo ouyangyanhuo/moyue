@@ -14,6 +14,8 @@ enum MoyueLocalePreference { system, chinese, english }
 
 enum MoyueFontFamily { system, claude, rounded, ink }
 
+enum MarkdownRenderingMode { segmented, wholeDocument }
+
 /// A small boundary that can later be backed by platform e-ink controls.
 abstract interface class DisplayModeController implements Listenable {
   ReadingDisplayMode get mode;
@@ -38,6 +40,7 @@ abstract interface class DisplayModeController implements Listenable {
   String get effectiveCodeThemeId;
   String get markdownThemeId;
   String get codeThemeId;
+  MarkdownRenderingMode get markdownRenderingMode;
   bool get dynamicColorSupported;
   bool get useDynamicColor;
   int get effectiveSeedArgb;
@@ -59,6 +62,7 @@ abstract interface class DisplayModeController implements Listenable {
   void setAppFontFamily(MoyueFontFamily value);
   void setMarkdownThemeId(String value);
   void setCodeThemeId(String value);
+  void setMarkdownRenderingMode(MarkdownRenderingMode value);
   void setUseDynamicColor(bool value);
   void setCustomSeedArgb(int value);
 }
@@ -75,6 +79,8 @@ class MoyueDisplayPreferences extends ChangeNotifier
   MoyueFontFamily _appFontFamily = MoyueFontFamily.system;
   String _markdownThemeId = MoyueMarkdownThemeRegistry.defaultThemeId;
   String _codeThemeId = MoyueCodeThemeRegistry.defaultThemeId;
+  MarkdownRenderingMode _markdownRenderingMode =
+      MarkdownRenderingMode.segmented;
   bool _dynamicColorSupported = false;
   bool _useDynamicColor = false;
   int? _dynamicSeedArgb;
@@ -93,6 +99,7 @@ class MoyueDisplayPreferences extends ChangeNotifier
   static const _fontFamilyKey = 'display.app_font_family';
   static const _markdownStyleKey = 'reader.markdown_style';
   static const _codeBlockStyleKey = 'reader.code_block_style';
+  static const _markdownRenderingModeKey = 'reader.markdown_rendering_mode';
   static const _useDynamicColorKey = 'display.use_dynamic_color';
   static const _customSeedArgbKey = 'display.custom_seed_argb';
 
@@ -135,6 +142,8 @@ class MoyueDisplayPreferences extends ChangeNotifier
   String get markdownThemeId => _markdownThemeId;
   @override
   String get codeThemeId => _codeThemeId;
+  @override
+  MarkdownRenderingMode get markdownRenderingMode => _markdownRenderingMode;
   @override
   bool get dynamicColorSupported => _dynamicColorSupported;
   @override
@@ -186,6 +195,11 @@ class MoyueDisplayPreferences extends ChangeNotifier
       final codeThemeValue = MoyueCodeThemeRegistry.migrateLegacyId(
         await preferences.getString(_codeBlockStyleKey),
       );
+      final markdownRenderingModeValue = _enumByName(
+        MarkdownRenderingMode.values,
+        await preferences.getString(_markdownRenderingModeKey),
+        MarkdownRenderingMode.segmented,
+      );
       final useDynamicValue =
           await preferences.getBool(_useDynamicColorKey) ?? false;
       final storedCustomSeed = await preferences.getInt(_customSeedArgbKey);
@@ -208,6 +222,7 @@ class MoyueDisplayPreferences extends ChangeNotifier
           _appFontFamily != familyValue ||
           _markdownThemeId != markdownThemeValue ||
           _codeThemeId != codeThemeValue ||
+          _markdownRenderingMode != markdownRenderingModeValue ||
           _useDynamicColor != useDynamicValue ||
           _customSeedArgb != customSeedValue ||
           _dynamicColorSupported != appearance.dynamicColorSupported ||
@@ -222,6 +237,7 @@ class MoyueDisplayPreferences extends ChangeNotifier
       _appFontFamily = familyValue;
       _markdownThemeId = markdownThemeValue;
       _codeThemeId = codeThemeValue;
+      _markdownRenderingMode = markdownRenderingModeValue;
       _useDynamicColor = useDynamicValue;
       _customSeedArgb = customSeedValue;
       _dynamicColorSupported = appearance.dynamicColorSupported;
@@ -326,6 +342,14 @@ class MoyueDisplayPreferences extends ChangeNotifier
     _codeThemeId = next;
     notifyListeners();
     unawaited(_saveString(_codeBlockStyleKey, next));
+  }
+
+  @override
+  void setMarkdownRenderingMode(MarkdownRenderingMode value) {
+    if (_markdownRenderingMode == value) return;
+    _markdownRenderingMode = value;
+    notifyListeners();
+    unawaited(_saveString(_markdownRenderingModeKey, value.name));
   }
 
   @override

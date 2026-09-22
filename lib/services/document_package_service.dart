@@ -663,14 +663,15 @@ class DocumentPackageService {
         final archivePath = _safeArchivePath(
           (value['archive_path'] ?? value['path']) as String,
         );
-        if (!entries.containsKey(archivePath)) {
-          throw FormatException('资源元信息指向了不存在的文件：$archivePath');
-        }
+        final logicalPath = _safeArchivePath(
+          (value['path'] ?? p.posix.basename(archivePath)) as String,
+        );
+        // Missing optional attachments must not prevent importing the text.
+        // Validate both paths even for missing entries; never index phantom files.
+        if (!entries.containsKey(archivePath)) continue;
         resourceEntries.add((
           archivePath: archivePath,
-          logicalPath: _safeArchivePath(
-            (value['path'] ?? p.posix.basename(archivePath)) as String,
-          ),
+          logicalPath: logicalPath,
           documentId: value['document_id'] as String?,
         ));
       }
@@ -1726,6 +1727,19 @@ class DocumentPackageService {
   }
 
   Future<Uint8List?> readLinkedResource(
+    ReadingDocument document,
+    String link,
+  ) async {
+    try {
+      return await _readLinkedResource(document, link);
+    } on Object {
+      // Missing files, malformed URLs and unavailable indexes are optional
+      // resource failures, not document failures.
+      return null;
+    }
+  }
+
+  Future<Uint8List?> _readLinkedResource(
     ReadingDocument document,
     String link,
   ) async {

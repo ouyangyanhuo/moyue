@@ -14,6 +14,62 @@ import 'package:moyue_application/services/text_decoder.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  testWidgets('HTML 缺少样式和图片时保留正文并显示缺失占位', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: NativeHtmlView(
+              data:
+                  '<link rel="stylesheet" href="gone.css"><p>正文仍可阅读</p>'
+                  '<img src="gone.png" width="160" height="90">',
+              resourceLoader: (_) async => throw StateError('resource missing'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('正文仍可阅读', findRichText: true), findsOneWidget);
+    expect(find.text('引用的资源不存在'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('WebView 缺失资源不会中断正文和其他脚本', () async {
+    final built = await WebViewDocumentBuilder.build(
+      html:
+          '<link rel="stylesheet" href="gone.css">'
+          '<script src="gone.js"></script><p>正文</p>'
+          '<img src="gone.png"><script>window.original = true;</script>'
+          '<div style="background-image:url(gone-bg.png)">背景正文</div>'
+          '<img src="https://example.invalid/gone.png">',
+      resourceLoader: (_) async => throw StateError('missing'),
+      topInset: 72,
+      bottomInset: 92,
+    );
+    final document = html_parser.parse(built);
+    expect(document.querySelector('p')?.text, '正文');
+    expect(document.querySelector('.moyue-missing-resource')?.text, '引用的资源不存在');
+    expect(document.querySelector('script[src]'), isNull);
+    expect(document.querySelector('link[href]'), isNull);
+    expect(
+      document.querySelector('script')?.text,
+      contains('window.original = true'),
+    );
+    expect(
+      document.querySelector('div')?.attributes['style'],
+      contains('data:image/svg+xml;base64,'),
+    );
+    expect(
+      document.querySelector('img')?.attributes['src'],
+      'https://example.invalid/gone.png',
+    );
+    expect(
+      document.querySelectorAll('script').last.text,
+      contains("addEventListener('error'"),
+    );
+  });
+
   test('WebView 顶部背景亮度带迟滞切换，避免标题颜色反复闪动', () {
     expect(webViewSurfaceBrightness(0.9), Brightness.light);
     expect(webViewSurfaceBrightness(0.1), Brightness.dark);

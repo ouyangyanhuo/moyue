@@ -52,6 +52,10 @@ must not contain `..`, absolute paths, drive letters, or symbolic links.
 - `resources` contains allowed images, videos, stylesheets, and scripts.
   Relative links inside documents are resolved from the document's own
   directory.
+  Missing attachment files are tolerated: their metadata is not inserted into
+  the resource index, and readers show a missing-resource placeholder for
+  unavailable images. Both archive and logical paths are still validated.
+  Missing document files or a missing primary document remain import errors.
 - `sha256` is calculated over the uncompressed file bytes.
 - Unknown fields must be ignored for forward compatibility.
 

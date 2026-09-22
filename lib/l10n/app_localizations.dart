@@ -572,6 +572,36 @@ abstract class AppLocalizations {
   /// **'Markdown and HTML'**
   String get markdownAndHtml;
 
+  /// No description provided for @markdownRenderingMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Markdown rendering mode'**
+  String get markdownRenderingMode;
+
+  /// No description provided for @segmentedRendering.
+  ///
+  /// In en, this message translates to:
+  /// **'Segmented rendering'**
+  String get segmentedRendering;
+
+  /// No description provided for @segmentedRenderingDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Build content in viewport-sized segments for smoother long-document scrolling and lower memory use. Select all only covers content that has already been built.'**
+  String get segmentedRenderingDescription;
+
+  /// No description provided for @wholeDocumentRendering.
+  ///
+  /// In en, this message translates to:
+  /// **'Whole-document rendering'**
+  String get wholeDocumentRendering;
+
+  /// No description provided for @wholeDocumentRenderingDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Build the entire document at once so selection and copy can span off-screen paragraphs. Very long documents use more memory.'**
+  String get wholeDocumentRenderingDescription;
+
   /// No description provided for @markdownRenderingStyle.
   ///
   /// In en, this message translates to:
@@ -1615,6 +1645,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Image resource not found'**
   String get imageResourceMissing;
+
+  /// No description provided for @referencedResourceMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'The referenced resource is missing'**
+  String get referencedResourceMissing;
 
   /// No description provided for @storageSection.
   ///

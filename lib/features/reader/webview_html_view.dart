@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/features/reader/reader_overlay_tone_sampler.dart';
 import 'package:moyue_application/services/webview_document_builder.dart';
+import 'package:moyue_application/services/reading_progress_service.dart';
+import 'package:moyue_application/features/reader/webview_reading_progress.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
@@ -24,6 +26,9 @@ class WebViewHtmlView extends StatefulWidget {
     required this.textScale,
     required this.fallbackSurfaceColor,
     this.onOverlayBrightnessChanged,
+    this.initialProgress,
+    this.progressLayout = '',
+    this.onReadingPosition,
     super.key,
   });
 
@@ -34,6 +39,9 @@ class WebViewHtmlView extends StatefulWidget {
   final double textScale;
   final Color fallbackSurfaceColor;
   final ValueChanged<ReaderOverlayTone>? onOverlayBrightnessChanged;
+  final Future<ReadingProgress?>? initialProgress;
+  final String progressLayout;
+  final ValueChanged<ReadingProgress>? onReadingPosition;
 
   @override
   State<WebViewHtmlView> createState() => WebViewHtmlViewState();
@@ -41,12 +49,15 @@ class WebViewHtmlView extends StatefulWidget {
 
 class WebViewHtmlViewState extends State<WebViewHtmlView> {
   static const _surfaceToneChannel = 'MoyueSurfaceTone';
+  static const _progressChannel = 'MoyueReadingProgress';
 
   WebViewController? _controller;
   bool _loading = true;
   String? _error;
   Brightness? _topSurfaceBrightness;
   Brightness? _bottomSurfaceBrightness;
+  ReadingProgress? _latestProgress;
+  int _loadGeneration = 0;
 
   bool get _supported =>
       !kIsWeb &&
@@ -65,7 +76,11 @@ class WebViewHtmlViewState extends State<WebViewHtmlView> {
   @override
   void didUpdateWidget(covariant WebViewHtmlView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.data != widget.data ||
+    if (oldWidget.initialProgress != widget.initialProgress) {
+      _latestProgress = null;
+    }
+    if (oldWidget.initialProgress != widget.initialProgress ||
+        oldWidget.data != widget.data ||
         oldWidget.topInset != widget.topInset ||
         oldWidget.bottomInset != widget.bottomInset) {
       unawaited(_load());
@@ -81,6 +96,7 @@ class WebViewHtmlViewState extends State<WebViewHtmlView> {
     if (controller == null) return false;
     await controller.runJavaScript('''
 (() => {
+  window.__moyueReadingTakeOver?.();
   const heading = document.querySelectorAll('h1,h2,h3,h4,h5,h6')[$index];
   if (heading) heading.scrollIntoView({behavior: 'smooth', block: 'start'});
 })();
@@ -89,6 +105,8 @@ class WebViewHtmlViewState extends State<WebViewHtmlView> {
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
+    final initialProgress = widget.initialProgress;
     if (!_supported) {
       if (mounted) {
         setState(() {
@@ -110,8 +128,9 @@ class WebViewHtmlViewState extends State<WebViewHtmlView> {
         resourceLoader: widget.resourceLoader,
         topInset: widget.topInset,
         bottomInset: widget.bottomInset,
+        missingResourceLabel: context.l10n.referencedResourceMissing,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       final controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(Colors.transparent)
@@ -119,14 +138,36 @@ class WebViewHtmlViewState extends State<WebViewHtmlView> {
           _surfaceToneChannel,
           onMessageReceived: _handleSurfaceTone,
         )
+        ..addJavaScriptChannel(
+          _progressChannel,
+          onMessageReceived: (message) {
+            if (mounted && generation == _loadGeneration) {
+              _handleReadingPosition(message);
+            }
+          },
+        )
         ..setVerticalScrollBarEnabled(false)
         ..setHorizontalScrollBarEnabled(false)
         ..setNavigationDelegate(
           NavigationDelegate(
-            onPageFinished: (_) {
-              if (!mounted) return;
-              unawaited(_applyTextScale());
-              unawaited(_installSurfaceToneObserver());
+            onPageFinished: (_) async {
+              final progress = _latestProgress ?? await initialProgress;
+              if (!mounted || generation != _loadGeneration) return;
+              await _applyTextScale();
+              await _installSurfaceToneObserver();
+              if (!mounted || generation != _loadGeneration) return;
+              try {
+                await _controller?.runJavaScript(
+                  buildWebViewReadingProgressScript(
+                    channel: _progressChannel,
+                    layout: widget.progressLayout,
+                    initial: progress,
+                  ),
+                );
+              } on Object {
+                // Reading stays usable if the page rejects injected scripts.
+              }
+              if (!mounted || generation != _loadGeneration) return;
               setState(() => _loading = false);
             },
             onWebResourceError: (error) {
@@ -170,6 +211,47 @@ class WebViewHtmlViewState extends State<WebViewHtmlView> {
       );
     } on Object {
       // 页面仍在创建时 onPageFinished 会再次应用。
+    }
+  }
+
+  Future<void> reportReadingPosition() async {
+    try {
+      final result = await _controller
+          ?.runJavaScriptReturningResult(
+            'JSON.stringify(window.__moyueReadingSnapshot?.() ?? null)',
+          )
+          .timeout(const Duration(milliseconds: 500));
+      if (!mounted || result is! String) return;
+      _handleReadingPosition(JavaScriptMessage(message: result));
+    } on Object {
+      // The last throttled report remains available while the view closes.
+    }
+  }
+
+  void _handleReadingPosition(JavaScriptMessage message) {
+    try {
+      final data = jsonDecode(message.message);
+      if (data is! Map) return;
+      final offset = data['offset'];
+      final extent = data['extent'];
+      if (offset is! num ||
+          extent is! num ||
+          !offset.isFinite ||
+          !extent.isFinite ||
+          offset < 0 ||
+          extent < 0) {
+        return;
+      }
+      final progress = ReadingProgress(
+        offset: offset.toDouble().clamp(0, extent.toDouble()),
+        extent: extent.toDouble(),
+        layout: widget.progressLayout,
+        textScale: widget.textScale,
+      );
+      _latestProgress = progress;
+      widget.onReadingPosition?.call(progress);
+    } on Object {
+      // Ignore malformed messages from imported scripts.
     }
   }
 

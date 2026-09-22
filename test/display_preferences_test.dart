@@ -51,6 +51,22 @@ void main() {
     restored.dispose();
   });
 
+  test('Markdown 渲染模式默认分段并可持久化整体渲染', () async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    final first = MoyueDisplayPreferences();
+    expect(first.markdownRenderingMode, MarkdownRenderingMode.segmented);
+
+    first.setMarkdownRenderingMode(MarkdownRenderingMode.wholeDocument);
+    await Future<void>.delayed(Duration.zero);
+
+    final restored = MoyueDisplayPreferences();
+    await restored.load();
+    expect(restored.markdownRenderingMode, MarkdownRenderingMode.wholeDocument);
+    first.dispose();
+    restored.dispose();
+  });
+
   test('saveModePreference 只落盘偏好，不改运行时状态', () async {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();

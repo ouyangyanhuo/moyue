@@ -1,3 +1,6 @@
+import 'dart:collection';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
@@ -6,6 +9,265 @@ import 'package:moyue_application/core/display/moyue_markdown_style.dart';
 
 const String moyueInlineLatexTag = 'moyue-latex-inline';
 const String moyueBlockLatexTag = 'moyue-latex-block';
+
+final MoyueLatexRenderCache moyueLatexRenderCache = MoyueLatexRenderCache();
+
+/// Bounded LRU cache for parsed TeX widgets.
+///
+/// Markdown builds cheap [_MoyueLazyMath] placeholders for the whole AST.
+/// Actual TeX parsing only happens when a formula reaches the viewport, and
+/// revisiting an equation reuses the parsed immutable syntax tree.
+class MoyueLatexRenderCache {
+  MoyueLatexRenderCache({this.maximumEntries = 128})
+    : assert(maximumEntries > 0);
+
+  final int maximumEntries;
+  final LinkedHashMap<_LatexCacheKey, Math> _entries = LinkedHashMap();
+  int _parseCount = 0;
+
+  Widget resolve({
+    required String expression,
+    required bool display,
+    required TextStyle style,
+    required Color errorColor,
+    required String fallbackText,
+    required double textScaleFactor,
+  }) {
+    final key = _LatexCacheKey(
+      expression: expression,
+      display: display,
+      color: style.color?.toARGB32() ?? 0,
+      errorColor: errorColor.toARGB32(),
+      fontSize: style.fontSize ?? 16,
+      fontWeight: style.fontWeight ?? FontWeight.normal,
+      textScaleFactor: textScaleFactor,
+    );
+    final cached = _entries.remove(key);
+    if (cached != null) {
+      _entries[key] = cached;
+      return cached;
+    }
+
+    _parseCount++;
+    final parsed = Math.tex(
+      expression,
+      mathStyle: display ? MathStyle.display : MathStyle.text,
+      textStyle: style,
+      textScaleFactor: textScaleFactor,
+      onErrorFallback: (_) => SelectionContainer.disabled(
+        child: Text(
+          fallbackText,
+          key: const ValueKey('markdown-latex-error'),
+          style: style.copyWith(color: errorColor, fontFamily: 'monospace'),
+        ),
+      ),
+    );
+    _entries[key] = parsed;
+    while (_entries.length > maximumEntries) {
+      _entries.remove(_entries.keys.first);
+    }
+    return parsed;
+  }
+
+  @visibleForTesting
+  int get debugParseCount => _parseCount;
+
+  @visibleForTesting
+  int get debugEntryCount => _entries.length;
+
+  @visibleForTesting
+  void debugClear() {
+    _entries.clear();
+    _parseCount = 0;
+  }
+}
+
+class _LatexCacheKey {
+  const _LatexCacheKey({
+    required this.expression,
+    required this.display,
+    required this.color,
+    required this.errorColor,
+    required this.fontSize,
+    required this.fontWeight,
+    required this.textScaleFactor,
+  });
+
+  final String expression;
+  final bool display;
+  final int color;
+  final int errorColor;
+  final double fontSize;
+  final FontWeight fontWeight;
+  final double textScaleFactor;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _LatexCacheKey &&
+      expression == other.expression &&
+      display == other.display &&
+      color == other.color &&
+      errorColor == other.errorColor &&
+      fontSize == other.fontSize &&
+      fontWeight == other.fontWeight &&
+      textScaleFactor == other.textScaleFactor;
+
+  @override
+  int get hashCode => Object.hash(
+    expression,
+    display,
+    color,
+    errorColor,
+    fontSize,
+    fontWeight,
+    textScaleFactor,
+  );
+}
+
+class _MoyueLazyMath extends StatefulWidget {
+  const _MoyueLazyMath({
+    required this.expression,
+    required this.display,
+    required this.style,
+    required this.errorColor,
+    required this.fallbackText,
+  });
+
+  final String expression;
+  final bool display;
+  final TextStyle style;
+  final Color errorColor;
+  final String fallbackText;
+
+  @override
+  State<_MoyueLazyMath> createState() => _MoyueLazyMathState();
+}
+
+class _MoyueLazyMathState extends State<_MoyueLazyMath> {
+  static const double _prefetchExtent = 72;
+
+  ScrollPosition? _position;
+  bool _activated = false;
+  bool _checkScheduled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _bindPosition(Scrollable.maybeOf(context, axis: Axis.vertical)?.position);
+    _scheduleVisibilityCheck();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MoyueLazyMath oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.expression != widget.expression ||
+        oldWidget.display != widget.display ||
+        oldWidget.style != widget.style ||
+        oldWidget.errorColor != widget.errorColor) {
+      _activated = false;
+      _scheduleVisibilityCheck();
+    }
+  }
+
+  void _bindPosition(ScrollPosition? next) {
+    if (identical(_position, next)) return;
+    _position?.removeListener(_handleViewportChange);
+    _position?.isScrollingNotifier.removeListener(_handleViewportChange);
+    _position = next;
+    _position?.addListener(_handleViewportChange);
+    _position?.isScrollingNotifier.addListener(_handleViewportChange);
+  }
+
+  void _handleViewportChange() => _scheduleVisibilityCheck();
+
+  void _scheduleVisibilityCheck() {
+    if (_activated || _checkScheduled || !mounted) return;
+    _checkScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkScheduled = false;
+      if (mounted) _checkVisibility();
+    });
+  }
+
+  void _checkVisibility() {
+    if (_activated) return;
+    final scrollable = Scrollable.maybeOf(context, axis: Axis.vertical);
+    if (scrollable == null) {
+      _activate();
+      return;
+    }
+    _bindPosition(scrollable.position);
+
+    final target = context.findRenderObject();
+    final viewport = scrollable.context.findRenderObject();
+    if (target is! RenderBox ||
+        viewport is! RenderBox ||
+        !target.attached ||
+        !viewport.attached ||
+        !target.hasSize ||
+        !viewport.hasSize) {
+      _scheduleVisibilityCheck();
+      return;
+    }
+
+    final targetRect = target.localToGlobal(Offset.zero) & target.size;
+    final viewportRect = viewport.localToGlobal(Offset.zero) & viewport.size;
+    if (!targetRect.overlaps(viewportRect.inflate(_prefetchExtent))) return;
+
+    // Avoid expensive TeX parsing while a fast fling is competing for frames.
+    // isScrollingNotifier schedules another check as soon as scrolling settles.
+    if (Scrollable.recommendDeferredLoadingForContext(context) &&
+        scrollable.position.isScrollingNotifier.value) {
+      return;
+    }
+    _activate();
+  }
+
+  void _activate() {
+    if (_activated || !mounted) return;
+    setState(() => _activated = true);
+  }
+
+  Widget _buildPlaceholder() {
+    final fontSize = widget.style.fontSize ?? 16;
+    final estimatedWidth = math.min(
+      widget.display ? 320.0 : 180.0,
+      math.max(fontSize * 1.5, widget.expression.length * fontSize * 0.46),
+    );
+    return SizedBox(
+      key: const ValueKey('markdown-latex-placeholder'),
+      width: estimatedWidth,
+      height: fontSize * (widget.display ? 1.75 : 1.3),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Off-screen export/share render trees have no vertical Scrollable and must
+    // render eagerly; the document reader always takes the lazy branch.
+    if (!_activated && Scrollable.maybeOf(context, axis: Axis.vertical) != null) {
+      _scheduleVisibilityCheck();
+      return _buildPlaceholder();
+    }
+    return RepaintBoundary(
+      child: moyueLatexRenderCache.resolve(
+        expression: widget.expression,
+        display: widget.display,
+        style: widget.style,
+        errorColor: widget.errorColor,
+        fallbackText: widget.fallbackText,
+        textScaleFactor: MediaQuery.textScalerOf(context).scale(1),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _position?.removeListener(_handleViewportChange);
+    _position?.isScrollingNotifier.removeListener(_handleViewportChange);
+    super.dispose();
+  }
+}
 
 List<md.BlockSyntax> buildMoyueMarkdownBlockSyntaxes() => <md.BlockSyntax>[
   MoyueLatexBlockSyntax(),
@@ -126,20 +388,12 @@ class MoyueLatexBuilder extends MarkdownElementBuilder {
       children: [
         Semantics(
           label: 'LaTeX: $expression',
-          child: Math.tex(
-            expression,
-            mathStyle: display ? MathStyle.display : MathStyle.text,
-            textStyle: formulaStyle,
-            onErrorFallback: (_) => SelectionContainer.disabled(
-              child: Text(
-                fallbackText,
-                key: const ValueKey('markdown-latex-error'),
-                style: formulaStyle.copyWith(
-                  color: palette.mutedForeground,
-                  fontFamily: 'monospace',
-                ),
-              ),
-            ),
+          child: _MoyueLazyMath(
+            expression: expression,
+            display: display,
+            style: formulaStyle,
+            errorColor: palette.mutedForeground,
+            fallbackText: fallbackText,
           ),
         ),
         // WidgetSpan content has no plain-text representation in Flutter's

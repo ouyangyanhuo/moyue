@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -6,6 +7,47 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:moyue_application/widgets/stable_reader_image.dart';
 
 void main() {
+  for (final failure in ['missing', 'throws', 'corrupt']) {
+    testWidgets('图片 $failure 显示缺失占位且缓存失败结果', (tester) async {
+      final cache = ReaderImageSessionCache();
+      addTearDown(cache.clear);
+      var reads = 0;
+      Widget image() => MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 160,
+              height: 80,
+              child: StableReaderImage(
+                cacheKey: failure,
+                sessionCache: cache,
+                loader: () async {
+                  reads++;
+                  if (failure == 'throws')
+                    throw StateError('missing private/path.png');
+                  return failure == 'missing'
+                      ? null
+                      : Uint8List.fromList([1, 2, 3]);
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpWidget(image());
+      await tester.pumpAndSettle();
+      expect(find.text('引用的资源不存在'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(image());
+      await tester.pumpAndSettle();
+      expect(reads, 1);
+      expect(find.text('引用的资源不存在'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
   testWidgets('阅读器图片在最终尺寸的占位符上显示', (tester) async {
     final bytes = base64Decode(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC'
