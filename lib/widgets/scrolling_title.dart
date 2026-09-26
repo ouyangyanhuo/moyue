@@ -25,11 +25,32 @@ class _ScrollingTitleState extends State<ScrollingTitle> {
   int _run = 0;
   Timer? _waitTimer;
   Completer<void>? _waitCompleter;
+  bool _tickersEnabled = true;
 
   @override
   void initState() {
     super.initState();
     if (widget.autoScroll) _startAfterLayout();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final enabled = TickerMode.valuesOf(context).enabled;
+    if (enabled == _tickersEnabled) return;
+    _tickersEnabled = enabled;
+    if (enabled) {
+      if (widget.autoScroll) _startAfterLayout();
+    } else {
+      _run++;
+      _cancelWait();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_tickersEnabled && _controller.hasClients) {
+          // Cancel the scroll activity too, not just its muted ticker.
+          _controller.jumpTo(_controller.offset);
+        }
+      });
+    }
   }
 
   @override
@@ -49,7 +70,9 @@ class _ScrollingTitleState extends State<ScrollingTitle> {
   }
 
   Future<void> _start() async {
-    if (!_controller.hasClients || _controller.position.maxScrollExtent <= 0) {
+    if (!_tickersEnabled ||
+        !_controller.hasClients ||
+        _controller.position.maxScrollExtent <= 0) {
       return;
     }
     final run = ++_run;

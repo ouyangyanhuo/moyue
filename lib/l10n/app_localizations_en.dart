@@ -529,6 +529,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get save => 'Save';
 
   @override
+  String get undo => 'Undo';
+
+  @override
+  String get redo => 'Redo';
+
+  @override
   String folderCreateFailed(String error) {
     return 'Could not create folder: $error';
   }

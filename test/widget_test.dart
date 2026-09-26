@@ -64,16 +64,53 @@ void main() {
     expect(find.text('Reading'), findsWidgets);
     expect(find.byIcon(Icons.edit_outlined), findsNothing);
 
+    final library = tester.widget<LibraryPage>(find.byType(LibraryPage));
+    final rss = tester.widget<RssPage>(
+      find.byType(RssPage, skipOffstage: false),
+    );
+    final settings = tester.widget<SettingsPage>(
+      find.byType(SettingsPage, skipOffstage: false),
+    );
+    expect(
+      TickerMode.valuesOf(tester.element(find.byType(LibraryPage))).enabled,
+      isTrue,
+    );
+    expect(
+      TickerMode.valuesOf(
+        tester.element(find.byType(RssPage, skipOffstage: false)),
+      ).enabled,
+      isFalse,
+    );
+
     await tester.tapAt(
       tester.getCenter(find.byIcon(Icons.rss_feed_outlined).last),
     );
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Sources'), findsOneWidget);
     expect(find.text('No subscriptions yet'), findsOneWidget);
+    expect(tester.widget<RssPage>(find.byType(RssPage)), same(rss));
+    expect(
+      TickerMode.valuesOf(tester.element(find.byType(RssPage))).enabled,
+      isTrue,
+    );
+    expect(
+      TickerMode.valuesOf(
+        tester.element(find.byType(LibraryPage, skipOffstage: false)),
+      ).enabled,
+      isFalse,
+    );
 
     await tester.tapAt(tester.getCenter(find.byIcon(Icons.tune_outlined).last));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Settings'), findsWidgets);
+    expect(
+      tester.widget<SettingsPage>(find.byType(SettingsPage)),
+      same(settings),
+    );
+    expect(
+      tester.widget<LibraryPage>(find.byType(LibraryPage, skipOffstage: false)),
+      same(library),
+    );
     // 对比度滑杆已随无效功能移除；设置页不再使用任何 Material 滑杆。
     expect(find.byType(GlassSlider), findsNothing);
     // Section cards below the viewport are now built lazily.
@@ -425,6 +462,49 @@ void main() {
       tester.getSize(find.byKey(const ValueKey('edit'))).height,
       canvasHeight,
     );
+  });
+
+  testWidgets('编辑器顶部撤回重做分别作用于标题和正文', (tester) async {
+    _mockLegacyKeyboard();
+    final display = MoyueDisplayPreferences();
+    addTearDown(display.dispose);
+    await tester.pumpWidget(
+      DisplayPreferencesScope(
+        controller: display,
+        child: const MaterialApp(home: MarkdownEditorPage()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 550));
+
+    expect(find.bySemanticsLabel('撤回'), findsOneWidget);
+    expect(find.bySemanticsLabel('重做'), findsOneWidget);
+    expect(find.bySemanticsLabel('保存'), findsOneWidget);
+    final title = find.byType(TextField).first;
+    final body = find.byType(TextField).last;
+    await tester.tap(title);
+    await tester.enterText(title, '标题');
+    await tester.pump(const Duration(milliseconds: 550));
+    expect(
+      tester.widget<TextField>(title).undoController!.value.canUndo,
+      isTrue,
+    );
+    await tester.tap(find.bySemanticsLabel('撤回'));
+    await tester.pump();
+    expect(tester.widget<TextField>(title).controller!.text, isEmpty);
+    await tester.tap(find.bySemanticsLabel('重做'));
+    await tester.pump();
+    expect(tester.widget<TextField>(title).controller!.text, '标题');
+
+    await tester.tap(body);
+    await tester.enterText(body, '正文');
+    await tester.pump(const Duration(milliseconds: 550));
+    await tester.tap(find.bySemanticsLabel('撤回'));
+    await tester.pump();
+    expect(tester.widget<TextField>(body).controller!.text, isEmpty);
+    expect(tester.widget<TextField>(title).controller!.text, '标题');
+    await tester.tap(find.bySemanticsLabel('重做'));
+    await tester.pump();
+    expect(tester.widget<TextField>(body).controller!.text, '正文');
   });
 
   testWidgets('编辑工具栏格式按钮再次点击会撤销标记并保持焦点', (tester) async {

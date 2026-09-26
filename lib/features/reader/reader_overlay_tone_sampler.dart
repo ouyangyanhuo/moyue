@@ -53,6 +53,46 @@ class _ReaderOverlayToneSamplerState extends State<ReaderOverlayToneSampler> {
   bool _sampleAgain = false;
   Brightness? _topBrightness;
   Brightness? _bottomBrightness;
+  Animation<double>? _routeAnimation;
+  Animation<double>? _secondaryAnimation;
+  bool _tickersEnabled = true;
+
+  // GPU readbacks compete with the route's glass/transition raster work.
+  // Status listeners suspend sampling without adding a per-frame rebuild.
+  bool get _canSample =>
+      mounted &&
+      _tickersEnabled &&
+      (_routeAnimation == null ||
+          _routeAnimation!.status == AnimationStatus.completed) &&
+      (_secondaryAnimation == null ||
+          _secondaryAnimation!.status == AnimationStatus.dismissed);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (_routeAnimation != route?.animation ||
+        _secondaryAnimation != route?.secondaryAnimation) {
+      _routeAnimation?.removeStatusListener(_routeStatusChanged);
+      _secondaryAnimation?.removeStatusListener(_routeStatusChanged);
+      _routeAnimation = route?.animation;
+      _secondaryAnimation = route?.secondaryAnimation;
+      _routeAnimation?.addStatusListener(_routeStatusChanged);
+      _secondaryAnimation?.addStatusListener(_routeStatusChanged);
+    }
+    _tickersEnabled = TickerMode.valuesOf(context).enabled;
+    _routeStatusChanged(AnimationStatus.dismissed);
+  }
+
+  void _routeStatusChanged(AnimationStatus _) {
+    if (_canSample) {
+      _scheduleSample();
+    } else {
+      _timer?.cancel();
+      _timer = null;
+      _sampleAgain = false;
+    }
+  }
 
   @override
   void initState() {
@@ -74,6 +114,8 @@ class _ReaderOverlayToneSamplerState extends State<ReaderOverlayToneSampler> {
   @override
   void dispose() {
     _timer?.cancel();
+    _routeAnimation?.removeStatusListener(_routeStatusChanged);
+    _secondaryAnimation?.removeStatusListener(_routeStatusChanged);
     super.dispose();
   }
 
@@ -87,7 +129,7 @@ class _ReaderOverlayToneSamplerState extends State<ReaderOverlayToneSampler> {
   }
 
   void _scheduleSample() {
-    if (!mounted) return;
+    if (!_canSample) return;
     if (_sampling) {
       _sampleAgain = true;
       return;
@@ -96,11 +138,12 @@ class _ReaderOverlayToneSamplerState extends State<ReaderOverlayToneSampler> {
     _timer = Timer(const Duration(milliseconds: 90), () {
       _timer = null;
       WidgetsBinding.instance.addPostFrameCallback((_) => _sample());
+      WidgetsBinding.instance.scheduleFrame();
     });
   }
 
   Future<void> _sample() async {
-    if (!mounted || _sampling) return;
+    if (!_canSample || _sampling) return;
     final renderObject = _boundaryKey.currentContext?.findRenderObject();
     if (renderObject is! RenderRepaintBoundary ||
         !renderObject.hasSize ||
@@ -114,7 +157,7 @@ class _ReaderOverlayToneSamplerState extends State<ReaderOverlayToneSampler> {
     try {
       image = await renderObject.toImage(pixelRatio: 0.18);
       final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (!mounted || data == null) return;
+      if (!_canSample || data == null) return;
       final bytes = data.buffer.asUint8List(
         data.offsetInBytes,
         data.lengthInBytes,

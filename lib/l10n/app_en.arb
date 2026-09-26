@@ -170,6 +170,8 @@
   "delete": "Delete",
   "create": "Create",
   "save": "Save",
+  "undo": "Undo",
+  "redo": "Redo",
   "folderCreateFailed": "Could not create folder: {error}",
   "@folderCreateFailed": {"placeholders": {"error": {"type": "String"}}},
   "documentTextLimit": "Text documents cannot exceed 8 MB",

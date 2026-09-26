@@ -323,4 +323,88 @@ $$
     expect(copiedText, contains('第 119 段正文。'));
     expect(copiedText, contains('全文末尾标记。'));
   });
+
+  testWidgets('分段渲染长文全选时展开完整内容并复制未加载的末尾', (tester) async {
+    String? copiedText;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copiedText =
+            (call.arguments as Map<Object?, Object?>)['text'] as String?;
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    final document = ReadingDocument(
+      id: 'segmented-select-all',
+      title: '分段全选.md',
+      content: [
+        '# 分段全选',
+        ...List<String>.generate(
+          120,
+          (index) => '第 $index 段：这是用于测试分段渲染和选择操作的正文。',
+        ),
+        '全文末尾标记。',
+      ].join('\n\n'),
+      kind: DocumentKind.markdown,
+      updatedAt: DateTime(2026),
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: ReaderDetailPage(document: document)),
+    );
+    await tester.pump();
+    await tester.drag(find.byType(Markdown), const Offset(0, -600));
+    await tester.pump();
+    final areaFinder = find.byKey(
+      const ValueKey('markdown-document-selection-area'),
+    );
+    final inactiveArea = tester.widget<SelectionArea>(areaFinder);
+    final inactiveRegion = tester.state<SelectionAreaState>(areaFinder);
+    final inactiveMenu = inactiveArea.contextMenuBuilder!(
+      tester.element(areaFinder),
+      inactiveRegion.selectableRegion,
+    ) as AdaptiveTextSelectionToolbar;
+    expect(inactiveMenu.anchors.primaryAnchor.dx.isFinite, isTrue);
+    expect(inactiveMenu.anchors.primaryAnchor.dy.isFinite, isTrue);
+    await tester.longPressAt(const Offset(110, 300));
+    await tester.pump();
+    final selectionArea = tester.state<SelectionAreaState>(
+      find.byKey(const ValueKey('markdown-document-selection-area')),
+    );
+    final area = tester.widget<SelectionArea>(
+      find.byKey(const ValueKey('markdown-document-selection-area')),
+    );
+    final menu = area.contextMenuBuilder!(
+      tester.element(
+        find.byKey(const ValueKey('markdown-document-selection-area')),
+      ),
+      selectionArea.selectableRegion,
+    ) as AdaptiveTextSelectionToolbar;
+    menu.buttonItems!
+        .firstWhere((item) => item.type == ContextMenuButtonType.selectAll)
+        .onPressed!();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(MarkdownBody), findsOneWidget);
+    expect(find.byType(Markdown), findsNothing);
+    expect(
+      tester.state<SelectionAreaState>(
+        find.byKey(const ValueKey('markdown-document-selection-area')),
+      ),
+      same(selectionArea),
+    );
+    selectionArea.selectableRegion.contextMenuButtonItems
+        .firstWhere((item) => item.type == ContextMenuButtonType.copy)
+        .onPressed!();
+    await tester.pump();
+    expect(copiedText, contains('全文末尾标记。'));
+    expect(tester.takeException(), isNull);
+  });
 }

@@ -12,7 +12,6 @@ import 'package:moyue_application/core/display/moyue_markdown_style.dart';
 import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
-import 'package:moyue_application/widgets/moyue_glass_title_pill.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/moyue_backdrop.dart';
@@ -81,6 +80,9 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   Timer? _autosaveTimer;
   final FocusNode _titleFocus = FocusNode();
   final FocusNode _bodyFocus = FocusNode();
+  final UndoHistoryController _titleUndo = UndoHistoryController();
+  final UndoHistoryController _bodyUndo = UndoHistoryController();
+  bool _lastEditedTitle = false;
   final ScrollController _bodyScrollController = ScrollController();
   final ValueNotifier<double> _settledKeyboardInset = ValueNotifier(0);
   ReadingDocument? _currentDocument;
@@ -104,7 +106,22 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     _body = RestorableTextEditingController(
       text: widget.document?.content ?? '',
     );
+    _titleFocus.addListener(_rememberEditingTarget);
+    _bodyFocus.addListener(_rememberEditingTarget);
   }
+
+  void _rememberEditingTarget() {
+    if (_titleFocus.hasFocus) {
+      _lastEditedTitle = true;
+    } else if (_bodyFocus.hasFocus) {
+      _lastEditedTitle = false;
+    }
+  }
+
+  UndoHistoryController get _activeUndo =>
+      _titleFocus.hasFocus || (!_bodyFocus.hasFocus && _lastEditedTitle)
+      ? _titleUndo
+      : _bodyUndo;
 
   @override
   void restoreState(RestorationBucket? oldBucket, bool initialRestore) {
@@ -112,6 +129,16 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     registerForRestoration(_body, 'body');
     registerForRestoration(_mode, 'mode');
     registerForRestoration(_dirty, 'dirty');
+    // The built-in UndoHistory ignores values with an invalid selection.
+    // Initialize the cursor before its first frame so a new draft's empty
+    // title/body become valid undo starting points.
+    for (final controller in [_title.value, _body.value]) {
+      if (!controller.selection.isValid) {
+        controller.selection = TextSelection.collapsed(
+          offset: controller.text.length,
+        );
+      }
+    }
     if (!_listenersAttached) {
       _title.value.addListener(_changed);
       _body.value.addListener(_changed);
@@ -144,6 +171,8 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     _editorMessageTimer?.cancel();
     _titleFocus.dispose();
     _bodyFocus.dispose();
+    _titleUndo.dispose();
+    _bodyUndo.dispose();
     _bodyScrollController.dispose();
     _settledKeyboardInset.dispose();
     _previewImageCache.clear();
@@ -229,6 +258,8 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                                   body: _body.value,
                                   titleFocus: _titleFocus,
                                   bodyFocus: _bodyFocus,
+                                  titleUndo: _titleUndo,
+                                  bodyUndo: _bodyUndo,
                                   bodyScrollController: _bodyScrollController,
                                   keyboardInset: _settledKeyboardInset,
                                 )
@@ -270,17 +301,58 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
                               settings: moyueGlassSettings(context),
                             ),
                           ),
-                          MoyueGlassTitlePill(
-                            width: 150,
-                            title: _title.value.text.trim().isEmpty
-                                ? l10n.newMarkdown
-                                : _title.value.text.trim(),
-                          ),
                           Align(
                             alignment: Alignment.centerRight,
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                ListenableBuilder(
+                                  listenable: Listenable.merge([
+                                    _titleFocus,
+                                    _bodyFocus,
+                                    _titleUndo,
+                                    _bodyUndo,
+                                  ]),
+                                  builder: (context, _) {
+                                    final undo = _activeUndo;
+                                    final enabled = _mode.value == 0;
+                                    return Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        MoyueGlassIconButton(
+                                          icon: const Icon(
+                                            Icons.undo_rounded,
+                                            size: 21,
+                                          ),
+                                          onPressed:
+                                              enabled && undo.value.canUndo
+                                              ? undo.undo
+                                              : null,
+                                          semanticLabel: l10n.undo,
+                                          size: 44,
+                                          useOwnLayer: true,
+                                          settings: moyueGlassSettings(context),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        MoyueGlassIconButton(
+                                          icon: const Icon(
+                                            Icons.redo_rounded,
+                                            size: 21,
+                                          ),
+                                          onPressed:
+                                              enabled && undo.value.canRedo
+                                              ? undo.redo
+                                              : null,
+                                          semanticLabel: l10n.redo,
+                                          size: 44,
+                                          useOwnLayer: true,
+                                          settings: moyueGlassSettings(context),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                                const SizedBox(width: 4),
                                 MoyueGlassIconButton(
                                   icon: Icon(
                                     _mode.value == 0
@@ -636,6 +708,8 @@ class _EditorCanvas extends StatelessWidget {
     required this.body,
     required this.titleFocus,
     required this.bodyFocus,
+    required this.titleUndo,
+    required this.bodyUndo,
     required this.bodyScrollController,
     required this.keyboardInset,
   });
@@ -643,6 +717,8 @@ class _EditorCanvas extends StatelessWidget {
   final TextEditingController body;
   final FocusNode titleFocus;
   final FocusNode bodyFocus;
+  final UndoHistoryController titleUndo;
+  final UndoHistoryController bodyUndo;
   final ScrollController bodyScrollController;
   final ValueNotifier<double> keyboardInset;
 
@@ -666,6 +742,7 @@ class _EditorCanvas extends StatelessWidget {
             TextField(
               controller: title,
               focusNode: titleFocus,
+              undoController: titleUndo,
               textCapitalization: TextCapitalization.sentences,
               style: theme.textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.w700,
@@ -685,6 +762,7 @@ class _EditorCanvas extends StatelessWidget {
                 builder: (context, inset, _) => TextField(
                   controller: body,
                   focusNode: bodyFocus,
+                  undoController: bodyUndo,
                   scrollController: bodyScrollController,
                   expands: true,
                   minLines: null,

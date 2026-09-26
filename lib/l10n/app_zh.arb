@@ -170,6 +170,8 @@
   "delete": "删除",
   "create": "创建",
   "save": "保存",
+  "undo": "撤回",
+  "redo": "重做",
   "folderCreateFailed": "创建文件夹失败：{error}",
   "@folderCreateFailed": {"placeholders": {"error": {"type": "String"}}},
   "documentTextLimit": "文本文档不能超过 8 MB",

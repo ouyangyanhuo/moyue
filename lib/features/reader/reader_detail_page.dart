@@ -69,7 +69,10 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
   bool _readerMenuVisible = false;
   String? _readerMessage;
   Timer? _readerMessageTimer;
-  ReaderOverlayTone? _overlayTone;
+  final _overlayTone = ValueNotifier<ReaderOverlayTone?>(null);
+  String? _headingsContent;
+  DocumentKind? _headingsKind;
+  List<_ReaderHeading> _cachedHeadings = const [];
   late ReadingProgressSession _progressSession;
   late Future<ReadingProgress?> _progressFuture;
   ReadingProgress? _restoreProgress;
@@ -78,6 +81,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
   bool _userNavigated = false;
   bool _restoring = false;
   bool _usesWebView = false;
+  bool _expandedMarkdownSelection = false;
   String _layout = '';
   late String _contentHash;
 
@@ -111,7 +115,9 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
     }
     if (progress == null) return null;
     _restoreProgress = progress;
-    setState(() => _textScale = progress.textScale);
+    if (_textScale != progress.textScale) {
+      setState(() => _textScale = progress.textScale);
+    }
     // Retry briefly while lazy blocks/images establish their scroll extents.
     // No per-frame polling, and a user gesture always takes precedence.
     _restoring = true;
@@ -213,6 +219,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
       _progressSession.dispose();
       _restoreTimer?.cancel();
       _document = widget.document;
+      _expandedMarkdownSelection = false;
       _progressReady = _restoring = _userNavigated = false;
       _restoreProgress = null;
       _textScale = 1;
@@ -231,6 +238,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
     MoyueStorageService.instance.removeListener(_reloadDocument);
     _readerMessageTimer?.cancel();
     _scrollController.dispose();
+    _overlayTone.dispose();
     _imageCache.clear();
     super.dispose();
   }
@@ -251,12 +259,6 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
     final fallbackBrightness = ThemeData.estimateBrightnessForColor(
       readerSurface,
     );
-    final headerForeground = _overlayForeground(
-      _overlayTone?.top ?? fallbackBrightness,
-    );
-    final toolbarForeground = _overlayForeground(
-      _overlayTone?.bottom ?? fallbackBrightness,
-    );
     final mediaQuery = MediaQuery.of(context);
     _usesWebView = useWebView;
     _layout = [
@@ -265,6 +267,8 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
           ? 'web'
           : _document.kind == DocumentKind.html
           ? 'html'
+          : _expandedMarkdownSelection
+          ? MarkdownRenderingMode.wholeDocument.name
           : display?.markdownRenderingMode.name ?? 'segmented',
       mediaQuery.size.width,
       mediaQuery.size.height,
@@ -290,9 +294,34 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
               headingKeys: _markdownHeadingKeys,
               bottomInset: readerBottomInset,
               imageCache: _imageCache,
-              renderingMode:
-                  display?.markdownRenderingMode ??
-                  MarkdownRenderingMode.segmented,
+              renderingMode: _expandedMarkdownSelection
+                  ? MarkdownRenderingMode.wholeDocument
+                  : display?.markdownRenderingMode ??
+                        MarkdownRenderingMode.segmented,
+              onSelectAllFromSegmented: (region) {
+                if (_expandedMarkdownSelection) {
+                  region.selectAll(SelectionChangedCause.toolbar);
+                  return;
+                }
+                // The segmented ListView only mounts nearby paragraphs. A
+                // selection spanning missing children is invalid. Materialize
+                // the full document for this explicit Select All action.
+                region.clearSelection();
+                setState(() => _expandedMarkdownSelection = true);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  // The replacement body needs a layout frame and a separate
+                  // selection-registration frame before Select All is valid.
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted && region.mounted) {
+                        region.selectAll(SelectionChangedCause.toolbar);
+                      }
+                    });
+                    WidgetsBinding.instance.scheduleFrame();
+                  });
+                  WidgetsBinding.instance.scheduleFrame();
+                });
+              },
             )
           : useWebView
           ? WebViewHtmlView(
@@ -338,9 +367,6 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
       onNotification: _onReaderScroll,
       child: nativeContent,
     );
-    for (final heading in _headings) {
-      _markdownHeadingKeys.putIfAbsent(heading.index, GlobalKey.new);
-    }
     // 墨模式下前景色固定由纸墨灰阶决定，跳过逐帧采样以省电。
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
@@ -377,15 +403,20 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
                   bottom: false,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                    child: FloatingDocumentHeader(
-                      title: _document.title,
-                      onBack: _leaveReader,
-                      actionIcon: Icons.edit_outlined,
-                      actionLabel: context.l10n.editMarkdown,
-                      onAction: _document.kind == DocumentKind.markdown
-                          ? _editDocument
-                          : null,
-                      foregroundColor: headerForeground,
+                    child: ValueListenableBuilder<ReaderOverlayTone?>(
+                      valueListenable: _overlayTone,
+                      builder: (context, tone, _) => FloatingDocumentHeader(
+                        title: _document.title,
+                        onBack: _leaveReader,
+                        actionIcon: Icons.edit_outlined,
+                        actionLabel: context.l10n.editMarkdown,
+                        onAction: _document.kind == DocumentKind.markdown
+                            ? _editDocument
+                            : null,
+                        foregroundColor: _overlayForeground(
+                          tone?.top ?? fallbackBrightness,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -396,18 +427,23 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
                   right: 12,
                   bottom: MediaQuery.paddingOf(context).bottom + 12,
                   height: 64,
-                  child: _ReaderToolbar(
-                    showTextControls: !useWebView,
-                    textControlsEnabled: !(display?.isInkMode ?? false),
-                    onTableOfContents: _showTableOfContents,
-                    onDecreaseText: () => setState(
-                      () => _textScale = (_textScale - 0.1).clamp(0.8, 1.4),
+                  child: ValueListenableBuilder<ReaderOverlayTone?>(
+                    valueListenable: _overlayTone,
+                    builder: (context, tone, _) => _ReaderToolbar(
+                      showTextControls: !useWebView,
+                      textControlsEnabled: !(display?.isInkMode ?? false),
+                      onTableOfContents: _showTableOfContents,
+                      onDecreaseText: () => setState(
+                        () => _textScale = (_textScale - 0.1).clamp(0.8, 1.4),
+                      ),
+                      onIncreaseText: () => setState(
+                        () => _textScale = (_textScale + 0.1).clamp(0.8, 1.4),
+                      ),
+                      onShare: _shareDocument,
+                      foregroundColor: _overlayForeground(
+                        tone?.bottom ?? fallbackBrightness,
+                      ),
                     ),
-                    onIncreaseText: () => setState(
-                      () => _textScale = (_textScale + 0.1).clamp(0.8, 1.4),
-                    ),
-                    onShare: _shareDocument,
-                    foregroundColor: toolbarForeground,
                   ),
                 ),
               Positioned.fill(
@@ -436,11 +472,12 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
 
   void _updateOverlayTone(ReaderOverlayTone tone) {
     if (!mounted ||
-        (_overlayTone?.top == tone.top &&
-            _overlayTone?.bottom == tone.bottom)) {
+        (_overlayTone.value?.top == tone.top &&
+            _overlayTone.value?.bottom == tone.bottom)) {
       return;
     }
-    setState(() => _overlayTone = tone);
+    // Changing the glass foreground must not reparse/rebuild the document.
+    _overlayTone.value = tone;
   }
 
   void _editDocument() {
@@ -467,11 +504,24 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
         _imageCache.clear();
         _contentHash = sha256.convert(utf8.encode(next.content)).toString();
       }
-      setState(() => _document = next);
+      setState(() {
+        _document = next;
+        _expandedMarkdownSelection = false;
+      });
     }
   }
 
   List<_ReaderHeading> get _headings {
+    if (_headingsContent != _document.content ||
+        _headingsKind != _document.kind) {
+      _cachedHeadings = _parseHeadings();
+      _headingsContent = _document.content;
+      _headingsKind = _document.kind;
+    }
+    return _cachedHeadings;
+  }
+
+  List<_ReaderHeading> _parseHeadings() {
     if (_document.kind == DocumentKind.markdown) {
       final nodes = md.Document(
         extensionSet: md.ExtensionSet.gitHubWeb,
@@ -954,6 +1004,7 @@ class _MarkdownDocument extends StatelessWidget {
     required this.bottomInset,
     required this.imageCache,
     required this.renderingMode,
+    required this.onSelectAllFromSegmented,
   });
   final String data;
   final ReadingDocument document;
@@ -963,6 +1014,7 @@ class _MarkdownDocument extends StatelessWidget {
   final double bottomInset;
   final ReaderImageSessionCache imageCache;
   final MarkdownRenderingMode renderingMode;
+  final ValueChanged<SelectableRegionState> onSelectAllFromSegmented;
 
   @override
   Widget build(BuildContext context) {
@@ -1030,7 +1082,57 @@ class _MarkdownDocument extends StatelessWidget {
     };
     return SelectionArea(
       key: const ValueKey('markdown-document-selection-area'),
+      contextMenuBuilder: (context, region) {
+        return AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: _markdownSelectionMenuAnchors(context, region),
+          buttonItems: [
+            for (final item in region.contextMenuButtonItems)
+              renderingMode == MarkdownRenderingMode.segmented &&
+                      item.type == ContextMenuButtonType.selectAll
+                  ? ContextMenuButtonItem(
+                      type: ContextMenuButtonType.selectAll,
+                      onPressed: () => onSelectAllFromSegmented(region),
+                    )
+                  : item,
+          ],
+        );
+      },
       child: markdown,
+    );
+  }
+}
+
+TextSelectionToolbarAnchors _markdownSelectionMenuAnchors(
+  BuildContext context,
+  SelectableRegionState region,
+) {
+  try {
+    return region.contextMenuAnchors;
+  } on TypeError catch (error) {
+    if (!error.toString().contains('Null check operator')) rethrow;
+    // Flutter's selection endpoints may be null after Select All when the
+    // beginning or end of a long document is outside the viewport. The
+    // default anchor getter force-unwraps both endpoints.
+    final selectionBox = region.context.findRenderObject();
+    if (selectionBox is RenderBox && selectionBox.hasSize) {
+      final global = selectionBox.localToGlobal(
+        Offset(
+          selectionBox.size.width / 2,
+          math.min(selectionBox.size.height / 3, 180.0),
+        ),
+      );
+      final overlayBox = Overlay.maybeOf(context)?.context.findRenderObject();
+      return TextSelectionToolbarAnchors(
+        primaryAnchor: overlayBox is RenderBox
+            ? overlayBox.globalToLocal(global)
+            : global,
+      );
+    }
+    return TextSelectionToolbarAnchors(
+      primaryAnchor: Offset(
+        MediaQuery.sizeOf(context).width / 2,
+        MediaQuery.paddingOf(context).top + 140,
+      ),
     );
   }
 }
@@ -1080,7 +1182,9 @@ class _MarkdownHeadingAllocator {
   _MarkdownHeadingAllocator(this.keys);
   final Map<int, GlobalKey> keys;
   int _next = 0;
-  GlobalKey? take() => keys[_next++];
+  // Allocate during rendering; opening a reader no longer needs a second
+  // full Markdown parse just to enumerate heading keys ahead of time.
+  GlobalKey take() => keys.putIfAbsent(_next++, GlobalKey.new);
 }
 
 class _MarkdownHeadingBuilder extends MarkdownElementBuilder {

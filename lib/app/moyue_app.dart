@@ -283,6 +283,9 @@ class _MoyueShellState extends State<MoyueShell> {
   final _libraryKey = GlobalKey<LibraryPageState>();
   final _rssKey = GlobalKey<RssPageState>();
   final _settingsKey = GlobalKey<SettingsPageState>();
+  late final _rssPage = RssPage(key: _rssKey);
+  late final _settingsPage = SettingsPage(key: _settingsKey);
+  Widget? _libraryPage;
   final _storage = MoyueStorageService.instance;
   List<ReadingDocument> _documents = const [];
   List<LibraryFolder> _folders = const [];
@@ -324,7 +327,12 @@ class _MoyueShellState extends State<MoyueShell> {
         });
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _libraryPage = null;
+        });
+      }
     }
   }
 
@@ -352,14 +360,14 @@ class _MoyueShellState extends State<MoyueShell> {
       glassColor: Colors.white.withValues(alpha: display.glassOpacity),
     );
     final pages = [
-      LibraryPage(
+      _libraryPage ??= LibraryPage(
         key: _libraryKey,
         documents: _documents,
         folders: _folders,
         loading: _loading,
       ),
-      RssPage(key: _rssKey),
-      SettingsPage(key: _settingsKey),
+      _rssPage,
+      _settingsPage,
     ];
 
     return PopScope<void>(
@@ -467,7 +475,16 @@ class _MoyueShellState extends State<MoyueShell> {
                   child: SafeArea(
                     top: false,
                     bottom: false,
-                    child: IndexedStack(index: _selectedIndex, children: pages),
+                    child: IndexedStack(
+                      index: _selectedIndex,
+                      children: [
+                        for (var i = 0; i < pages.length; i++)
+                          TickerMode(
+                            enabled: i == _selectedIndex,
+                            child: RepaintBoundary(child: pages[i]),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
