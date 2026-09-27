@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -19,6 +20,44 @@ Brightness readerSurfaceBrightness(double luminance, {Brightness? previous}) {
     null => 0.5,
   };
   return luminance >= threshold ? Brightness.light : Brightness.dark;
+}
+
+/// Distance gating avoids readbacks for tiny movements. Fast flings sample less
+/// often, while ScrollEnd always requests a final accurate sample separately.
+class ReaderToneSamplingPolicy {
+  double? _previousOffset;
+  Duration? _previousTime;
+  double? _sampleOffset;
+  Duration? _sampleTime;
+
+  bool onScroll(double offset, Duration time) {
+    final previous = _previousOffset;
+    final elapsed = _previousTime == null
+        ? 0
+        : (time - _previousTime!).inMicroseconds;
+    final velocity = previous == null || elapsed <= 0
+        ? 0.0
+        : (offset - previous).abs() * Duration.microsecondsPerSecond / elapsed;
+    _previousOffset = offset;
+    _previousTime = time;
+    if (_sampleTime == null) {
+      _sampleTime = time;
+      _sampleOffset = offset;
+      return false;
+    }
+    final interval = Duration(milliseconds: velocity >= 1200 ? 360 : 180);
+    if (time - _sampleTime! < interval || (offset - _sampleOffset!).abs() < 24) {
+      return false;
+    }
+    _sampleTime = time;
+    _sampleOffset = offset;
+    return true;
+  }
+
+  void reset() {
+    _previousOffset = _sampleOffset = null;
+    _previousTime = _sampleTime = null;
+  }
 }
 
 /// Samples the already-painted native Flutter reader viewport at the floating
@@ -56,6 +95,8 @@ class _ReaderOverlayToneSamplerState extends State<ReaderOverlayToneSampler> {
   Animation<double>? _routeAnimation;
   Animation<double>? _secondaryAnimation;
   bool _tickersEnabled = true;
+  final _scrollPolicy = ReaderToneSamplingPolicy();
+  final _clock = Stopwatch()..start();
 
   // GPU readbacks compete with the route's glass/transition raster work.
   // Status listeners suspend sampling without adding a per-frame rebuild.
@@ -120,22 +161,29 @@ class _ReaderOverlayToneSamplerState extends State<ReaderOverlayToneSampler> {
   }
 
   bool _handleScroll(ScrollNotification notification) {
-    if (notification is ScrollUpdateNotification ||
-        notification is OverscrollNotification ||
-        notification is ScrollEndNotification) {
-      _scheduleSample();
+    if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+    if (notification is ScrollEndNotification) {
+      _scrollPolicy.reset();
+      _timer?.cancel();
+      _timer = null;
+      _scheduleSample(delay: const Duration(milliseconds: 60));
+    } else if (notification is ScrollUpdateNotification &&
+        _scrollPolicy.onScroll(notification.metrics.pixels, _clock.elapsed)) {
+      _scheduleSample(delay: Duration.zero);
     }
     return false;
   }
 
-  void _scheduleSample() {
+  void _scheduleSample({Duration delay = const Duration(milliseconds: 90)}) {
     if (!_canSample) return;
     if (_sampling) {
       _sampleAgain = true;
       return;
     }
     if (_timer?.isActive ?? false) return;
-    _timer = Timer(const Duration(milliseconds: 90), () {
+    _timer = Timer(delay, () {
       _timer = null;
       WidgetsBinding.instance.addPostFrameCallback((_) => _sample());
       WidgetsBinding.instance.scheduleFrame();
@@ -155,7 +203,10 @@ class _ReaderOverlayToneSamplerState extends State<ReaderOverlayToneSampler> {
     _sampling = true;
     ui.Image? image;
     try {
-      image = await renderObject.toImage(pixelRatio: 0.18);
+      if (renderObject.size.isEmpty) return;
+      image = await renderObject.toImage(
+        pixelRatio: math.min(0.18, 128 / renderObject.size.width),
+      );
       final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       if (!_canSample || data == null) return;
       final bytes = data.buffer.asUint8List(

@@ -72,8 +72,8 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
       GlobalKey<WebViewHtmlViewState>();
   final Map<int, GlobalKey> _markdownHeadingKeys = {};
   final ReaderImageSessionCache _imageCache = ReaderImageSessionCache();
-  bool _readerMenuVisible = false;
-  String? _readerMessage;
+  final _readerMenuVisible = ValueNotifier<bool>(false);
+  final _readerMessage = ValueNotifier<String?>(null);
   Timer? _readerMessageTimer;
   final _overlayTone = ValueNotifier<ReaderOverlayTone?>(null);
   String? _headingsContent;
@@ -244,6 +244,8 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
     _progressSession.dispose();
     MoyueStorageService.instance.removeListener(_reloadDocument);
     _readerMessageTimer?.cancel();
+    _readerMenuVisible.dispose();
+    _readerMessage.dispose();
     _scrollController.dispose();
     _overlayTone.dispose();
     _imageCache.clear();
@@ -428,8 +430,11 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
                   ),
                 ),
               ),
-              if (!_readerMenuVisible)
-                Positioned(
+              ValueListenableBuilder<bool>(
+                valueListenable: _readerMenuVisible,
+                builder: (context, visible, child) =>
+                    visible ? const SizedBox.shrink() : child!,
+                child: Positioned(
                   left: 12,
                   right: 12,
                   bottom: MediaQuery.paddingOf(context).bottom + 12,
@@ -453,11 +458,16 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
                     ),
                   ),
                 ),
+              ),
               Positioned.fill(
-                child: MoyueTransientMessageOverlay(
-                  message: _readerMessage,
-                  bottomInset: MediaQuery.paddingOf(context).bottom + 88,
-                  onDismiss: _dismissMessage,
+                child: ValueListenableBuilder<String?>(
+                  valueListenable: _readerMessage,
+                  builder: (context, message, _) =>
+                      MoyueTransientMessageOverlay(
+                        message: message,
+                        bottomInset: MediaQuery.paddingOf(context).bottom + 88,
+                        onDismiss: _dismissMessage,
+                      ),
                 ),
               ),
             ],
@@ -731,8 +741,8 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
     String? title,
     String? message,
   }) async {
-    if (_readerMenuVisible) return null;
-    setState(() => _readerMenuVisible = true);
+    if (_readerMenuVisible.value) return null;
+    _readerMenuVisible.value = true;
     try {
       return await showMoyueActionMenu<T>(
         context: context,
@@ -741,7 +751,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
         actions: actions,
       );
     } finally {
-      if (mounted) setState(() => _readerMenuVisible = false);
+      if (mounted) _readerMenuVisible.value = false;
     }
   }
 
@@ -909,15 +919,15 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
 
   void _message(String message) {
     _readerMessageTimer?.cancel();
-    setState(() => _readerMessage = message);
+    _readerMessage.value = message;
     _readerMessageTimer = Timer(const Duration(seconds: 4), _dismissMessage);
   }
 
   void _dismissMessage() {
     _readerMessageTimer?.cancel();
     _readerMessageTimer = null;
-    if (!mounted || _readerMessage == null) return;
-    setState(() => _readerMessage = null);
+    if (!mounted || _readerMessage.value == null) return;
+    _readerMessage.value = null;
   }
 }
 

@@ -1,8 +1,37 @@
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:moyue_application/services/text_decoder.dart';
+
+class PreparedNativeHtml {
+  const PreparedNativeHtml(
+    this.html,
+    this.sections,
+    this.headingSections,
+    this.anchorSections,
+  );
+  final String html;
+  final List<NativeHtmlSection> sections;
+  final Map<int, int> headingSections;
+  final Map<String, int> anchorSections;
+}
+
+class NativeHtmlSection {
+  const NativeHtmlSection(this.html, this.textLength, this.images);
+  final String html;
+  final int textLength, images;
+}
+
+typedef _HtmlPreparation = ({
+  String data,
+  double width,
+  Map<String, Uint8List> styles,
+  int period,
+  String weightSet,
+  int authorIndex,
+});
 
 /// 把文档内/外部样式表级联为渲染引擎能够消费的行内 CSS，并把静态
 /// Flutter 无法执行的确定性脚本初始状态物化进 DOM。
@@ -19,48 +48,192 @@ class NativeHtmlPreprocessor {
     int reportPeriod = 365,
     String reportWeightSet = 'spread',
     int reportAuthorIndex = 2,
+  }) async => (await prepareDocument(
+    data: data,
+    viewportWidth: viewportWidth,
+    resourceLoader: resourceLoader,
+    reportPeriod: reportPeriod,
+    reportWeightSet: reportWeightSet,
+    reportAuthorIndex: reportAuthorIndex,
+  )).html;
+
+  static Future<PreparedNativeHtml> prepareDocument({
+    required String data,
+    required double viewportWidth,
+    Future<Uint8List?> Function(String source)? resourceLoader,
+    int reportPeriod = 365,
+    String reportWeightSet = 'spread',
+    int reportAuthorIndex = 2,
   }) async {
-    final document = html_parser.parse(data);
-    await _loadLinkedStyles(document, resourceLoader);
-    _materializeReportState(
-      document,
+    final styles = <String, Uint8List>{};
+    if (resourceLoader != null && data.toLowerCase().contains('<link')) {
+      final links = data.length < 24000
+          ? _styleLinks(data)
+          : await compute(_styleLinks, data, debugLabel: 'moyue-html-links');
+      for (var start = 0; start < links.length; start += 4) {
+        await Future.wait(
+          links.skip(start).take(4).map((href) async {
+            try {
+              final bytes = await resourceLoader(href);
+              if (bytes != null) styles[href] = bytes;
+            } on Object {
+              /* A missing stylesheet must not hide the document. */
+            }
+          }),
+        );
+      }
+    }
+    final request = (
+      data: data,
+      width: viewportWidth,
+      styles: styles,
       period: reportPeriod,
       weightSet: reportWeightSet,
       authorIndex: reportAuthorIndex,
     );
-    _materializeKnownPseudoContent(document);
-    _inlineStyleSheets(document, viewportWidth);
-    _addHeadingAnchors(document);
-    document.querySelectorAll('script,style').forEach((node) => node.remove());
-    document.querySelector('#progress')?.attributes['style'] = 'display:none';
-    return document.outerHtml;
+    final size =
+        data.length +
+        styles.values.fold<int>(0, (size, bytes) => size + bytes.length);
+    // Avoid isolate startup cost for small snippets (including editor previews).
+    return size < 24000
+        ? _prepareDocument(request)
+        : compute(_prepareDocument, request, debugLabel: 'moyue-html-prepare');
   }
 
-  static Future<void> _loadLinkedStyles(
-    dom.Document document,
-    Future<Uint8List?> Function(String source)? loader,
-  ) async {
-    if (loader == null) return;
-    final links = document.querySelectorAll('link[rel~="stylesheet"][href]');
-    for (final link in links) {
-      final href = link.attributes['href']?.trim();
-      final uri = href == null ? null : Uri.tryParse(href);
-      if (href == null || href.isEmpty || (uri?.hasScheme ?? false)) continue;
-      try {
-        final bytes = await loader(href);
-        if (bytes == null) continue;
+  static List<String> _styleLinks(String data) => html_parser
+      .parse(data)
+      .querySelectorAll('link[rel~="stylesheet"][href]')
+      .map((node) => node.attributes['href']!.trim())
+      .where(
+        (href) => href.isNotEmpty && !(Uri.tryParse(href)?.hasScheme ?? true),
+      )
+      .toSet()
+      .toList();
+
+  static PreparedNativeHtml _prepareDocument(_HtmlPreparation request) {
+    final document = html_parser.parse(request.data);
+    for (final link in document.querySelectorAll(
+      'link[rel~="stylesheet"][href]',
+    )) {
+      final bytes = request.styles[link.attributes['href']?.trim()];
+      if (bytes != null) {
         link.replaceWith(
           dom.Element.tag('style')..text = decodeImportedText(bytes),
         );
-      } on Object {
-        // 单个外部样式表断裂时仍保留正文。
       }
     }
+    _materializeReportState(
+      document,
+      period: request.period,
+      weightSet: request.weightSet,
+      authorIndex: request.authorIndex,
+    );
+    _materializeKnownPseudoContent(document);
+    _inlineStyleSheets(document, request.width);
+    _addHeadingAnchors(document);
+    document.querySelectorAll('script,style').forEach((node) => node.remove());
+    document.querySelector('#progress')?.attributes['style'] = 'display:none';
+    return _sections(document);
+  }
+
+  static PreparedNativeHtml _sections(dom.Document document) {
+    final html = document.outerHtml;
+    final body = document.body;
+    final parts = <dom.Element>[];
+    // Only split normal block flow. Flex/grid/table/custom interactive groups
+    // are indivisible, so lazy loading cannot destroy their native layout.
+    bool canSplit(dom.Element element) {
+      if (element.attributes.keys.any(
+        (key) => key.toString().startsWith('data-moyue-'),
+      )) {
+        return false;
+      }
+      final style = element.attributes['style'] ?? '';
+      if (RegExp(
+        r'display\s*:\s*(flex|grid|table)|position\s*:\s*(absolute|fixed)|column-count',
+      ).hasMatch(style)) {
+        return false;
+      }
+      for (final match in RegExp(
+        r'(?:^|;)(?:padding[^:]*|margin[^:]*|border[^:]*|height|min-height)\s*:\s*([^;]+)',
+      ).allMatches(style)) {
+        if (!RegExp(r'^(?:0(?:px)?\s*)+$').hasMatch(match.group(1)!.trim())) {
+          return false;
+        }
+      }
+      return element.children.length >= 3 &&
+          element.nodes.whereType<dom.Text>().every(
+            (text) => text.text.trim().isEmpty,
+          );
+    }
+
+    if (body != null && canSplit(body)) {
+      for (final child in body.children) {
+        if (const ['main', 'article'].contains(child.localName) &&
+            canSplit(child)) {
+          for (final section in child.children) {
+            final wrapper = child.clone(false)..append(section.clone(true));
+            parts.add(wrapper);
+          }
+        } else {
+          parts.add(child);
+        }
+      }
+    } else if (body != null &&
+        body.children.length == 1 &&
+        const ['main', 'article'].contains(body.children.single.localName) &&
+        canSplit(body.children.single) &&
+        (body.attributes['style'] ?? '').isEmpty) {
+      final container = body.children.single;
+      for (final section in container.children) {
+        parts.add(container.clone(false)..append(section.clone(true)));
+      }
+    }
+    final sections = <NativeHtmlSection>[];
+    final headings = <int, int>{};
+    final anchors = <String, int>{};
+    void index(dom.Element element, int section) {
+      for (final node in [element, ...element.querySelectorAll('[id]')]) {
+        if (node.id.isEmpty) continue;
+        anchors.putIfAbsent(node.id, () => section);
+        final match = RegExp(r'^moyue-heading-(\d+)$').firstMatch(node.id);
+        if (match != null) headings[int.parse(match.group(1)!)] = section;
+      }
+    }
+
+    if (parts.length < 3) {
+      if (body != null) index(body, 0);
+      sections.add(
+        NativeHtmlSection(
+          html,
+          body?.text.length ?? 0,
+          body?.querySelectorAll('img').length ?? 0,
+        ),
+      );
+    } else {
+      for (final part in parts) {
+        index(part, sections.length);
+        final wrapper = body!.clone(false)..append(part.clone(true));
+        sections.add(
+          NativeHtmlSection(
+            '<html>${wrapper.outerHtml}</html>',
+            part.text.length,
+            part.querySelectorAll('img').length +
+                (part.localName == 'img' ? 1 : 0),
+          ),
+        );
+      }
+    }
+    return PreparedNativeHtml(html, sections, headings, anchors);
   }
 
   static void _addHeadingAnchors(dom.Document document) {
     final headings = document.querySelectorAll('h1,h2,h3,h4,h5,h6');
     for (var index = 0; index < headings.length; index++) {
+      final originalId = headings[index].id;
+      if (originalId.isNotEmpty && originalId != 'moyue-heading-$index') {
+        headings[index].nodes.insert(0, dom.Element.tag('span')..id = originalId);
+      }
       headings[index].id = 'moyue-heading-$index';
     }
   }

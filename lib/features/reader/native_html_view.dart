@@ -6,11 +6,11 @@ import 'package:moyue_application/core/i18n/moyue_i18n.dart';
 import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:html/dom.dart' as dom;
-import 'package:html/parser.dart' as html_parser;
 import 'package:moyue_application/services/native_html_preprocessor.dart';
 import 'package:moyue_application/widgets/image_lightbox.dart';
 import 'package:moyue_application/widgets/stable_reader_image.dart';
 import 'package:moyue_application/widgets/missing_resource_placeholder.dart';
+import 'package:moyue_application/widgets/lazy_html_section.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 把 HTML/CSS 映射成原生 Flutter widget 树，不创建 WebView。
@@ -23,6 +23,7 @@ class NativeHtmlView extends StatefulWidget {
     this.resourceLoader,
     this.resourceCacheKey,
     this.imageCache,
+    this.lazyLoading = true,
     super.key,
   });
 
@@ -30,6 +31,7 @@ class NativeHtmlView extends StatefulWidget {
   final Future<Uint8List?> Function(String source)? resourceLoader;
   final Object? resourceCacheKey;
   final ReaderImageSessionCache? imageCache;
+  final bool lazyLoading;
 
   @override
   State<NativeHtmlView> createState() => NativeHtmlViewState();
@@ -38,10 +40,12 @@ class NativeHtmlView extends StatefulWidget {
 class NativeHtmlViewState extends State<NativeHtmlView> {
   List<GlobalKey<HtmlWidgetState>> _htmlKeys = const [];
   final Map<String, Future<Uint8List?>> _resourceFutures = {};
-  Future<String>? _preparedData;
+  Future<PreparedNativeHtml>? _preparedData;
   Object? _preparedSignature;
-  String? _fragmentSource;
-  List<String> _fragments = const [];
+  PreparedNativeHtml? _prepared;
+  List<GlobalKey<LazyHtmlSectionState>> _sectionKeys = const [];
+  bool _selectAllExpanded = false;
+  final Set<String> _engineAnchors = {};
   int _period = 365;
   String _weightSet = 'spread';
   int _authorIndex = 2;
@@ -52,7 +56,8 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
     if (oldWidget.data != widget.data ||
         oldWidget.resourceCacheKey != widget.resourceCacheKey) {
       _preparedSignature = null;
-      _fragmentSource = null;
+      _prepared = null;
+      _selectAllExpanded = false;
       _resourceFutures.clear();
       _period = 365;
       _weightSet = 'spread';
@@ -61,17 +66,46 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
   }
 
   Future<bool> scrollToHeading(int index) async {
-    for (var attempt = 0; attempt < 3; attempt++) {
-      for (final key in _htmlKeys) {
-        final state = key.currentState;
-        if (state != null &&
-            await state.scrollToAnchor('moyue-heading-$index')) {
-          return true;
-        }
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 80));
+    return _scrollToAnchor('moyue-heading-$index');
+  }
+
+  Future<bool> _scrollToAnchor(String anchor) async {
+    final pending = _preparedData;
+    if (pending == null) return false;
+    final prepared = await pending;
+    if (!mounted || !identical(_preparedData, pending)) return false;
+    await _layoutFrame();
+    if (!mounted || !identical(_prepared, prepared)) return false;
+    final section = prepared.anchorSections[anchor];
+    if (section == null) return false;
+    _sectionKeys[section].currentState?.ensureLoaded();
+    await _layoutFrame();
+    if (!mounted || !identical(_prepared, prepared)) return false;
+    final target = _sectionKeys[section].currentContext;
+    if (target == null || !target.mounted) return false;
+    await Scrollable.ensureVisible(target, alignment: 0.05);
+    if (!mounted || !identical(_prepared, prepared)) return false;
+    _engineAnchors.add(anchor);
+    try {
+      return await _htmlKeys[section].currentState?.scrollToAnchor(anchor) ?? false;
+    } finally {
+      _engineAnchors.remove(anchor);
     }
-    return false;
+  }
+
+  Future<void> _layoutFrame() async {
+    WidgetsBinding.instance.scheduleFrame();
+    await WidgetsBinding.instance.endOfFrame;
+  }
+
+  Future<void> _selectAll(SelectableRegionState region) async {
+    region.clearSelection();
+    setState(() => _selectAllExpanded = true);
+    for (var frame = 0; frame < 3; frame++) {
+      await _layoutFrame();
+      if (!mounted || !region.mounted) return;
+    }
+    region.selectAll(SelectionChangedCause.toolbar);
   }
 
   @override
@@ -84,32 +118,82 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
     );
     if (_preparedSignature != signature) {
       _preparedSignature = signature;
-      _preparedData = NativeHtmlPreprocessor.prepare(
+      _selectAllExpanded = false;
+      _preparedData = NativeHtmlPreprocessor.prepareDocument(
         data: widget.data,
         viewportWidth: width,
         resourceLoader: widget.resourceLoader,
       );
     }
-    return FutureBuilder<String>(
+    return FutureBuilder<PreparedNativeHtml>(
       future: _preparedData,
       builder: (context, snapshot) {
-        final data = snapshot.data ?? (snapshot.hasError ? widget.data : null);
+        if (snapshot.hasError) {
+          return SelectionArea(child: _htmlWidget(context, widget.data));
+        }
+        final data = snapshot.data;
         if (data == null) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 28),
             child: Center(child: CircularProgressIndicator.adaptive()),
           );
         }
-        final fragments = _fragmentsFor(data);
+        if (!identical(_prepared, data)) {
+          _prepared = data;
+          _htmlKeys = List.generate(
+            data.sections.length,
+            (_) => GlobalKey<HtmlWidgetState>(),
+          );
+          _sectionKeys = List.generate(
+            data.sections.length,
+            (_) => GlobalKey<LazyHtmlSectionState>(),
+          );
+        }
         return SelectionArea(
+          contextMenuBuilder: (context, region) {
+            TextSelectionToolbarAnchors anchors;
+            try {
+              anchors = region.contextMenuAnchors;
+            } on TypeError catch (error) {
+              if (!error.toString().contains('Null check operator')) rethrow;
+              anchors = TextSelectionToolbarAnchors(
+                primaryAnchor: Offset(
+                  MediaQuery.sizeOf(context).width / 2,
+                  MediaQuery.paddingOf(context).top + 140,
+                ),
+              );
+            }
+            return AdaptiveTextSelectionToolbar.buttonItems(
+              anchors: anchors,
+              buttonItems: [
+                for (final item in region.contextMenuButtonItems)
+                  item.type == ContextMenuButtonType.selectAll &&
+                          !_selectAllExpanded
+                      ? ContextMenuButtonItem(
+                          type: ContextMenuButtonType.selectAll,
+                          onPressed: () => unawaited(_selectAll(region)),
+                        )
+                      : item,
+              ],
+            );
+          },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (var index = 0; index < fragments.length; index++)
-                RepaintBoundary(
-                  child: _htmlWidget(
+              for (var index = 0; index < data.sections.length; index++)
+                LazyHtmlSection(
+                  key: _sectionKeys[index],
+                  eager: !widget.lazyLoading || index == 0 || _selectAllExpanded,
+                  estimatedHeight:
+                      (data.sections[index].textLength /
+                                  (width / 9).clamp(12, 120) *
+                                  28 +
+                              data.sections[index].images * 200 +
+                              40)
+                          .clamp(80, 6000),
+                  builder: (context) => _htmlWidget(
                     context,
-                    fragments[index],
+                    data.sections[index].html,
                     key: _htmlKeys[index],
                   ),
                 ),
@@ -119,72 +203,6 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
       },
     );
   }
-
-  /// 将较长页面按顶层章节拆成独立重绘边界。预处理已经把 CSS 级联为
-  /// 行内样式，所以拆分不会重新计算样式，却能避免滚动时整篇文档重绘。
-  List<String> _fragmentsFor(String data) {
-    if (_fragmentSource == data) return _fragments;
-    final document = html_parser.parse(data);
-    final body = document.body;
-    final canSplit =
-        body?.children.any(
-          (child) =>
-              (child.localName == 'main' || child.localName == 'article') &&
-              child.children.length >= 3,
-        ) ??
-        false;
-    if (!canSplit) {
-      _fragmentSource = data;
-      _fragments = [data];
-      _htmlKeys = [GlobalKey<HtmlWidgetState>()];
-      return _fragments;
-    }
-    final rawFragments = <String>[];
-    if (body != null) {
-      for (final child in body.children) {
-        final splitContainer =
-            (child.localName == 'main' || child.localName == 'article') &&
-            child.children.length >= 3;
-        if (!splitContainer) {
-          rawFragments.add(child.outerHtml);
-          continue;
-        }
-        final attributes = child.attributes.entries
-            .map((entry) => '${entry.key}="${_escapeAttribute(entry.value)}"')
-            .join(' ');
-        final start = attributes.isEmpty
-            ? '<${child.localName}>'
-            : '<${child.localName} $attributes>';
-        for (final section in child.children) {
-          rawFragments.add('$start${section.outerHtml}</${child.localName}>');
-        }
-      }
-    }
-    if (rawFragments.length <= 1) {
-      _fragments = [data];
-    } else {
-      final bodyAttributes = body!.attributes.entries
-          .map((entry) => '${entry.key}="${_escapeAttribute(entry.value)}"')
-          .join(' ');
-      final bodyStart = bodyAttributes.isEmpty
-          ? '<body>'
-          : '<body $bodyAttributes>';
-      _fragments = [
-        for (final fragment in rawFragments)
-          '<html>$bodyStart$fragment</body></html>',
-      ];
-    }
-    _fragmentSource = data;
-    _htmlKeys = List.generate(
-      _fragments.length,
-      (_) => GlobalKey<HtmlWidgetState>(),
-      growable: false,
-    );
-    return _fragments;
-  }
-
-  String _escapeAttribute(String value) =>
-      value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
 
   Future<Uint8List?> _loadResource(String source) {
     final loader = widget.resourceLoader;
@@ -220,6 +238,12 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
       customWidgetBuilder: (element) => _customElement(context, element),
       onTapUrl: (url) async {
         final uri = Uri.tryParse(url);
+        if (uri != null && !uri.hasScheme && uri.fragment.isNotEmpty) {
+          // HtmlWidget.scrollToAnchor invokes this callback before its own
+          // anchor resolver. Return false on that second pass, not recurse.
+          if (_engineAnchors.contains(uri.fragment)) return false;
+          return _scrollToAnchor(uri.fragment);
+        }
         if (uri == null || !uri.hasScheme) return false;
         return launchUrl(uri, mode: LaunchMode.externalApplication);
       },

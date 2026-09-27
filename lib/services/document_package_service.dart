@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
+import 'package:moyue_application/services/package_archive_codec.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:moyue_application/core/files/document_import_policy.dart';
@@ -477,23 +477,11 @@ class DocumentPackageService {
     if (extension != 'zip' && extension != 'moyue') {
       throw const FormatException('仅支持 .zip、.moyue、.md、.html 或 .htm 文件');
     }
-    final archive = ZipDecoder().decodeBytes(bytes, verify: true);
-    final entries = <String, Uint8List>{};
-    for (final file in archive) {
-      if (!file.isFile || file.isSymbolicLink) continue;
-      final path = _safeArchivePath(decodeArchiveFileName(file.name));
-      if (!_isAllowedPackageEntry(path)) {
-        throw FormatException('压缩包包含不支持的文件类型：$path');
-      }
-      entries[path] = file.readBytes() ?? Uint8List(0);
-    }
-    if (entries.isEmpty) throw const FormatException('压缩包为空');
-    if (entries.length < 2) {
-      throw const FormatException('ZIP 或 .moyue 中至少需要包含 2 个文件');
-    }
+    final decoded = await PackageArchiveCodec.decode(bytes);
     return _importEntries(
       sourceName: fileName,
-      entries: entries,
+      entries: decoded.files,
+      contentHashes: decoded.hashes,
       single: false,
       requireMoyueMeta: extension == 'moyue',
     );
@@ -587,6 +575,7 @@ class DocumentPackageService {
     required Map<String, Uint8List> entries,
     required bool single,
     bool requireMoyueMeta = false,
+    Map<String, String> contentHashes = const {},
   }) async {
     final metaBytes = entries['meta.json'];
     if (requireMoyueMeta && metaBytes == null) {
@@ -692,13 +681,16 @@ class DocumentPackageService {
         relativePath: relativePath,
         logicalPath: entry.logicalPath,
         isPrimary: entry == primaryEntry,
-        contentHash: sha256.convert(data).toString(),
+        contentHash:
+            contentHashes[entry.archivePath] ??
+            await PackageArchiveCodec.hash(data),
         createdAt: now,
         updatedAt: now,
       );
       documents.add(record);
       sourceDocumentIds[entry.sourceId] = record;
       files[relativePath] = data;
+      if (documents.length % 64 == 0) await Future<void>.delayed(Duration.zero);
     }
 
     final declaredResources = meta['resources'];
@@ -758,11 +750,14 @@ class DocumentPackageService {
           name: p.posix.basename(entry.logicalPath),
           mimeType: _mimeType(entry.logicalPath),
           relativePath: relativePath,
-          contentHash: sha256.convert(data).toString(),
+          contentHash:
+              contentHashes[entry.archivePath] ??
+              await PackageArchiveCodec.hash(data),
           sizeBytes: data.length,
         ),
       );
       files[relativePath] = data;
+      if (resources.length % 64 == 0) await Future<void>.delayed(Duration.zero);
     }
 
     final folder = FolderRecord(
@@ -1636,7 +1631,7 @@ class DocumentPackageService {
                     p.posix.isWithin(logicalRoot, path);
               })
               .toList(growable: false);
-    final archive = Archive();
+    final archive = <String, Uint8List>{};
     final documentMeta = <Map<String, Object?>>[];
     final resourceMeta = <Map<String, Object?>>[];
     final docsById = {for (final row in docs) row['id']! as String: row};
@@ -1652,11 +1647,8 @@ class DocumentPackageService {
         id,
         p.posix.basename(logicalPath),
       );
-      archive.addFile(
-        ArchiveFile.bytes(
-          archivePath,
-          await _files.readBytes(row['relative_path']! as String),
-        ),
+      archive[archivePath] = await _files.readBytes(
+        row['relative_path']! as String,
       );
       documentMeta.add({
         'id': id,
@@ -1689,9 +1681,7 @@ class DocumentPackageService {
         id,
         p.posix.basename(logicalPath),
       );
-      archive.addFile(
-        ArchiveFile.bytes(archivePath, await _files.readBytes(relative)),
-      );
+      archive[archivePath] = await _files.readBytes(relative);
       resourceMeta.add({
         'id': id,
         'document_id': documentId,
@@ -1727,14 +1717,14 @@ class DocumentPackageService {
             resourceId,
             p.posix.basename(link),
           );
-          archive.addFile(ArchiveFile.bytes(archivePath, bytes));
+          archive[archivePath] = bytes;
           resourceMeta.add({
             'id': resourceId,
             'document_id': documentId,
             'path': link,
             'archive_path': archivePath,
             'mime_type': _mimeType(link),
-            'sha256': sha256.convert(bytes).toString(),
+            'sha256': await PackageArchiveCodec.hash(bytes),
             'size': bytes.length,
           });
         } on Object {
@@ -1761,16 +1751,13 @@ class DocumentPackageService {
       'documents': documentMeta,
       'resources': resourceMeta,
     };
-    archive.addFile(
-      ArchiveFile.string(
-        'meta.json',
-        const JsonEncoder.withIndent('  ').convert(meta),
-      ),
+    archive['meta.json'] = Uint8List.fromList(
+      utf8.encode(const JsonEncoder.withIndent('  ').convert(meta)),
     );
     return MoyueExport(
       fileName:
           '${_safeFileName(logicalRoot.isEmpty ? folder['name']! as String : p.posix.basename(logicalRoot))}.moyue',
-      bytes: ZipEncoder().encodeBytes(archive),
+      bytes: await PackageArchiveCodec.encode(archive),
     );
   }
 
@@ -1991,13 +1978,7 @@ class DocumentPackageService {
   );
 
   String _safeArchivePath(String value) {
-    final normalized = p.posix.normalize(value.replaceAll('\\', '/'));
-    if (normalized == '.' ||
-        normalized.startsWith('../') ||
-        normalized.startsWith('/')) {
-      throw const FormatException('压缩包包含不安全路径');
-    }
-    return normalized;
+    return PackageArchiveCodec.safePath(value);
   }
 
   String _extension(String value) =>
@@ -2008,31 +1989,6 @@ class DocumentPackageService {
       DocumentImportPolicy.htmlExtensions.contains(_extension(value))
       ? DocumentKind.html
       : DocumentKind.markdown;
-
-  bool _isAllowedPackageEntry(String value) {
-    if (value == 'meta.json') return true;
-    return const {
-      'md',
-      'html',
-      'htm',
-      'css',
-      'js',
-      'png',
-      'jpg',
-      'jpeg',
-      'gif',
-      'webp',
-      'svg',
-      'avif',
-      'bmp',
-      'ico',
-      'mp4',
-      'webm',
-      'mov',
-      'm4v',
-      'ogv',
-    }.contains(_extension(value));
-  }
 
   String _safeFileName(String value) =>
       value.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');

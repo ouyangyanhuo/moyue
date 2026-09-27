@@ -228,6 +228,7 @@ void main() {
           body: SingleChildScrollView(
             child: NativeHtmlView(
               data: decodeImportedText(files['im-magneto-x-report.html']!),
+              lazyLoading: false,
               resourceLoader: (path) async => files[path],
             ),
           ),
@@ -235,7 +236,10 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 800));
+    for (var attempt = 0; attempt < 100 && find.byType(HtmlWidget).evaluate().isEmpty; attempt++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
 
     expect(tester.takeException(), isNull);
     expect(find.byType(SegmentedButton<int>), findsOneWidget);
