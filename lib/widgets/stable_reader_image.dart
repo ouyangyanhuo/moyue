@@ -9,6 +9,32 @@ import 'package:moyue_application/core/display/display_preferences.dart';
 import 'package:moyue_application/services/ink_image_processor.dart';
 import 'package:moyue_application/widgets/missing_resource_placeholder.dart';
 
+/// Decode to physical display pixels while retaining the original aspect ratio.
+/// The encoded bytes stay in the session cache for full-resolution lightboxes.
+@visibleForTesting
+int? readerImageDecodeWidth({
+  required Size source,
+  required Size display,
+  required double pixelRatio,
+  BoxFit fit = BoxFit.contain,
+}) {
+  if (source.isEmpty ||
+      display.isEmpty ||
+      !pixelRatio.isFinite ||
+      pixelRatio <= 0) {
+    return null;
+  }
+  final fitted = applyBoxFit(fit, source, display);
+  final scale =
+      math.max(
+        fitted.destination.width / fitted.source.width,
+        fitted.destination.height / fitted.source.height,
+      ) *
+      pixelRatio;
+  if (!scale.isFinite || scale >= 1) return null;
+  return (source.width * scale).ceil().clamp(1, source.width.ceil());
+}
+
 /// Keeps images that have already entered the viewport alive for the lifetime
 /// of one reader page. The cache owns both encoded bytes and intrinsic size,
 /// so a lazily rebuilt Markdown sliver can immediately reuse the same image.
@@ -273,6 +299,15 @@ class _StableReaderImageState extends State<StableReaderImage>
               ? _buildInkImage(context, data, size)
               : Image.memory(
                   data.bytes,
+                  cacheWidth: readerImageDecodeWidth(
+                    source: Size(
+                      data.pixelWidth.toDouble(),
+                      data.pixelHeight.toDouble(),
+                    ),
+                    display: size,
+                    pixelRatio: MediaQuery.devicePixelRatioOf(context),
+                    fit: widget.fit,
+                  ),
                   width: size.width,
                   height: size.height,
                   fit: widget.fit,

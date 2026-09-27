@@ -9,20 +9,62 @@ import 'package:moyue_application/services/storage/storage_backend.dart';
 import 'package:moyue_application/services/storage/storage_backend_base.dart';
 
 class MoyueStorageService extends ChangeNotifier {
-  MoyueStorageService._() : _backend = createStorageBackend();
+  MoyueStorageService._()
+    : _backend = createStorageBackend(),
+      _packages = DocumentPackageService();
+
+  @visibleForTesting
+  MoyueStorageService.forTesting({
+    required MoyueStorageBackend backend,
+    required DocumentPackageService packages,
+  }) : // Keep the injected dependency names public for callers.
+       // ignore: prefer_initializing_formals
+       _backend = backend,
+       // ignore: prefer_initializing_formals
+       _packages = packages;
 
   static final instance = MoyueStorageService._();
   final MoyueStorageBackend _backend;
-  final DocumentPackageService _packages = DocumentPackageService();
+  final DocumentPackageService _packages;
+  Future<List<ReadingDocument>>? _documentIndex;
+  Future<List<LibraryFolder>>? _folderIndex;
 
-  Future<List<ReadingDocument>> loadDocuments() async {
-    final indexed = await _packages.loadDocuments();
-    final legacy = await _backend.loadDocuments();
+  /// Non-null only during a synchronous save notification. Observers can patch
+  /// the matching row without loading unrelated documents or their contents.
+  ReadingDocument? get changedDocument => _changedDocument;
+  ReadingDocument? _changedDocument;
+
+  @override
+  void notifyListeners() {
+    _documentIndex = null;
+    _folderIndex = null;
+    super.notifyListeners();
+  }
+
+  Future<ReadingDocument> readDocument(ReadingDocument document) =>
+      document.folderId == null
+      ? _backend.readDocument(document)
+      : _packages.readDocument(document);
+
+  Future<List<ReadingDocument>> loadDocuments() =>
+      _documentIndex ??= _loadDocumentIndex().onError((error, stack) {
+        _documentIndex = null;
+        Error.throwWithStackTrace(error!, stack);
+      });
+
+  Future<List<ReadingDocument>> _loadDocumentIndex() async {
+    final indexed = await _packages.loadDocuments(includeContent: false);
+    final legacy = await _backend.loadDocuments(includeContent: false);
     return [...indexed, ...legacy]
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
-  Future<List<LibraryFolder>> loadFolders() => _packages.loadFolders();
+  Future<List<LibraryFolder>> loadFolders() => _folderIndex ??= _packages
+      .loadFolders(includeContent: false)
+      .onError((error, stack) {
+        _folderIndex = null;
+        Error.throwWithStackTrace(error!, stack);
+      });
 
   Future<void> createFolder(String name) async {
     await _packages.createFolder(name);
@@ -115,7 +157,16 @@ class MoyueStorageService extends ChangeNotifier {
     if (existingDocument != null && existingDocument.folderId == null) {
       await _backend.deleteDocument(existingDocument);
     }
-    notifyListeners();
+    if (existingDocument?.id == result.id) {
+      _changedDocument = result;
+      try {
+        notifyListeners();
+      } finally {
+        _changedDocument = null;
+      }
+    } else {
+      notifyListeners();
+    }
     return result;
   }
 

@@ -17,6 +17,7 @@ class _IndexedMemoryStore implements PackageFileStore {
 
   final Directory root;
   final Map<String, Uint8List> files = {};
+  final List<String> reads = [];
 
   @override
   Future<String> databasePath() async => p.join(root.path, 'index.db');
@@ -33,6 +34,7 @@ class _IndexedMemoryStore implements PackageFileStore {
 
   @override
   Future<Uint8List> readBytes(String relativePath) async {
+    reads.add(relativePath);
     final bytes = files[relativePath];
     if (bytes == null) throw StateError('missing $relativePath');
     return bytes;
@@ -68,6 +70,75 @@ void main() {
   setUpAll(() {
     sqfliteFfiInit();
     sqflite.databaseFactory = databaseFactoryFfi;
+  });
+
+  test('列表只读取索引，正文按需加载；元数据移动仍携带引用图片', () async {
+    final root = await Directory.systemTemp.createTemp('moyue-lazy-index-');
+    final store = _IndexedMemoryStore(root);
+    final service = DocumentPackageService(store: store);
+    addTearDown(() async {
+      await service.close();
+      await root.delete(recursive: true);
+    });
+    final standalone = await service.importFile(
+      '一.md',
+      Uint8List.fromList(utf8.encode('正文一')),
+    );
+    await service.createFolder('目标');
+    final target = (await service.loadFolders(includeContent: false)).single;
+    final nested = await service.importIntoFolder(
+      folder: target,
+      fileName: '二.md',
+      bytes: Uint8List.fromList(utf8.encode('![图片](images/test.png)')),
+    );
+    store.files['${p.posix.dirname(nested.relativePath!)}/images/test.png'] =
+        Uint8List.fromList([1, 2, 3]);
+    store.reads.clear();
+    final documents = await service.loadDocuments(includeContent: false);
+    final folders = await service.loadFolders(includeContent: false);
+    expect(store.reads, isEmpty);
+    expect(documents.single.contentLoaded, isFalse);
+    expect(folders.single.documents.single.contentLoaded, isFalse);
+    final loaded = await service.readDocument(documents.single);
+    expect(loaded.content, '正文一');
+    expect(loaded.contentLoaded, isTrue);
+    expect(store.reads, [standalone.relativePath]);
+    await service.readDocument(loaded);
+    expect(store.reads, hasLength(1));
+    final moved = await service.moveDocumentToLibrary(
+      folders.single.documents.single,
+    );
+    expect(moved.content, '![图片](images/test.png)');
+    expect(await service.readLinkedResource(moved, 'images/test.png'), [
+      1,
+      2,
+      3,
+    ]);
+  });
+
+  test('清理图片只读取同目录文档，不读取其它文件夹正文', () async {
+    final root = await Directory.systemTemp.createTemp('moyue-cleanup-index-');
+    final store = _IndexedMemoryStore(root);
+    final service = DocumentPackageService(store: store);
+    addTearDown(() async {
+      await service.close();
+      await root.delete(recursive: true);
+    });
+    final first = await service.importFile(
+      'first.md',
+      Uint8List.fromList(utf8.encode('![keep](images/keep.png)')),
+    );
+    await service.importFile(
+      'unrelated.md',
+      Uint8List.fromList(utf8.encode('其它正文')),
+    );
+    final dir = p.posix.dirname(first.relativePath!);
+    store.files['$dir/images/keep.png'] = Uint8List.fromList([1]);
+    store.files['$dir/images/delete.png'] = Uint8List.fromList([2]);
+    store.reads.clear();
+    expect(await service.cleanupUnreferencedImages(first), 1);
+    expect(store.reads, [first.relativePath]);
+    expect(store.files.containsKey('$dir/images/keep.png'), isTrue);
   });
 
   test('缺失附件的 moyue、zip 和单文档仍可导入，资源返回空值', () async {

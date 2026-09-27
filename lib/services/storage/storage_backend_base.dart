@@ -2,7 +2,9 @@ import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/models/reading_document.dart';
 
 abstract interface class MoyueStorageBackend {
-  Future<List<ReadingDocument>> loadDocuments();
+  Future<List<ReadingDocument>> loadDocuments({bool includeContent = true});
+
+  Future<ReadingDocument> readDocument(ReadingDocument document);
 
   Future<ReadingDocument> writeDocument({
     required String title,

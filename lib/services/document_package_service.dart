@@ -123,7 +123,9 @@ class DocumentPackageService {
     if (pendingContent != null) {
       referenced.addAll(extractImageReferences(pendingContent));
     }
-    final siblings = await (_documentsLoader?.call() ?? loadDocuments());
+    final siblings =
+        await (_documentsLoader?.call() ??
+            _loadImageCleanupSiblings(document.folderId!, documentDir));
     for (final sibling in siblings) {
       final siblingPath = sibling.relativePath;
       if (siblingPath == null) continue;
@@ -140,6 +142,34 @@ class DocumentPackageService {
       deleted++;
     }
     return deleted;
+  }
+
+  Future<List<ReadingDocument>> _loadImageCleanupSiblings(
+    String folderId,
+    String documentDir,
+  ) async {
+    final rows = await (await index).packageDocuments(folderId);
+    final siblings = <ReadingDocument>[];
+    for (final row in rows) {
+      final path = row['relative_path']! as String;
+      if (p.posix.dirname(path) != documentDir) continue;
+      // If a sibling cannot be read, abort cleanup instead of risking its images.
+      siblings.add(
+        ReadingDocument(
+          id: row['id']! as String,
+          title: row['name']! as String,
+          content: decodeImportedText(await _files.readBytes(path)),
+          kind: row['kind'] == 'html'
+              ? DocumentKind.html
+              : DocumentKind.markdown,
+          updatedAt: DateTime.fromMillisecondsSinceEpoch(
+            row['updated_at']! as int,
+          ),
+          relativePath: path,
+        ),
+      );
+    }
+    return siblings;
   }
 
   /// 从 Markdown / HTML 文本中提取本地图片引用，
@@ -172,7 +202,18 @@ class DocumentPackageService {
     return references;
   }
 
-  Future<List<ReadingDocument>> loadDocuments() async {
+  Future<ReadingDocument> readDocument(ReadingDocument document) async {
+    if (document.contentLoaded) return document;
+    final path = document.relativePath;
+    if (path == null) throw StateError('文档路径不存在');
+    return document.copyWith(
+      content: decodeImportedText(await _files.readBytes(path)),
+    );
+  }
+
+  Future<List<ReadingDocument>> loadDocuments({
+    bool includeContent = true,
+  }) async {
     final rows = await (await index).primaryDocuments();
     final documents = <ReadingDocument>[];
     for (final row in rows) {
@@ -182,7 +223,10 @@ class DocumentPackageService {
           ReadingDocument(
             id: row['id']! as String,
             title: row['name']! as String,
-            content: decodeImportedText(await _files.readBytes(relativePath)),
+            content: includeContent
+                ? decodeImportedText(await _files.readBytes(relativePath))
+                : '',
+            contentLoaded: includeContent,
             kind: row['kind'] == 'html'
                 ? DocumentKind.html
                 : DocumentKind.markdown,
@@ -206,7 +250,7 @@ class DocumentPackageService {
     return documents;
   }
 
-  Future<List<LibraryFolder>> loadFolders() async {
+  Future<List<LibraryFolder>> loadFolders({bool includeContent = true}) async {
     final folderRows = await (await index).libraryFolders();
     final folders = <LibraryFolder>[];
     for (final folderRow in folderRows) {
@@ -222,7 +266,10 @@ class DocumentPackageService {
             ReadingDocument(
               id: row['id']! as String,
               title: row['name']! as String,
-              content: decodeImportedText(await _files.readBytes(relativePath)),
+              content: includeContent
+                  ? decodeImportedText(await _files.readBytes(relativePath))
+                  : '',
+              contentLoaded: includeContent,
               kind: row['kind'] == 'html'
                   ? DocumentKind.html
                   : DocumentKind.markdown,
@@ -806,6 +853,7 @@ class DocumentPackageService {
     String? targetLogicalPath,
     bool preserveSourceFolder = false,
   }) async {
+    document = await readDocument(document);
     final sourceFolderId = document.folderId;
     final sourcePath = document.relativePath;
     if (sourceFolderId == null || sourcePath == null) {

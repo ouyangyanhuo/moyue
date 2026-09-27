@@ -10,7 +10,18 @@ class _MemoryStorageBackend implements MoyueStorageBackend {
   final Map<String, String> _feeds = {};
 
   @override
-  Future<List<ReadingDocument>> loadDocuments() async => List.of(_documents);
+  Future<List<ReadingDocument>> loadDocuments({
+    bool includeContent = true,
+  }) async => [
+    for (final document in _documents)
+      includeContent ? document : document.metadata,
+  ];
+
+  @override
+  Future<ReadingDocument> readDocument(ReadingDocument document) async =>
+      document.contentLoaded
+      ? document
+      : _documents.firstWhere((item) => item.id == document.id);
 
   @override
   Future<ReadingDocument> writeDocument({

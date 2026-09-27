@@ -563,6 +563,8 @@ class _FolderPage extends StatefulWidget {
 
 class _FolderPageState extends State<_FolderPage> {
   late LibraryFolder _folder;
+  int _reloadGeneration = 0;
+  bool _indexReloading = false;
   final Set<String> _selectedIds = {};
   final Set<String> _selectedDirectories = {};
   final GlobalKey _expandedDropAreaKey = GlobalKey(
@@ -1189,10 +1191,25 @@ class _FolderPageState extends State<_FolderPage> {
   }
 
   Future<void> _reloadFolder() async {
-    final folders = await MoyueStorageService.instance.loadFolders();
-    final matches = folders.where((folder) => folder.id == _folder.id);
-    if (mounted && matches.isNotEmpty) {
-      setState(() => _folder = matches.first);
+    final generation = ++_reloadGeneration;
+    final changed = MoyueStorageService.instance.changedDocument;
+    if (changed != null && !_indexReloading) {
+      if (mounted && changed.folderId == _folder.id) {
+        setState(() => _folder = _folder.updateDocument(changed));
+      }
+      return;
+    }
+    _indexReloading = true;
+    try {
+      final folders = await MoyueStorageService.instance.loadFolders();
+      final matches = folders.where((folder) => folder.id == _folder.id);
+      if (mounted && generation == _reloadGeneration && matches.isNotEmpty) {
+        setState(() => _folder = matches.first);
+      }
+    } on Object {
+      // Preserve the visible index while a failed storage load is retried.
+    } finally {
+      if (generation == _reloadGeneration) _indexReloading = false;
     }
   }
 

@@ -14,6 +14,7 @@
   "fileImportFailed": "Could not import {fileName}: {error}",
   "@fileImportFailed": {"placeholders": {"fileName": {"type": "String"}, "error": {"type": "String"}}},
   "unknownError": "Unknown error",
+  "documentReadFailed": "Could not read this document. Check that the file exists, then retry.",
   "settingsTitle": "Settings",
   "settingsSubtitle": "Paper, type, and reading—your way",
   "searchSettings": "Search settings",

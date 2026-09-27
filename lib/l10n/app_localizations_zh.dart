@@ -47,6 +47,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get unknownError => '未知错误';
 
   @override
+  String get documentReadFailed => '无法读取文档，请确认文件存在后重试。';
+
+  @override
   String get settingsTitle => '设置';
 
   @override

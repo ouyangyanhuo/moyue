@@ -14,6 +14,7 @@
   "fileImportFailed": "导入 {fileName} 失败：{error}",
   "@fileImportFailed": {"placeholders": {"fileName": {"type": "String"}, "error": {"type": "String"}}},
   "unknownError": "未知错误",
+  "documentReadFailed": "无法读取文档，请确认文件存在后重试。",
   "settingsTitle": "设置",
   "settingsSubtitle": "让纸面、文字与阅读习惯相合",
   "searchSettings": "搜索设置",

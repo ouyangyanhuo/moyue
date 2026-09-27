@@ -164,6 +164,12 @@ abstract class AppLocalizations {
   /// **'Unknown error'**
   String get unknownError;
 
+  /// No description provided for @documentReadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read this document. Check that the file exists, then retry.'**
+  String get documentReadFailed;
+
   /// No description provided for @settingsTitle.
   ///
   /// In en, this message translates to:

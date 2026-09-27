@@ -14,6 +14,7 @@ class ReadingDocument {
     required this.content,
     required this.kind,
     required this.updatedAt,
+    this.contentLoaded = true,
     this.sourceLabel = '本地文件',
     this.filePath,
     this.folderId,
@@ -24,6 +25,9 @@ class ReadingDocument {
   final String id;
   final String title;
   final String content;
+
+  /// Empty text is a valid document; distinguish it from an unloaded index row.
+  final bool contentLoaded;
   final DocumentKind kind;
   final DateTime updatedAt;
   final String sourceLabel;
@@ -38,6 +42,7 @@ class ReadingDocument {
     String? id,
     String? title,
     String? content,
+    bool? contentLoaded,
     DocumentKind? kind,
     DateTime? updatedAt,
     String? sourceLabel,
@@ -49,6 +54,8 @@ class ReadingDocument {
     id: id ?? this.id,
     title: title ?? this.title,
     content: content ?? this.content,
+    contentLoaded:
+        contentLoaded ?? (content != null ? true : this.contentLoaded),
     kind: kind ?? this.kind,
     updatedAt: updatedAt ?? this.updatedAt,
     sourceLabel: sourceLabel ?? this.sourceLabel,
@@ -57,4 +64,6 @@ class ReadingDocument {
     relativePath: relativePath ?? this.relativePath,
     logicalPath: logicalPath ?? this.logicalPath,
   );
+
+  ReadingDocument get metadata => copyWith(content: '', contentLoaded: false);
 }

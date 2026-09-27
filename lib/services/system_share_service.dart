@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/document_package_service.dart';
+import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:share_plus/share_plus.dart';
 
 class SystemShareService {
@@ -15,7 +16,9 @@ class SystemShareService {
   static Future<ShareResult> shareDocument(
     BuildContext context,
     ReadingDocument document,
-  ) {
+  ) async {
+    document = await MoyueStorageService.instance.readDocument(document);
+    if (!context.mounted) throw StateError('分享页面已关闭');
     final extension = document.kind.extension;
     final safeTitle = document.title
         .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
@@ -38,9 +41,10 @@ class SystemShareService {
     BuildContext context, {
     List<ReadingDocument> documents = const [],
     List<MoyueExport> folders = const [],
-  }) {
+  }) async {
     final files = <({Uint8List bytes, String name, String mimeType})>[];
-    for (final document in documents) {
+    for (final entry in documents) {
+      final document = await MoyueStorageService.instance.readDocument(entry);
       final extension = document.kind.extension;
       final safeTitle = _safeName(document.title, fallback: document.id);
       files.add((
@@ -61,6 +65,7 @@ class SystemShareService {
       ));
     }
     if (files.isEmpty) throw StateError('没有可分享的项目');
+    if (!context.mounted) throw StateError('分享页面已关闭');
     return _share(
       ShareParams(
         files: [

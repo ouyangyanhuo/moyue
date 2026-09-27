@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:moyue_application/models/feed_models.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/storage/storage_backend_base.dart';
+import 'package:moyue_application/services/text_decoder.dart';
 
 MoyueStorageBackend createStorageBackend() => _IoStorageBackend();
 
@@ -49,7 +50,9 @@ class _IoStorageBackend implements MoyueStorageBackend {
   }
 
   @override
-  Future<List<ReadingDocument>> loadDocuments() async {
+  Future<List<ReadingDocument>> loadDocuments({
+    bool includeContent = true,
+  }) async {
     final result = <ReadingDocument>[];
     for (final kind in DocumentKind.values) {
       final directory = await _category(
@@ -71,7 +74,10 @@ class _IoStorageBackend implements MoyueStorageBackend {
           ReadingDocument(
             id: entity.path,
             title: Uri.decodeComponent(name),
-            content: await entity.readAsString(),
+            content: includeContent
+                ? decodeImportedText(await entity.readAsBytes())
+                : '',
+            contentLoaded: includeContent,
             kind: kind,
             updatedAt: stat.modified,
             filePath: entity.path,
@@ -81,6 +87,16 @@ class _IoStorageBackend implements MoyueStorageBackend {
     }
     result.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return result;
+  }
+
+  @override
+  Future<ReadingDocument> readDocument(ReadingDocument document) async {
+    if (document.contentLoaded) return document;
+    final path = document.filePath;
+    if (path == null) throw StateError('文档路径不存在');
+    return document.copyWith(
+      content: decodeImportedText(await File(path).readAsBytes()),
+    );
   }
 
   @override

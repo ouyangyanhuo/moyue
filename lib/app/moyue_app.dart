@@ -292,6 +292,8 @@ class _MoyueShellState extends State<MoyueShell> {
   bool _loading = true;
   bool _exitArmed = false;
   Timer? _exitTimer;
+  int _reloadGeneration = 0;
+  bool _indexReloading = false;
 
   @override
   void initState() {
@@ -308,10 +310,26 @@ class _MoyueShellState extends State<MoyueShell> {
   }
 
   Future<void> _reloadDocuments() async {
+    final generation = ++_reloadGeneration;
+    final changed = _storage.changedDocument;
+    if (changed != null && !_loading && !_indexReloading) {
+      setState(() {
+        _documents = [
+          for (final document in _documents)
+            document.id == changed.id ? changed.metadata : document,
+        ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        _folders = [
+          for (final folder in _folders) folder.updateDocument(changed),
+        ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        _libraryPage = null;
+      });
+      return;
+    }
+    _indexReloading = true;
     try {
       final documents = await _storage.loadDocuments();
       final folders = await _storage.loadFolders();
-      if (mounted) {
+      if (mounted && generation == _reloadGeneration) {
         setState(() {
           _documents = documents;
           _folders = folders;
@@ -320,15 +338,16 @@ class _MoyueShellState extends State<MoyueShell> {
     } on Object {
       // 加载失败（含存储后端缺失等 Error）一律回退到空状态，
       // 避免未处理异步异常打断 UI。
-      if (mounted) {
+      if (mounted && generation == _reloadGeneration) {
         setState(() {
           _documents = const [];
           _folders = const [];
         });
       }
     } finally {
-      if (mounted) {
+      if (mounted && generation == _reloadGeneration) {
         setState(() {
+          _indexReloading = false;
           _loading = false;
           _libraryPage = null;
         });

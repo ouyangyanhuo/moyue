@@ -27,6 +27,7 @@ import 'package:moyue_application/services/ink_image_processor.dart';
 import 'package:moyue_application/services/system_share_service.dart';
 import 'package:moyue_application/services/reading_progress_service.dart';
 import 'package:moyue_application/widgets/floating_document_header.dart';
+import 'package:moyue_application/widgets/document_content_loader.dart';
 import 'package:moyue_application/widgets/image_lightbox.dart';
 import 'package:moyue_application/widgets/moyue_action_menu.dart';
 import 'package:moyue_application/widgets/moyue_glass_icon_button.dart';
@@ -50,7 +51,12 @@ Route<void> readerDetailRoute(BuildContext context, ReadingDocument document) =>
     moyuePageRoute<void>(
       context: context,
       allowSnapshotting: false,
-      builder: (_) => ReaderDetailPage(document: document),
+      builder: (_) => document.contentLoaded
+          ? ReaderDetailPage(document: document)
+          : DocumentContentLoader(
+              document: document,
+              builder: (loaded) => ReaderDetailPage(document: loaded),
+            ),
     );
 
 class _ReaderDetailPageState extends State<ReaderDetailPage>
@@ -84,6 +90,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
   bool _expandedMarkdownSelection = false;
   String _layout = '';
   late String _contentHash;
+  int _reloadGeneration = 0;
 
   @override
   void initState() {
@@ -490,25 +497,43 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
   }
 
   Future<void> _reloadDocument() async {
-    final documents = await MoyueStorageService.instance.loadDocuments();
-    final folders = await MoyueStorageService.instance.loadFolders();
-    final allDocuments = [
-      ...documents,
-      ...folders.expand((folder) => folder.documents),
-    ];
-    final matches = allDocuments.where((item) => item.id == _document.id);
-    if (mounted && matches.isNotEmpty) {
-      final next = matches.first;
-      if (next.content != _document.content ||
-          next.updatedAt != _document.updatedAt) {
-        _imageCache.clear();
-        _contentHash = sha256.convert(utf8.encode(next.content)).toString();
-      }
-      setState(() {
-        _document = next;
-        _expandedMarkdownSelection = false;
-      });
+    final changed = MoyueStorageService.instance.changedDocument;
+    if (changed != null && changed.id != _document.id) return;
+    final generation = ++_reloadGeneration;
+    if (changed != null) {
+      if (changed.id == _document.id && mounted) _applyUpdatedDocument(changed);
+      return;
     }
+    try {
+      final documents = await MoyueStorageService.instance.loadDocuments();
+      final folders = await MoyueStorageService.instance.loadFolders();
+      final allDocuments = [
+        ...documents,
+        ...folders.expand((folder) => folder.documents),
+      ];
+      final matches = allDocuments.where((item) => item.id == _document.id);
+      if (mounted && generation == _reloadGeneration && matches.isNotEmpty) {
+        final next = await MoyueStorageService.instance.readDocument(
+          matches.first,
+        );
+        if (!mounted || generation != _reloadGeneration) return;
+        _applyUpdatedDocument(next);
+      }
+    } on Object {
+      // Keep the already-open content if an external file disappeared.
+    }
+  }
+
+  void _applyUpdatedDocument(ReadingDocument next) {
+    if (next.content != _document.content ||
+        next.updatedAt != _document.updatedAt) {
+      _imageCache.clear();
+      _contentHash = sha256.convert(utf8.encode(next.content)).toString();
+    }
+    setState(() {
+      _document = next;
+      _expandedMarkdownSelection = false;
+    });
   }
 
   List<_ReaderHeading> get _headings {

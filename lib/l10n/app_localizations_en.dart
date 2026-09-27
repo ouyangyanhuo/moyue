@@ -47,6 +47,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get unknownError => 'Unknown error';
 
   @override
+  String get documentReadFailed =>
+      'Could not read this document. Check that the file exists, then retry.';
+
+  @override
   String get settingsTitle => 'Settings';
 
   @override

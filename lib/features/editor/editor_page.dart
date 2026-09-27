@@ -18,6 +18,7 @@ import 'package:moyue_application/widgets/moyue_backdrop.dart';
 import 'package:moyue_application/widgets/moyue_transient_message.dart';
 import 'package:moyue_application/widgets/image_lightbox.dart';
 import 'package:moyue_application/widgets/stable_reader_image.dart';
+import 'package:moyue_application/widgets/document_content_loader.dart';
 
 import 'editor_keyboard_controller.dart';
 
@@ -32,6 +33,7 @@ Route<ReadingDocument?> markdownEditorRoute(
           id: value['id']! as String,
           title: value['title']! as String,
           content: value['content']! as String,
+          contentLoaded: value['contentLoaded'] as bool? ?? true,
           kind: DocumentKind.markdown,
           updatedAt: DateTime.fromMillisecondsSinceEpoch(
             value['updatedAt']! as int,
@@ -43,7 +45,12 @@ Route<ReadingDocument?> markdownEditorRoute(
         );
   return moyuePageRoute<ReadingDocument?>(
     context: context,
-    builder: (_) => MarkdownEditorPage(document: document),
+    builder: (_) => document == null || document.contentLoaded
+        ? MarkdownEditorPage(document: document)
+        : DocumentContentLoader(
+            document: document,
+            builder: (loaded) => MarkdownEditorPage(document: loaded),
+          ),
   );
 }
 
@@ -54,6 +61,7 @@ Map<String, Object?>? markdownEditorArguments(ReadingDocument? document) =>
         'id': document.id,
         'title': document.title,
         'content': document.content,
+        'contentLoaded': document.contentLoaded,
         'updatedAt': document.updatedAt.millisecondsSinceEpoch,
         'filePath': document.filePath,
         'folderId': document.folderId,
@@ -62,8 +70,9 @@ Map<String, Object?>? markdownEditorArguments(ReadingDocument? document) =>
       };
 
 class MarkdownEditorPage extends StatefulWidget {
-  const MarkdownEditorPage({this.document, super.key});
+  const MarkdownEditorPage({this.document, this.storage, super.key});
   final ReadingDocument? document;
+  final MoyueStorageService? storage;
 
   @override
   State<MarkdownEditorPage> createState() => _MarkdownEditorPageState();
@@ -78,6 +87,12 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   bool _saving = false;
   bool _listenersAttached = false;
   Timer? _autosaveTimer;
+  String _lastTitleText = '';
+  String _lastBodyText = '';
+  Completer<void>? _saveCompletion;
+  bool _exitRequested = false;
+  MoyueStorageService get _storage =>
+      widget.storage ?? MoyueStorageService.instance;
   final FocusNode _titleFocus = FocusNode();
   final FocusNode _bodyFocus = FocusNode();
   final UndoHistoryController _titleUndo = UndoHistoryController();
@@ -140,6 +155,8 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
       }
     }
     if (!_listenersAttached) {
+      _lastTitleText = _title.value.text;
+      _lastBodyText = _body.value.text;
       _title.value.addListener(_changed);
       _body.value.addListener(_changed);
       _listenersAttached = true;
@@ -147,6 +164,11 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   }
 
   void _changed() {
+    final title = _title.value.text;
+    final body = _body.value.text;
+    if (title == _lastTitleText && body == _lastBodyText) return;
+    _lastTitleText = title;
+    _lastBodyText = body;
     if (!_dirty.value && mounted) setState(() => _dirty.value = true);
     _autosaveTimer?.cancel();
     _autosaveTimer = Timer(
@@ -428,15 +450,18 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   }
 
   /// 统一退出流程（头部返回按钮与系统返回手势共用）：
-  /// 先落盘保存，再基于最新正文清理未引用图片，最后退出页面。
+  /// 先落盘保存，再安排基于最新正文的图片清理，不让清理阻塞退出。
   Future<void> _exitWithSave() async {
-    await _persist(popAfter: false);
-    final pending = mounted ? _body.value.text : null;
-    unawaited(_cleanupImages(pendingContent: pending));
-    if (mounted) Navigator.pop(context, _currentDocument);
+    if (_exitRequested) return;
+    _exitRequested = true;
+    try {
+      await _persist(popAfter: true);
+    } finally {
+      _exitRequested = false;
+    }
   }
 
-  Future<void> _save() => _persist(popAfter: true);
+  Future<void> _save() => _exitWithSave();
 
   /// 结束编辑（保存或退出）后清理 images/ 目录下未被引用的图片，
   /// 例如插入后又被删掉链接的图片。失败静默，不影响主流程。
@@ -447,7 +472,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
     final document = _currentDocument;
     if (document == null || document.relativePath == null) return;
     try {
-      await MoyueStorageService.instance.cleanupUnreferencedImages(
+      await _storage.cleanupUnreferencedImages(
         document,
         pendingContent: pendingContent,
       );
@@ -490,7 +515,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
         _message(context.l10n.imageImportFailed);
         return;
       }
-      final link = await MoyueStorageService.instance.saveDocumentImage(
+      final link = await _storage.saveDocumentImage(
         document: document,
         fileName: file.name,
         bytes: bytes,
@@ -567,9 +592,16 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
 
   Future<void> _persist({required bool popAfter, bool force = false}) async {
     _autosaveTimer?.cancel();
-    if (_saving) return;
+    if (_saving) {
+      await _saveCompletion?.future;
+      if (mounted) await _persist(popAfter: popAfter, force: force);
+      return;
+    }
     if (!_dirty.value && !force) {
-      if (popAfter && mounted) Navigator.pop(context, _currentDocument);
+      if (popAfter && mounted) {
+        unawaited(_cleanupImages(pendingContent: _body.value.text));
+        Navigator.pop(context, _currentDocument);
+      }
       return;
     }
     final title = _title.value.text.trim();
@@ -581,18 +613,28 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
       }
       return;
     }
+    final titleSnapshot = _title.value.text;
+    final contentSnapshot = _body.value.text;
+    final completion = Completer<void>();
+    _saveCompletion = completion;
     if (mounted) setState(() => _saving = true);
+    var saved = false;
     try {
-      final document = await MoyueStorageService.instance.saveDocument(
+      final document = await _storage.saveDocument(
         title: title,
-        content: _body.value.text,
+        content: contentSnapshot,
         kind: DocumentKind.markdown,
         existingDocument: _currentDocument,
       );
       _currentDocument = document;
-      _dirty.value = false;
-      unawaited(_cleanupImages(pendingContent: _body.value.text));
-      if (popAfter && mounted) Navigator.pop(context, document);
+      saved = true;
+      if (mounted) {
+        // A save may finish after the user has typed more text. Never mark
+        // those newer edits as saved or clear their scheduled autosave.
+        _dirty.value =
+            titleSnapshot != _title.value.text ||
+            contentSnapshot != _body.value.text;
+      }
     } on Object catch (error) {
       if (popAfter && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -601,6 +643,20 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
       }
     } finally {
       if (mounted) setState(() => _saving = false);
+      completion.complete();
+      if (identical(_saveCompletion, completion)) _saveCompletion = null;
+    }
+    if (saved && mounted) {
+      if (popAfter) {
+        // Also persists any edits made while the previous write was running.
+        await _persist(popAfter: true);
+      } else if (_dirty.value) {
+        _autosaveTimer?.cancel();
+        _autosaveTimer = Timer(
+          const Duration(milliseconds: 900),
+          () => unawaited(_persist(popAfter: false)),
+        );
+      }
     }
   }
 

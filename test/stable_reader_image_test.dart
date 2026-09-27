@@ -7,6 +7,33 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:moyue_application/widgets/stable_reader_image.dart';
 
 void main() {
+  test('正文图片按屏幕物理像素解码，保持比例且不放大小图', () {
+    expect(
+      readerImageDecodeWidth(
+        source: const Size(4000, 3000),
+        display: const Size(300, 225),
+        pixelRatio: 3,
+      ),
+      900,
+    );
+    expect(
+      readerImageDecodeWidth(
+        source: const Size(100, 80),
+        display: const Size(300, 240),
+        pixelRatio: 3,
+      ),
+      isNull,
+    );
+    expect(
+      readerImageDecodeWidth(
+        source: const Size(4000, 2000),
+        display: const Size(200, 200),
+        pixelRatio: 2,
+        fit: BoxFit.cover,
+      ),
+      800,
+    );
+  });
   for (final failure in ['missing', 'throws', 'corrupt']) {
     testWidgets('图片 $failure 显示缺失占位且缓存失败结果', (tester) async {
       final cache = ReaderImageSessionCache();
