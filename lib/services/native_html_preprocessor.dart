@@ -1,4 +1,3 @@
-
 import 'package:flutter/foundation.dart';
 
 import 'package:html/dom.dart' as dom;
@@ -232,7 +231,10 @@ class NativeHtmlPreprocessor {
     for (var index = 0; index < headings.length; index++) {
       final originalId = headings[index].id;
       if (originalId.isNotEmpty && originalId != 'moyue-heading-$index') {
-        headings[index].nodes.insert(0, dom.Element.tag('span')..id = originalId);
+        headings[index].nodes.insert(
+          0,
+          dom.Element.tag('span')..id = originalId,
+        );
       }
       headings[index].id = 'moyue-heading-$index';
     }

@@ -3,7 +3,9 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:moyue_application/services/text_decoder.dart';
 import 'package:path/path.dart' as p;
-import 'archive_inflate_stub.dart' if (dart.library.io) 'archive_inflate_io.dart';
+
+import 'archive_inflate_stub.dart'
+    if (dart.library.io) 'archive_inflate_io.dart';
 
 class PackageArchiveLimits {
   const PackageArchiveLimits({
@@ -37,8 +39,10 @@ class PackageArchiveCodec {
     ), debugLabel: 'moyue-package-decode');
   }
 
-  static Future<Uint8List> encode(Map<String, Uint8List> files) =>
-      compute(_encode, files, debugLabel: 'moyue-package-encode');
+  static Future<Uint8List> encode(
+    Map<String, Uint8List> files, {
+    PackageArchiveLimits limits = const PackageArchiveLimits(),
+  }) => compute(_encode, (files, limits), debugLabel: 'moyue-package-encode');
 
   static Future<String> hash(Uint8List bytes) => bytes.length < 256 * 1024
       ? Future.value(_hash(bytes))
@@ -152,21 +156,39 @@ class PackageArchiveCodec {
     return DecodedPackageArchive(files, hashes);
   }
 
-  static Uint8List _encode(Map<String, Uint8List> files) {
+  static Uint8List _encode(
+    (Map<String, Uint8List>, PackageArchiveLimits) request,
+  ) {
+    final (files, limits) = request;
+    if (files.length > limits.entries) {
+      throw const FormatException('文档包文件数量超过限制，请分批分享');
+    }
+    var total = 0;
     final archive = Archive();
     for (final entry in files.entries) {
+      total += entry.value.length;
+      if (entry.value.length > limits.fileBytes || total > limits.totalBytes) {
+        throw const FormatException('文档包超过安全大小限制，请分批分享');
+      }
       archive.addFile(ArchiveFile.bytes(safePath(entry.key), entry.value));
     }
-    return ZipEncoder().encodeBytes(archive);
+    return ZipEncoder().encodeBytes(
+      archive,
+      output: _LimitedOutput(
+        limits.compressedBytes,
+        message: '文档包压缩后超过大小限制，请分批分享',
+      ),
+    );
   }
 }
 
 /// Checks actual decompressor writes, not just attacker-controlled ZIP sizes.
 class _LimitedOutput extends OutputMemoryStream {
-  _LimitedOutput(this.limit);
+  _LimitedOutput(this.limit, {this.message = '压缩包解压后大小超过限制'});
   final int limit;
+  final String message;
   void _check(int count) {
-    if (length + count > limit) throw const FormatException('压缩包解压后大小超过限制');
+    if (length + count > limit) throw FormatException(message);
   }
 
   @override

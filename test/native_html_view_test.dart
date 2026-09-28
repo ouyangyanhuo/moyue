@@ -236,8 +236,14 @@ void main() {
       ),
     );
     await tester.pump();
-    for (var attempt = 0; attempt < 100 && find.byType(HtmlWidget).evaluate().isEmpty; attempt++) {
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    for (
+      var attempt = 0;
+      attempt < 100 && find.byType(HtmlWidget).evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
       await tester.pump(const Duration(milliseconds: 20));
     }
 

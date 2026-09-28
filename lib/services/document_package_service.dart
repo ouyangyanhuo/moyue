@@ -1632,6 +1632,22 @@ class DocumentPackageService {
               })
               .toList(growable: false);
     final archive = <String, Uint8List>{};
+    const exportLimits = PackageArchiveLimits();
+    var exportBytes = 0;
+    void addExportFile(String path, Uint8List bytes) {
+      final nextSize =
+          exportBytes - (archive[path]?.length ?? 0) + bytes.length;
+      if (bytes.length > exportLimits.fileBytes ||
+          nextSize > exportLimits.totalBytes ||
+          (!archive.containsKey(path) &&
+              archive.length >= exportLimits.entries)) {
+        throw const FormatException('文档包超过安全大小限制，请分批分享');
+      }
+      archive[path] = bytes;
+      exportBytes = nextSize;
+    }
+
+    final documentBytesById = <String, Uint8List>{};
     final documentMeta = <Map<String, Object?>>[];
     final resourceMeta = <Map<String, Object?>>[];
     final docsById = {for (final row in docs) row['id']! as String: row};
@@ -1647,9 +1663,9 @@ class DocumentPackageService {
         id,
         p.posix.basename(logicalPath),
       );
-      archive[archivePath] = await _files.readBytes(
-        row['relative_path']! as String,
-      );
+      final bytes = await _files.readBytes(row['relative_path']! as String);
+      addExportFile(archivePath, bytes);
+      documentBytesById[id] = bytes;
       documentMeta.add({
         'id': id,
         'path': exportedLogicalPath,
@@ -1681,7 +1697,7 @@ class DocumentPackageService {
         id,
         p.posix.basename(logicalPath),
       );
-      archive[archivePath] = await _files.readBytes(relative);
+      addExportFile(archivePath, await _files.readBytes(relative));
       resourceMeta.add({
         'id': id,
         'document_id': documentId,
@@ -1700,36 +1716,38 @@ class DocumentPackageService {
     for (final document in docs) {
       final documentId = document['id']! as String;
       final documentPath = document['relative_path']! as String;
-      final content = decodeImportedText(await _files.readBytes(documentPath));
+      final content = decodeImportedText(documentBytesById[documentId]!);
       for (final link in _localAssetReferences(content)) {
         final relative = p.posix.normalize(
           p.posix.join(p.posix.dirname(documentPath), link),
         );
         if (relative != base && !p.posix.isWithin(base, relative)) continue;
         if (!attachedPairs.add('$documentId|$relative')) continue;
+        Uint8List bytes;
         try {
-          final bytes = await _files.readBytes(relative);
-          final resourceId =
-              '$documentId-derived-${sha256.convert(utf8.encode(link)).toString().substring(0, 12)}';
-          final archivePath = p.posix.join(
-            'payload',
-            'resources',
-            resourceId,
-            p.posix.basename(link),
-          );
-          archive[archivePath] = bytes;
-          resourceMeta.add({
-            'id': resourceId,
-            'document_id': documentId,
-            'path': link,
-            'archive_path': archivePath,
-            'mime_type': _mimeType(link),
-            'sha256': await PackageArchiveCodec.hash(bytes),
-            'size': bytes.length,
-          });
+          bytes = await _files.readBytes(relative);
         } on Object {
           // 断裂链接保持在正文中，不阻止其余内容导出。
+          continue;
         }
+        final resourceId =
+            '$documentId-derived-${sha256.convert(utf8.encode(link)).toString().substring(0, 12)}';
+        final archivePath = p.posix.join(
+          'payload',
+          'resources',
+          resourceId,
+          p.posix.basename(link),
+        );
+        addExportFile(archivePath, bytes);
+        resourceMeta.add({
+          'id': resourceId,
+          'document_id': documentId,
+          'path': link,
+          'archive_path': archivePath,
+          'mime_type': _mimeType(link),
+          'sha256': await PackageArchiveCodec.hash(bytes),
+          'size': bytes.length,
+        });
       }
     }
     final primaryRows = docs.where((row) => row['is_primary'] == 1);
@@ -1751,8 +1769,11 @@ class DocumentPackageService {
       'documents': documentMeta,
       'resources': resourceMeta,
     };
-    archive['meta.json'] = Uint8List.fromList(
-      utf8.encode(const JsonEncoder.withIndent('  ').convert(meta)),
+    addExportFile(
+      'meta.json',
+      Uint8List.fromList(
+        utf8.encode(const JsonEncoder.withIndent('  ').convert(meta)),
+      ),
     );
     return MoyueExport(
       fileName:

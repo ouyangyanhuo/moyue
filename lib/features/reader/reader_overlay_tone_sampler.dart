@@ -46,7 +46,8 @@ class ReaderToneSamplingPolicy {
       return false;
     }
     final interval = Duration(milliseconds: velocity >= 1200 ? 360 : 180);
-    if (time - _sampleTime! < interval || (offset - _sampleOffset!).abs() < 24) {
+    if (time - _sampleTime! < interval ||
+        (offset - _sampleOffset!).abs() < 24) {
       return false;
     }
     _sampleTime = time;

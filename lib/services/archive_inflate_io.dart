@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'dart:math' as math;
+
 import 'package:archive/archive.dart';
 
 void inflatePackageEntry(InputStream input, OutputStream output) {
-  final decoder = ZLibCodec(raw: true).decoder.startChunkedConversion(_OutputSink(output));
+  final decoder = ZLibCodec(raw: true).decoder
+      .startChunkedConversion(_OutputSink(output));
   while (!input.isEOS) {
     decoder.add(input.readBytes(math.min(16384, input.length)).toUint8List());
   }

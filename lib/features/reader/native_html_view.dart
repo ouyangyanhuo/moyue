@@ -87,7 +87,8 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
     if (!mounted || !identical(_prepared, prepared)) return false;
     _engineAnchors.add(anchor);
     try {
-      return await _htmlKeys[section].currentState?.scrollToAnchor(anchor) ?? false;
+      return await _htmlKeys[section].currentState?.scrollToAnchor(anchor) ??
+          false;
     } finally {
       _engineAnchors.remove(anchor);
     }
@@ -183,7 +184,8 @@ class NativeHtmlViewState extends State<NativeHtmlView> {
               for (var index = 0; index < data.sections.length; index++)
                 LazyHtmlSection(
                   key: _sectionKeys[index],
-                  eager: !widget.lazyLoading || index == 0 || _selectAllExpanded,
+                  eager:
+                      !widget.lazyLoading || index == 0 || _selectAllExpanded,
                   estimatedHeight:
                       (data.sections[index].textLength /
                                   (width / 9).clamp(12, 120) *

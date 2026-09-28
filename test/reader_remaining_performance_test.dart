@@ -39,7 +39,13 @@ void main() {
   });
 
   test('解压前拒绝不安全路径、重复路径和不支持的类型', () async {
-    for (final name in ['../escape.md', '/escape.md', 'C:/escape.md', 'a.exe', 'bare']) {
+    for (final name in [
+      '../escape.md',
+      '/escape.md',
+      'C:/escape.md',
+      'a.exe',
+      'bare',
+    ]) {
       await expectLater(
         PackageArchiveCodec.decode(zip({'good.md': 'ok', name: 'bad'})),
         throwsFormatException,
@@ -59,7 +65,10 @@ void main() {
       PackageArchiveLimits(fileBytes: 1000),
       PackageArchiveLimits(totalBytes: 5000),
     ]) {
-      await expectLater(PackageArchiveCodec.decode(bytes, limits: limits), throwsFormatException);
+      await expectLater(
+        PackageArchiveCodec.decode(bytes, limits: limits),
+        throwsFormatException,
+      );
     }
   });
 
@@ -76,13 +85,57 @@ void main() {
     await expectLater(PackageArchiveCodec.decode(bytes), throwsFormatException);
   });
 
+  test('导出同样限制输出大小，避免生成不能再次导入的包', () async {
+    final files = {
+      'a.md': Uint8List.fromList(utf8.encode('a' * 4000)),
+      'b.md': Uint8List.fromList(utf8.encode('b' * 4000)),
+    };
+    for (final limits in const [
+      PackageArchiveLimits(compressedBytes: 10),
+      PackageArchiveLimits(entries: 1),
+      PackageArchiveLimits(fileBytes: 1000),
+      PackageArchiveLimits(totalBytes: 5000),
+    ]) {
+      await expectLater(
+        PackageArchiveCodec.encode(files, limits: limits),
+        throwsFormatException,
+      );
+    }
+  });
+
+  test('伪造解压大小也会在实际输出超限时停止', () async {
+    final bytes = zip({'a.md': 'a' * 16000, 'b.md': 'b' * 16000});
+    final data = ByteData.sublistView(bytes);
+    for (var i = 0; i + 30 < bytes.length; i++) {
+      final signature = data.getUint32(i, Endian.little);
+      if (signature == 0x02014b50) data.setUint32(i + 24, 1, Endian.little);
+      if (signature == 0x04034b50) data.setUint32(i + 22, 1, Endian.little);
+      if (signature == 0x08074b50) data.setUint32(i + 12, 1, Endian.little);
+    }
+    await expectLater(
+      PackageArchiveCodec.decode(
+        bytes,
+        limits: const PackageArchiveLimits(fileBytes: 500),
+      ),
+      throwsA(
+        isA<FormatException>().having(
+          (e) => e.message,
+          'reason',
+          contains('大小超过限制'),
+        ),
+      ),
+    );
+  });
+
   test('大 HTML 后台处理保留 CSS、章节与原始锚点', () async {
     final result = await NativeHtmlPreprocessor.prepareDocument(
-      data: '<link rel="stylesheet" href="style.css"><article id="root">'
+      data:
+          '<link rel="stylesheet" href="style.css"><article id="root">'
           '${List.generate(80, (i) => '<section><h2 id="section-$i">第$i章</h2><p>${'正文内容' * 120}</p></section>').join()}'
           '</article>',
       viewportWidth: 400,
-      resourceLoader: (_) async => Uint8List.fromList(utf8.encode('p {color: #123456}')),
+      resourceLoader: (_) async =>
+          Uint8List.fromList(utf8.encode('p {color: #123456}')),
     );
     expect(result.sections, hasLength(80));
     expect(result.headingSections[79], 79);
@@ -101,7 +154,8 @@ void main() {
 
   test('滚动取色按距离与速度限频，停止后可重置', () {
     final policy = ReaderToneSamplingPolicy();
-    bool scroll(double offset, int ms) => policy.onScroll(offset, Duration(milliseconds: ms));
+    bool scroll(double offset, int ms) =>
+        policy.onScroll(offset, Duration(milliseconds: ms));
     expect(scroll(0, 0), isFalse);
     expect(scroll(5, 200), isFalse);
     expect(scroll(25, 250), isTrue);
@@ -115,40 +169,73 @@ void main() {
 
   testWidgets('HTML 按需展开目录目标、已阅章节常驻，且全选可复制末尾', (tester) async {
     String? copied;
-    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
-      if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String?;
+      if (call.method == 'Clipboard.setData') {
+        copied = (call.arguments as Map)['text'] as String?;
+      }
       return null;
     });
-    addTearDown(() => messenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
     final key = GlobalKey<NativeHtmlViewState>();
     final scroll = ScrollController();
     addTearDown(scroll.dispose);
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
-      controller: scroll,
-      child: NativeHtmlView(key: key, data: List.generate(50, (i) =>
-        '<section><h2>Chapter $i</h2><p>${'Text for reading. ' * 12}</p></section>').join()),
-    ))));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            controller: scroll,
+            child: NativeHtmlView(
+              key: key,
+              data: List.generate(
+                50,
+                (i) =>
+                    '<section><h2>Chapter $i</h2><p>${'Text for reading. ' * 12}</p></section>',
+              ).join(),
+            ),
+          ),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     final initial = find.byType(HtmlWidget).evaluate().length;
     expect(initial, lessThan(50));
     final jump = key.currentState!.scrollToHeading(49);
-    for (var i = 0; i < 20; i++) { await tester.pump(const Duration(milliseconds: 50)); }
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
     expect(await jump, isTrue);
     expect(find.text('Chapter 49', findRichText: true), findsOneWidget);
     final visited = find.byType(HtmlWidget).evaluate().length;
     scroll.jumpTo(0);
     await tester.pumpAndSettle();
-    expect(find.byType(HtmlWidget).evaluate().length, greaterThanOrEqualTo(visited));
+    expect(
+      find.byType(HtmlWidget).evaluate().length,
+      greaterThanOrEqualTo(visited),
+    );
 
     final areaFinder = find.byType(SelectionArea).first;
     final area = tester.widget<SelectionArea>(areaFinder);
-    final region = tester.state<SelectionAreaState>(areaFinder).selectableRegion;
-    final menu = area.contextMenuBuilder!(tester.element(areaFinder), region) as AdaptiveTextSelectionToolbar;
-    menu.buttonItems!.firstWhere((i) => i.type == ContextMenuButtonType.selectAll).onPressed!();
-    for (var i = 0; i < 8; i++) { await tester.pump(); }
+    final region = tester
+        .state<SelectionAreaState>(areaFinder)
+        .selectableRegion;
+    final menu = area.contextMenuBuilder!(
+      tester.element(areaFinder),
+      region,
+    ) as AdaptiveTextSelectionToolbar;
+    menu.buttonItems!
+        .firstWhere((i) => i.type == ContextMenuButtonType.selectAll)
+        .onPressed!();
+    for (var i = 0; i < 8; i++) {
+      await tester.pump();
+    }
     expect(find.byType(HtmlWidget), findsNWidgets(50));
-    region.contextMenuButtonItems.firstWhere((i) => i.type == ContextMenuButtonType.copy).onPressed!();
+    region.contextMenuButtonItems
+        .firstWhere((i) => i.type == ContextMenuButtonType.copy)
+        .onPressed!();
     await tester.pump();
     expect(copied, contains('Chapter 0'));
     expect(copied, contains('Chapter 49'));
@@ -158,11 +245,20 @@ void main() {
 
   testWidgets('打开目录或提示消息不重建 Markdown 正文', (tester) async {
     for (final content in ['# Heading\n\nText', 'No headings']) {
-      await tester.pumpWidget(MaterialApp(home: ReaderDetailPage(
-        key: ValueKey(content),
-        document: ReadingDocument(id: content, title: 'Test', content: content,
-          kind: DocumentKind.markdown, updatedAt: DateTime(2026)),
-      )));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReaderDetailPage(
+            key: ValueKey(content),
+            document: ReadingDocument(
+              id: content,
+              title: 'Test',
+              content: content,
+              kind: DocumentKind.markdown,
+              updatedAt: DateTime(2026),
+            ),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       final markdown = tester.widget<Markdown>(find.byType(Markdown));
       await tester.tap(find.byIcon(Icons.format_list_bulleted_rounded));
