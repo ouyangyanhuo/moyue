@@ -1,6 +1,6 @@
 # 墨阅 / Moyue
 
-![版本](https://img.shields.io/badge/版本-1.0.1-blue)
+![版本](https://img.shields.io/badge/版本-1.0.7-blue)
 ![平台](https://img.shields.io/badge/platform-Android-brightgreen)
 ![Flutter](https://img.shields.io/badge/Flutter-3.47%20stable-02569B)
 ![Dart](https://img.shields.io/badge/Dart-3.13-0175C2)
