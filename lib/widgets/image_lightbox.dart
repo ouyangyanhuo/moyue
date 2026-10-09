@@ -107,7 +107,7 @@ class _ImageLightboxState extends State<ImageLightbox> {
         children: [
           Positioned.fill(
             child: GestureDetector(
-              onTap: () => Navigator.of(context).pop(),
+              onTap: () => moyuePopCurrentRoute(context),
               onDoubleTapDown: (details) => _doubleTapDetails = details,
               onDoubleTap: _handleDoubleTap,
               child: InteractiveViewer(
@@ -127,7 +127,7 @@ class _ImageLightboxState extends State<ImageLightbox> {
                     Icons.close_rounded,
                     color: inkMode ? colors.onSurface : Colors.white,
                   ),
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () => moyuePopCurrentRoute(context),
                   tooltip: context.l10n.close,
                 ),
               ),

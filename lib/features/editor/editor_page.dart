@@ -452,12 +452,15 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
   /// 统一退出流程（头部返回按钮与系统返回手势共用）：
   /// 先落盘保存，再安排基于最新正文的图片清理，不让清理阻塞退出。
   Future<void> _exitWithSave() async {
-    if (_exitRequested) return;
+    final route = ModalRoute.of(context);
+    if (_exitRequested || route?.isCurrent != true) return;
     _exitRequested = true;
     try {
       await _persist(popAfter: true);
     } finally {
-      _exitRequested = false;
+      // Remain latched throughout the reverse animation. Release only when a
+      // failed/invalid save leaves the editor on screen and allows a retry.
+      if (mounted && route!.isCurrent) _exitRequested = false;
     }
   }
 
@@ -598,7 +601,7 @@ class _MarkdownEditorPageState extends State<MarkdownEditorPage>
       return;
     }
     if (!_dirty.value && !force) {
-      if (popAfter && mounted) {
+      if (popAfter && mounted && ModalRoute.of(context)?.isCurrent == true) {
         unawaited(_cleanupImages(pendingContent: _body.value.text));
         Navigator.pop(context, _currentDocument);
       }

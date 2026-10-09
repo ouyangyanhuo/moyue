@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:moyue_application/core/i18n/moyue_i18n.dart';
+import 'package:moyue_application/core/navigation/moyue_page_route.dart';
 import 'package:moyue_application/models/reading_document.dart';
 import 'package:moyue_application/services/moyue_storage_service.dart';
 import 'package:moyue_application/widgets/floating_document_header.dart';
@@ -52,7 +53,7 @@ class _DocumentContentLoaderState extends State<DocumentContentLoader> {
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                 child: FloatingDocumentHeader(
                   title: widget.document.title,
-                  onBack: () => Navigator.pop(context),
+                  onBack: () => moyuePopCurrentRoute(context),
                   actionIcon: Icons.refresh_rounded,
                   actionLabel: MaterialLocalizations.of(context)
                       .refreshIndicatorSemanticLabel,

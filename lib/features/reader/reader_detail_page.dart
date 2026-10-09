@@ -91,6 +91,7 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
   String _layout = '';
   late String _contentHash;
   int _reloadGeneration = 0;
+  bool _leaving = false;
 
   @override
   void initState() {
@@ -215,8 +216,20 @@ class _ReaderDetailPageState extends State<ReaderDetailPage>
   }
 
   Future<void> _leaveReader() async {
-    await _saveReadingPosition();
-    if (mounted) Navigator.of(context).pop();
+    final route = ModalRoute.of(context);
+    if (_leaving || route?.isCurrent != true || route!.popGestureInProgress) {
+      return;
+    }
+    _leaving = true;
+    try {
+      await _saveReadingPosition();
+      // System back may already have popped this route during the save.
+      if (mounted && route.isCurrent && !route.popGestureInProgress) {
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted && route.isCurrent) _leaving = false;
+    }
   }
 
   @override

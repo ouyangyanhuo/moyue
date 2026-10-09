@@ -16,6 +16,7 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    - third_party/liquid_glass_widgets/**
 
 linter:
   # 可在下面的部分自定义应用于本项目的 lint 规则，以禁用上方引入的

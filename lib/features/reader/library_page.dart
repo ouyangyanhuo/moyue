@@ -736,7 +736,7 @@ class _FolderPageState extends State<_FolderPage> {
                   title: _selecting
                       ? l10n.selectedItems(_selectionCount)
                       : currentName,
-                  onBack: () => Navigator.pop(context),
+                  onBack: () => moyuePopCurrentRoute(context),
                   actionIcon: _selecting
                       ? Icons.more_horiz_rounded
                       : Icons.add_rounded,
@@ -1179,7 +1179,7 @@ class _FolderPageState extends State<_FolderPage> {
       if (!mounted) return;
       final current = folders.where((folder) => folder.id == _folder.id);
       if (current.isEmpty) {
-        Navigator.pop(context);
+        moyuePopCurrentRoute(context);
       } else {
         setState(() => _folder = current.first);
       }
@@ -1255,7 +1255,7 @@ class _FolderPageState extends State<_FolderPage> {
     if (!mounted) return;
     final matches = folders.where((folder) => folder.id == _folder.id);
     if (matches.isEmpty) {
-      Navigator.pop(context);
+      moyuePopCurrentRoute(context);
       return;
     }
     setState(() {

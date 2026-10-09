@@ -32,7 +32,9 @@ dependencies:
   # 1.9 keeps the Flutter Material ColorScheme API. The 2.x line targets the
   # separate material_ui scheme type and cannot be passed to ThemeData yet.
   dynamic_color: 1.9.0
-  liquid_glass_widgets: ^0.29.6
+  # Same 0.29.7 renderer/shaders, with local geometry-cache fixes.
+  liquid_glass_widgets:
+    path: third_party/liquid_glass_widgets
   file_picker: ^12.0.0
   flutter_markdown_plus: ^1.0.12
   # Pure Flutter TeX renderer used by Markdown; never falls back to WebView.
